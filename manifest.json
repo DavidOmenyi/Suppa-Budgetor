@@ -1,0 +1,17 @@
+{
+  "name": "Suppa Budgetor",
+  "short_name": "SuppaBudgetor",
+  "description": "A sleek, modern budgeting and financial tracking tool.",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#f0fdf4",
+  "theme_color": "#059669",
+  "icons": [
+    {
+      "src": "app-icon.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

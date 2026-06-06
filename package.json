@@ -1,0 +1,20 @@
+{
+  "name": "super-budgetor",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app.source.js",
+  "scripts": {
+    "build": "javascript-obfuscator app.source.js --output app.js --compact true --control-flow-flattening true --dead-code-injection true --string-array true --string-array-encoding base64"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "javascript-obfuscator": "^5.4.3"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.107.0",
+    "node-fetch": "^2.7.0"
+  }
+}
