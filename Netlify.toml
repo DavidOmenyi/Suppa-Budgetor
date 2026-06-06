@@ -1,7 +1,5 @@
 [build]
   functions = "netlify/functions"
-  # Tell Netlify to run the obfuscator before taking the site live
-  command = "npm run build"
   
   # Tell Netlify to publish the root folder
   publish = "."
