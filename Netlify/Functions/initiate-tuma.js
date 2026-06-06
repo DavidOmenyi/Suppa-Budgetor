@@ -4,11 +4,39 @@ const { createClient } = require('@supabase/supabase-js');
 // Initialize Supabase to save the tracking ID
 const supabase = createClient(process.env.REACT_APP_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY);
 
-exports.handler = async (event) => {
-    if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
+// netlify/functions/initiate-tuma.js
 
-    const { phone, userId, amount } = JSON.parse(event.body);
-    console.log("DEBUG: Processing payment for userId:", userId);
+exports.handler = async (event, context) => {
+    // 1. Always return a valid JSON object
+    try {
+        if (event.httpMethod !== 'POST') {
+            return {
+                statusCode: 405,
+                body: JSON.stringify({ success: false, message: "Method Not Allowed" })
+            };
+        }
+
+        const payload = JSON.parse(event.body);
+        
+        // ... Your Safaricom Logic ...
+
+        return {
+            statusCode: 200,
+            body: JSON.stringify({ success: true, message: "Success" })
+        };
+
+    } catch (error) {
+        // CRITICAL: Ensure even errors return valid JSON
+        console.error("Backend Error:", error);
+        return {
+            statusCode: 500, // Or 400
+            body: JSON.stringify({ 
+                success: false, 
+                message: error.message 
+            })
+        };
+    }
+};
 
     try {
         // 1. Get Authentication Token
