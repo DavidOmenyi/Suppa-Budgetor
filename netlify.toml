@@ -1,7 +1,7 @@
 [build]
 # Tell Netlify to download an obfuscator and scramble app.source.js, 
   # replacing the file in the build container just before it goes live.
-  command = "npx javascript-obfuscator app.source.js --output app.source.js"
+  command = "npx javascript-obfuscator app.source.js --output app.js"
   functions = "netlify/functions"
   
   # Tell Netlify to publish the root folder
