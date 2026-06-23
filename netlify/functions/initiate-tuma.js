@@ -5,10 +5,9 @@ const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(process.env.REACT_APP_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY);
 
 // netlify/functions/initiate-tuma.js
-
 exports.handler = async (event, context) => {
-    // 1. Always return a valid JSON object
     try {
+        // 1. Only allow POST requests
         if (event.httpMethod !== 'POST') {
             return {
                 statusCode: 405,
@@ -16,30 +15,13 @@ exports.handler = async (event, context) => {
             };
         }
 
+        // 2. Parse the body sent from the frontend
         const payload = JSON.parse(event.body);
-        
-        // ... Your Safaricom Logic ...
+        const amount = payload.amount;
+        const phone = payload.phone;
+        const userId = payload.userId; // Ensure your frontend passes this!
 
-        return {
-            statusCode: 200,
-            body: JSON.stringify({ success: true, message: "Success" })
-        };
-
-    } catch (error) {
-        // CRITICAL: Ensure even errors return valid JSON
-        console.error("Backend Error:", error);
-        return {
-            statusCode: 500, // Or 400
-            body: JSON.stringify({ 
-                success: false, 
-                message: error.message 
-            })
-        };
-    }
-};
-
-    try {
-        // 1. Get Authentication Token
+        // 3. Get Authentication Token
         const authRes = await fetch('https://api.tuma.co.ke/auth/token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -57,7 +39,7 @@ exports.handler = async (event, context) => {
 
         const token = authData.data.token;
 
-        // 2. Trigger Payment
+        // 4. Trigger Payment
         const paymentRes = await fetch('https://api.tuma.co.ke/payment/stk-push', {
             method: 'POST',
             headers: {
@@ -67,7 +49,7 @@ exports.handler = async (event, context) => {
             body: JSON.stringify({
                 amount: amount || 1.00,
                 phone: phone,
-                callback_url: MY_NETLIFY_WEBHOOK_URL,
+                callback_url: process.env.MY_NETLIFY_WEBHOOK_URL, // Added process.env here
                 description: "Suppa Budgetor Premium Upgrade"
             })
         });
@@ -78,7 +60,7 @@ exports.handler = async (event, context) => {
             const checkoutId = paymentData.data.checkout_request_id;
             console.log(`DEBUG: Attempting to save CheckoutID: ${checkoutId} for UserID: ${userId}`);
 
-            // UPSERT: Create the row if it doesn't exist, or update it if it does!
+            // 5. UPSERT: Create the row if it doesn't exist, or update it if it does!
             const { data, error } = await supabase
                 .from('profiles')
                 .upsert({ 
@@ -93,13 +75,23 @@ exports.handler = async (event, context) => {
                 console.log("✅ Successfully updated DB row for user!");
             }
 
-            return { statusCode: 200, body: JSON.stringify(paymentData) };
+            return { 
+                statusCode: 200, 
+                body: JSON.stringify(paymentData) 
+            };
         } else {
             throw new Error(paymentData.message || "Payment request failed");
         }
 
     } catch (error) {
-        console.error("❌ Tuma Integration Error:", error);
-        return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
+        // CRITICAL: Ensure even errors return valid JSON
+        console.error("❌ Backend Error:", error);
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ 
+                success: false, 
+                message: error.message 
+            })
+        };
     }
-}; // <--- This closing brace ensures the handler function is complete
+};
