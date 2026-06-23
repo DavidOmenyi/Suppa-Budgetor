@@ -44,6 +44,17 @@
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
         body { background-color: var(--bg-color); color: var(--text-main); transition: background-color 0.4s ease; -webkit-user-select: none; user-select: none; }
         
+        /* Paywall Lock Screen Vault */
+        #lockedScreen {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: var(--bg-color);
+            z-index: 999999; padding: 15px; overflow-y: auto;
+        }
+        .paywall-center-wrapper {
+            min-height: 95vh; display: flex; justify-content: center; align-items: center;
+        }
+        .paywall-card { max-width: 440px; width: 100%; }
+
         /* Layout */
         .app-container { max-width: 1200px; margin: 0 auto; padding: 15px; }
         header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
@@ -61,8 +72,7 @@
         /* Navigation */
         nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid var(--border); padding-bottom: 10px; justify-content: space-between;}
         nav button { 
-            flex: 1 1 auto;
-            text-align: center;
+            flex: 1 1 auto; text-align: center;
             background: none; border: none; font-size: 15px; font-weight: 600; color: var(--text-muted); 
             cursor: pointer; padding: 8px 16px; border-radius: var(--radius); transition: 0.3s;
         }
@@ -113,544 +123,596 @@
         .hidden { display: none !important; }
         .flex-between { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
         
-        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 1000; }
-        .modal-content { background: var(--surface-color); padding: 25px; border-radius: var(--radius); width: 90%; max-width: 800px; max-height: 85vh; overflow-y: auto; box-shadow: var(--shadow); }
-        .modal-close { float: right; background: var(--danger); color: white; border: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 1000000; }
+        .modal-content { background: var(--surface-color); padding: 25px; border-radius: var(--radius); width: 90%; max-width: 800px; max-height: 85vh; overflow-y: auto; box-shadow: var(--shadow); position: relative;}
+        .modal-close { position: absolute; top: 20px; right: 20px; background: var(--danger); color: white; border: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
     </style>
 </head>
 <body>
 
-<div class="app-container">
-    <header>
-        <h1>Suppa Budgetor 🍀</h1>
-        <div class="controls">
-            <button onclick="toggleTheme()" title="Toggle Theme">🌓 Theme</button>
-        </div>
-    </header>
-
-    <nav>
-        <button class="active" onclick="switchTab('home')">Overview</button>
-        <button onclick="switchTab('summaries')">Summaries</button>
-        <button onclick="switchTab('budget')">Budget</button>
-        <button onclick="switchTab('entry')">Log Entry</button>
-        <button onclick="switchTab('analytics')">Analytics</button>
-        <button onclick="switchTab('savings')">Portfolio</button>
-        <button onclick="switchTab('utilities')">Utilities 🛠️</button>
-        <button onclick="switchTab('help')">Help 📞</button>
-        <button onclick="switchTab('instructions')">Instructions 💡</button>
-    </nav>
-
-    <div id="home" class="tab-content active">
-        <div class="flex-between" style="margin-bottom: 15px;">
-            <h2>Financial Overview</h2>
-            <div style="display: flex; gap: 10px; align-items: center;">
-                <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="changeMonth(-1)">⬅</button>
-                <span id="current-month-display" style="font-weight: 800; font-size: 18px; min-width: 150px; text-align: center; color: var(--primary);"></span>
-                <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="changeMonth(1)">➡</button>
-            </div>
-        </div>
-        
-        <div class="summary-cards">
-            <div class="card">
-                <h3>Total Income + Rollover</h3>
-                <div class="value" id="top-income">KES 0.00</div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;" id="top-rollover-text">Includes 0.00 rollover</div>
-            </div>
-            <div class="card">
-                <h3>Target Budget</h3>
-                <div class="value" id="top-budget">KES 0.00</div>
-            </div>
-            <div class="card">
-                <h3>Actual Spent & Saved</h3>
-                <div class="value" id="top-spent">KES 0.00</div>
-            </div>
-            <div class="card">
-                <h3>Surplus / Deficit</h3>
-                <div class="value" id="top-surplus">KES 0.00</div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">(Total Budgeted - Actual Spent)</div>
-            </div>
-            <div class="card" style="border-top-color: var(--success);">
-                <h3>Amount Unassigned</h3>
-                <div class="value" id="top-unassigned">KES 0.00</div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">(Available Cash - Actual Spent & Saved)</div>
-            </div>
-        </div>
-
-        <div class="flex-between" style="margin-top: 25px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
-            <h3 style="color: var(--primary); margin: 0;">Income Summary</h3>
-        </div>
-        <div style="overflow-x: auto;">
-            <table id="income-table">
-                <thead>
-                    <tr>
-                        <th>Category</th>
-                        <th>Actual Received (KES)</th>
-                    </tr>
-                </thead>
-                <tbody id="income-body"></tbody>
-                <tfoot>
-                    <tr>
-                        <th style="font-size: 14px;">Total Income</th>
-                        <th id="bottom-line-income" style="font-size: 14px; color: var(--primary);">KES 0.00</th>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-    </div>
-
-    <div id="summaries" class="tab-content">
-        <div class="flex-between" style="margin-bottom: 15px;">
-            <h2>Detailed Summaries</h2>
-            <div style="display: flex; gap: 10px; align-items: center;">
-                <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="changeMonth(-1)">⬅</button>
-                <span id="current-month-display-summaries" style="font-weight: 800; font-size: 18px; min-width: 150px; text-align: center; color: var(--primary);"></span>
-                <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="changeMonth(1)">➡</button>
-            </div>
-        </div>
-
-        <div class="flex-between" style="margin-top: 25px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
-            <h3 style="color: var(--primary); margin: 0;">Category Performance</h3>
-            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                <label style="font-size: 13px; font-weight: 700; color: var(--text-muted);">Category Filter:</label>
-                <select id="summary-cat-filter" onchange="updateUI()" style="padding: 6px; border-radius: 8px; border: 1px solid var(--border); width: auto;">
-                    <option value="ALL">All Categories</option>
-                </select>
-                
-                <label style="font-size: 13px; font-weight: 700; color: var(--text-muted);">Actual Spent:</label>
-                <select id="summary-spent-filter" onchange="updateUI()" style="padding: 6px; border-radius: 8px; border: 1px solid var(--border); width: auto;">
-                    <option value="ALL">All Amounts</option>
-                    <option value="ZERO">Zero Spent Only</option>
-                    <option value="NON_ZERO">Spent > 0 Only</option>
-                    <option value="UNDER_BUDGET">Not Fully Expensed</option>
-                </select>
-            </div>
-        </div>
-        <div class="flex-between" style="margin-top: 10px;">
-            <p style="color: var(--text-muted); font-size: 13px; margin: 0;">Click an <b>Expense Name</b> to view all matching records in the detailed ledger.</p>
-            <button class="btn-primary" onclick="exportTableToExcel('performance-table', 'Category_Performance')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download XLSX</button>
-        </div>
-        
-        <div style="overflow-x: auto; margin-top: 10px;">
-            <table id="performance-table">
-                <thead>
-                    <tr>
-                        <th>Category</th>
-                        <th>Name</th>
-                        <th>Type</th>
-                        <th>Target Budget (KES)</th>
-                        <th>Actual Spent (KES)</th>
-                        <th>Variance</th>
-                        <th>Var %</th>
-                    </tr>
-                </thead>
-                <tbody id="performance-body"></tbody>
-                <tfoot>
-                    <tr style="background: rgba(5,150,105,0.1);">
-                        <th colspan="3" style="font-size: 14px;">Filtered Totals</th>
-                        <th id="perf-bottom-line-budget" style="font-size: 14px;">0.00</th>
-                        <th id="perf-bottom-line-actual" style="font-size: 14px;">0.00</th>
-                        <th id="perf-bottom-line-variance" colspan="2" style="font-size: 14px;">0.00</th>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-
-        <div class="flex-between" style="margin-top: 40px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
-            <h3 style="color: var(--primary); margin: 0;">Transactions Log</h3>
-            <button class="btn-primary" onclick="exportTableToExcel('transactions-table', 'Monthly_Transactions')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download Log</button>
-        </div>
-        <p style="color: var(--text-muted); font-size: 13px; margin-top: 10px;">Click on an <b>Expense/Income Name</b> to edit the entry.</p>
-        <div style="overflow-x: auto;">
-            <table id="transactions-table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Category</th>
-                        <th>Name</th>
-                        <th>Type</th>
-                        <th>Amount (KES)</th>
-                    </tr>
-                </thead>
-                <tbody id="transactions-body"></tbody>
-            </table>
-        </div>
-    </div>
-
-    <div id="budget" class="tab-content">
-        <div class="flex-between" style="margin-bottom: 15px;">
-            <h2>Set Monthly Target Budgets</h2>
-            <div>
-                <label style="font-size: 13px; font-weight: 700; color: var(--text-muted); margin-right: 10px;">Viewing Month:</label>
-                <input type="month" id="budget-month-picker" onchange="renderBudgetSetup()" style="width: auto; padding: 6px; border-radius: 8px; border: 1px solid var(--border); display: inline-block;">
-            </div>
-        </div>
-        <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
-            Budgets set here automatically roll forward to future months.
-        </p>
-
-        <form id="budget-form" onsubmit="saveSingleBudget(event)" style="margin-top: 15px; padding-bottom: 20px; border-bottom: 2px solid var(--border);">
-            <div class="form-grid">
-                <div class="form-group">
-                    <label>Category (Required)</label>
-                    <input type="text" id="budget-category" list="budget-cat-memory" required placeholder="Select or type..." autocomplete="off">
-                    <datalist id="budget-cat-memory"></datalist>
-                </div>
-                <div class="form-group">
-                    <label>Item Name (Optional)</label>
-                    <input type="text" id="budget-name" list="budget-name-memory" placeholder="Leave blank for general category budget" autocomplete="off">
-                    <datalist id="budget-name-memory"></datalist>
-                </div>
-                <div class="form-group">
-                    <label>Target Amount (KES)</label>
-                    <input type="number" id="budget-amount" step="0.01" required>
-                </div>
-            </div>
-            <button type="submit" class="btn-primary" id="budget-submit-btn" style="margin-top: 10px;">Add / Update Budget</button>
-        </form>
-
-        <div class="flex-between" style="margin-top: 25px; margin-bottom: 15px;">
-            <h3 style="color: var(--primary); margin: 0;">Active Budgets for Selected Month</h3>
-        </div>
-        <div style="overflow-x: auto;">
-            <table id="budget-setup-table" style="min-width: 100%;">
-                <thead>
-                    <tr>
-                        <th style="width: 50%;">Category</th>
-                        <th style="width: 30%;">Target Amount (KES)</th>
-                        <th style="width: 20%;">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="budget-setup-body"></tbody>
-            </table>
-        </div>
-    </div>
-
-    <div id="entry" class="tab-content">
-        <h2>Log / Edit Transaction</h2>
-        <form id="tx-form" onsubmit="saveTransaction(event)" style="margin-top: 15px;">
-            <input type="hidden" id="tx-id"> 
-            <div class="form-grid">
-                <div class="form-group">
-                    <label>Transaction Name</label>
-                    <input type="text" id="tx-name" list="tx-memory" required placeholder="e.g. Uber" autocomplete="off">
-                    <datalist id="tx-memory"></datalist>
-                </div>
-                <div class="form-group">
-                    <label>Type</label>
-                    <select id="tx-type" onchange="handleTypeChange('tx')">
-                        <option value="Expense">Expense</option>
-                        <option value="Income">Income</option>
-                        <option value="Savings">Savings (Portfolio)</option>
-                    </select>
-                </div>
-                <div class="form-group hidden" id="tx-savings-action-group">
-                    <label>Action</label>
-                    <select id="tx-savings-action">
-                        <option value="Savings-Deposit">Deposit (Save Cash)</option>
-                        <option value="Savings-Withdrawal">Withdraw (Use Saved Cash)</option>
-                        <option value="Starting-Balance">Set Starting Balance (Initial Funds)</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label id="tx-category-label">Category</label>
-                    <div style="display: flex; gap: 5px;">
-                        <select id="tx-category-icon" style="width: 75px; padding: 10px 5px; font-size: 18px;" title="Select an icon">
-                            <option value="🏷️">🏷️</option>
-                            <option value="🍔">🍔</option>
-                            <option value="🚌">🚌</option>
-                            <option value="🛒">🛒</option>
-                            <option value="🏠">🏠</option>
-                            <option value="📚">📚</option>
-                            <option value="🍿">🍿</option>
-                            <option value="🏥">🏥</option>
-                            <option value="✈️">✈️</option>
-                            <option value="👗">👗</option>
-                            <option value="🐾">🐾</option>
-                            <option value="🎁">🎁</option>
-                            <option value="⚡">⚡</option>
-                            <option value="📱">📱</option>
-                            <option value="💻">💻</option>
-                            <option value="💰">💰</option>
-                            <option value="📈">📈</option>
-                            <option value="🐖">🐖</option>
-                            <option value="👶">👶</option>
-                            <option value="🛠️">🛠️</option>
-                            <option value="💼">💼</option>
-                            <option value="🚑">🚑</option>
-                            <option value="🕊️">🕊️</option>
-                        </select>
-                        <input type="text" id="tx-category" list="cat-memory" required placeholder="Select or type new..." autocomplete="off" style="flex: 1;" onchange="autoSelectIcon('tx')">
-                    </div>
-                    <datalist id="cat-memory"></datalist>
-                </div>
-                <div class="form-group">
-                    <label>Date</label>
-                    <input type="date" id="tx-date" required>
-                </div>
-            </div>
-            <div class="form-grid">
-                <div class="form-group">
-                    <label>Unit Amount / Foreign FX</label>
-                    <input type="number" id="tx-actual" step="0.01" required oninput="calcKES('tx')" min="0">
-                </div>
-                <div class="form-group">
-                    <label>Quantity</label>
-                    <input type="number" id="tx-qty" step="0.01" value="1" oninput="calcKES('tx')" min="0">
-                </div>
-                <div class="form-group">
-                    <label>FX Conversion Rate</label>
-                    <input type="number" id="tx-fx" step="0.01" value="1" oninput="calcKES('tx')" min="0">
-                </div>
-                <div class="form-group">
-                    <label>Total Value (KES)</label>
-                    <input type="number" id="tx-kes" step="0.01" readonly style="background: rgba(5,150,105, 0.1); font-weight: bold; color: var(--primary);">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Notes</label>
-                <input type="text" id="tx-notes" placeholder="Any extra details...">
-            </div>
-            <button type="submit" class="btn-primary" id="tx-submit-btn" style="margin-top: 15px;">Add to Ledger</button>
-        </form>
-    </div>
-
-    <div id="analytics" class="tab-content">
-        <div class="flex-between">
-            <h2>Analytics & Insights</h2>
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                <select id="analytics-period" onchange="updateAnalytics()">
-                    <option value="MTD">Month-to-Date</option>
-                    <option value="QTD">Quarter-to-Date</option>
-                    <option value="YTD">Year-to-Date</option>
-                    <option value="ALL">All Time</option>
-                </select>
-                <select id="analytics-cat-filter" onchange="updateCharts()">
-                    <option value="ALL">All Categories</option>
-                </select>
-                <select id="analytics-name-filter" onchange="updateCharts()">
-                    <option value="ALL">All Expenses</option>
-                </select>
-            </div>
-        </div>
-
-        <div class="summary-cards" style="margin-top: 20px;">
-            <div class="card">
-                <h3>Savings Target (30%)</h3>
-                <div class="value" id="stat-target">0%</div>
-            </div>
-            <div class="card">
-                <h3>Life Inflation (MoM Expense Growth)</h3>
-                <div class="value" id="stat-inflation">0%</div>
-            </div>
-        </div>
-
-        <div class="analytics-grid">
-            <div class="card">
-                <h3>Expense Distribution</h3>
-                <div class="chart-container">
-                    <canvas id="pieChart"></canvas>
-                </div>
-            </div>
-            <div class="card">
-                <h3>Budget vs Actual (Filtered)</h3>
-                <div class="chart-container">
-                    <canvas id="barChart"></canvas>
-                </div>
-            </div>
-            <div class="card" style="grid-column: 1 / -1;">
-                <div class="flex-between">
-                    <h3>Expense Inflation Tracker (%)</h3>
-                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                        <select id="inflation-expense-filter" onchange="updateInflationChart()">
-                            <option value="ALL">All Expenses</option>
-                        </select>
-                        <select id="inflation-interval" onchange="updateInflationChart()">
-                            <option value="Monthly">Monthly</option>
-                            <option value="Quarterly">Quarterly</option>
-                            <option value="Half-Year">Half-Year</option>
-                            <option value="Yearly">Yearly</option>
-                            <option value="MTD">MTD (Historical)</option>
-                            <option value="QTD">QTD (Historical)</option>
-                            <option value="YTD">YTD (Historical)</option>
-                        </select>
+<!-- ======================================================= -->
+<!-- 1. THE PAYWALL GATEKEEPER (Visible by default)          -->
+<!-- ======================================================= -->
+<div id="lockedScreen">
+    <div class="paywall-center-wrapper">
+        <div class="paywall-card card">
+            
+            <!-- User Header Inside Paywall -->
+            <div class="flex-between" style="border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 25px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <img id="userAvatarImg" src="" style="width: 38px; height: 38px; border-radius: 50%; display: none; object-fit: cover; border: 2px solid var(--primary);">
+                    <div id="userAvatarFallback" style="width: 38px; height: 38px; border-radius: 50%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px;">👤</div>
+                    <div style="text-align: left;">
+                        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: bold;">Session</div>
+                        <div id="userNameDisplay" style="font-weight: 800; color: var(--primary); font-size: 14px;">Loading...</div>
                     </div>
                 </div>
-                <div class="chart-container" style="height: 400px;">
-                    <canvas id="inflationChart"></canvas>
+                <div style="position: relative;">
+                    <button id="profileTrigger" style="background: var(--bg-color); border: 1px solid var(--primary); padding: 6px 10px; border-radius: 8px; color: var(--primary); font-weight: bold; cursor: pointer; font-size: 12px;">⚙️ Account</button>
+                    
+                    <!-- Dropdown attached to the Account button -->
+                    <div id="profileDropdown" style="display: none; position: absolute; right: 0; top: 38px; background: var(--surface-color); border: 2px solid var(--border); box-shadow: var(--shadow); padding: 12px; border-radius: var(--radius); width: 160px; z-index: 100; text-align: center;">
+                        <button onclick="openProfileModal()" style="width: 100%; padding: 8px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 8px;">Edit Profile</button>
+                        <button id="logoutBtnPaywall" style="width: 100%; padding: 8px; background: var(--danger); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">Sign Out</button>
+                    </div>
                 </div>
             </div>
+
+            <!-- Premium Pitch -->
+            <div style="text-align: center; padding: 10px 0;">
+                <span style="font-size: 52px;">🍀</span>
+                <h2 style="color: var(--primary); font-weight: 800; margin: 10px 0;">Suppa Budgetor Pro</h2>
+                <p style="color: var(--text-muted); font-size: 14px; line-height: 1.5; margin-bottom: 25px;">
+                    You are in restricted mode. Unlock full offline data storage, custom multi-currency FX converters, and automated investment ledgers.
+                </p>
+
+                <!-- Payment Form -->
+                <div style="display: flex; flex-direction: column; gap: 12px; max-width: 280px; margin: 0 auto;">
+                    <input type="text" id="phoneInput" placeholder="M-Pesa Phone (07... / 01...)" style="text-align: center; font-weight: 800; letter-spacing: 1px; font-size: 15px;">
+                    <button id="payButton" class="btn-primary" style="margin: 0; padding: 14px;">Pay KES 1.00 to Unlock</button>
+                    <div id="paymentStatus" style="font-size: 12px; font-weight: bold; min-height: 36px; margin-top: 5px;"></div>
+                </div>
+            </div>
+
         </div>
     </div>
+</div>
 
-    <div id="savings" class="tab-content">
-        <div class="flex-between">
-            <h2>Savings & Investments Portfolio</h2>
-        </div>
-        
-        <p style="color: var(--text-muted); font-size: 14px; margin-top: 10px; margin-bottom: 20px;">
-            Your portfolio balances. To create a new account or adjust an opening balance, use the <b>Log Entry</b> tab and select Type: Savings > Action: Opening Account Balance.
-        </p>
+<!-- ======================================================= -->
+<!-- 2. THE SECURE APP VAULT (Strictly hidden on load)       -->
+<!-- ======================================================= -->
+<div id="appContainer" style="display: none;">
 
-        <div class="flex-between" style="margin-top: 20px; margin-bottom: 15px;">
-            <h3 style="margin: 0;">Current Portfolio View</h3>
-            <button class="btn-primary" onclick="exportTableToExcel('portfolio-table', 'Portfolio_Summary')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download XLSX</button>
-        </div>
-        <div style="overflow-x: auto;">
-            <table id="portfolio-table">
-                <thead>
-                    <tr>
-                        <th>Account Type</th>
-                        <th>Opening Balance</th>
-                        <th>Net Movements (MTD)</th>
-                        <th>Current Total</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="portfolio-body"></tbody>
-                <tfoot>
-                    <tr style="background: rgba(5,150,105,0.1);">
-                        <th style="font-size: 14px;">Grand Totals</th>
-                        <th id="port-total-start" style="font-size: 14px;">0.00</th>
-                        <th id="port-total-inflows" style="font-size: 14px;" class="positive">+0.00</th>
-                        <th id="port-total-current" style="font-size: 14px; color: var(--primary);">KES 0.00</th>
-                        <th></th>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
+    <div class="app-container">
+        <header>
+            <h1>Suppa Budgetor 🍀</h1>
+            <div class="controls">
+                <button onclick="toggleTheme()" title="Toggle Theme">🌓 Theme</button>
+                <button id="logoutBtnApp" class="negative" title="Lock App Session">🔒 Lock / Logout</button>
+            </div>
+        </header>
 
-        <div class="flex-between" style="margin-top: 40px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
-            <h3 style="color: var(--primary); margin: 0;">Portfolio Ledger (MTD & Opening Balances)</h3>
-            <button class="btn-primary" onclick="exportTableToExcel('portfolio-ledger-table', 'Portfolio_Ledger')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download Ledger</button>
-        </div>
-        <div style="overflow-x: auto; margin-top: 10px;">
-            <table id="portfolio-ledger-table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Account / Category</th>
-                        <th>Name</th>
-                        <th>Action</th>
-                        <th>Amount (KES)</th>
-                    </tr>
-                </thead>
-                <tbody id="portfolio-ledger-body"></tbody>
-            </table>
-        </div>
-    </div>
-    
-    <div id="utilities" class="tab-content">
-        <div class="flex-between" style="margin-bottom: 15px;">
-            <h2>Utilities & Data Management</h2>
-        </div>
-        <div class="summary-cards" style="grid-template-columns: 1fr 1fr;">
-            <div class="card">
-                <h3 style="color: var(--primary);">History Actions</h3>
-                <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
-                    <button class="btn-primary" onclick="undo()" style="margin: 0; padding: 12px;">↩ Undo Last Action</button>
-                    <button class="btn-primary" onclick="redo()" style="margin: 0; padding: 12px;">↪ Redo Action</button>
+        <nav>
+            <button class="active" onclick="switchTab('home')">Overview</button>
+            <button onclick="switchTab('summaries')">Summaries</button>
+            <button onclick="switchTab('budget')">Budget</button>
+            <button onclick="switchTab('entry')">Log Entry</button>
+            <button onclick="switchTab('analytics')">Analytics</button>
+            <button onclick="switchTab('savings')">Portfolio</button>
+            <button onclick="switchTab('utilities')">Utilities 🛠️</button>
+            <button onclick="switchTab('help')">Help 📞</button>
+            <button onclick="switchTab('instructions')">Instructions 💡</button>
+        </nav>
+
+        <!-- Overview Tab -->
+        <div id="home" class="tab-content active">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>Financial Overview</h2>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="changeMonth(-1)">⬅</button>
+                    <span id="current-month-display" style="font-weight: 800; font-size: 18px; min-width: 150px; text-align: center; color: var(--primary);"></span>
+                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="changeMonth(1)">➡</button>
                 </div>
             </div>
             
-            <div class="card">
-                <h3 style="color: var(--primary);">Transactions & Portfolio</h3>
-                <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
-                    <button class="btn-primary" onclick="document.getElementById('import-csv').click()" style="margin: 0; padding: 12px;">📥 Import TX Data</button>
-                    <input type="file" id="import-csv" accept=".csv" style="display: none;" onchange="importCSV(event)">
-                    <button class="btn-primary" onclick="exportCSV()" style="margin: 0; padding: 12px;">💾 Export TX & Balances</button>
+            <div class="summary-cards">
+                <div class="card">
+                    <h3>Total Income + Rollover</h3>
+                    <div class="value" id="top-income">KES 0.00</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;" id="top-rollover-text">Includes 0.00 rollover</div>
+                </div>
+                <div class="card">
+                    <h3>Target Budget</h3>
+                    <div class="value" id="top-budget">KES 0.00</div>
+                </div>
+                <div class="card">
+                    <h3>Actual Spent & Saved</h3>
+                    <div class="value" id="top-spent">KES 0.00</div>
+                </div>
+                <div class="card">
+                    <h3>Surplus / Deficit</h3>
+                    <div class="value" id="top-surplus">KES 0.00</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">(Total Budgeted - Actual Spent)</div>
+                </div>
+                <div class="card" style="border-top-color: var(--success);">
+                    <h3>Amount Unassigned</h3>
+                    <div class="value" id="top-unassigned">KES 0.00</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">(Available Cash - Actual Spent & Saved)</div>
                 </div>
             </div>
 
-            <div class="card">
-                <h3 style="color: var(--primary);">Budgets</h3>
-                <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
-                    <button class="btn-primary" onclick="document.getElementById('import-budgets-csv').click()" style="margin: 0; padding: 12px;">📥 Import Budgets</button>
-                    <input type="file" id="import-budgets-csv" accept=".csv" style="display: none;" onchange="importBudgetCSV(event)">
-                    <button class="btn-primary" onclick="exportBudgetCSV()" style="margin: 0; padding: 12px;">💾 Export Budgets</button>
+            <div class="flex-between" style="margin-top: 25px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
+                <h3 style="color: var(--primary); margin: 0;">Income Summary</h3>
+            </div>
+            <div style="overflow-x: auto;">
+                <table id="income-table">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>Actual Received (KES)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="income-body"></tbody>
+                    <tfoot>
+                        <tr>
+                            <th style="font-size: 14px;">Total Income</th>
+                            <th id="bottom-line-income" style="font-size: 14px; color: var(--primary);">KES 0.00</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+        <!-- Summaries Tab -->
+        <div id="summaries" class="tab-content">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>Detailed Summaries</h2>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="changeMonth(-1)">⬅</button>
+                    <span id="current-month-display-summaries" style="font-weight: 800; font-size: 18px; min-width: 150px; text-align: center; color: var(--primary);"></span>
+                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="changeMonth(1)">➡</button>
                 </div>
             </div>
 
-            <div class="card" style="border-top-color: var(--danger);">
-                <h3 style="color: var(--danger);">Danger Zone</h3>
-                <div style="margin-top: 15px;">
-                    <button class="btn-primary" onclick="resetData()" style="width: 100%; background: var(--danger); margin: 0; padding: 12px;">⚠ Factory Reset Data</button>
+            <div class="flex-between" style="margin-top: 25px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
+                <h3 style="color: var(--primary); margin: 0;">Category Performance</h3>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <label style="font-size: 13px; font-weight: 700; color: var(--text-muted);">Category Filter:</label>
+                    <select id="summary-cat-filter" onchange="updateUI()" style="padding: 6px; border-radius: 8px; border: 1px solid var(--border); width: auto;">
+                        <option value="ALL">All Categories</option>
+                    </select>
+                    
+                    <label style="font-size: 13px; font-weight: 700; color: var(--text-muted);">Actual Spent:</label>
+                    <select id="summary-spent-filter" onchange="updateUI()" style="padding: 6px; border-radius: 8px; border: 1px solid var(--border); width: auto;">
+                        <option value="ALL">All Amounts</option>
+                        <option value="ZERO">Zero Spent Only</option>
+                        <option value="NON_ZERO">Spent > 0 Only</option>
+                        <option value="UNDER_BUDGET">Not Fully Expensed</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex-between" style="margin-top: 10px;">
+                <p style="color: var(--text-muted); font-size: 13px; margin: 0;">Click an <b>Expense Name</b> to view all matching records in the detailed ledger.</p>
+                <button class="btn-primary" onclick="exportTableToExcel('performance-table', 'Category_Performance')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download XLSX</button>
+            </div>
+            
+            <div style="overflow-x: auto; margin-top: 10px;">
+                <table id="performance-table">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Target Budget (KES)</th>
+                            <th>Actual Spent (KES)</th>
+                            <th>Variance</th>
+                            <th>Var %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="performance-body"></tbody>
+                    <tfoot>
+                        <tr style="background: rgba(5,150,105,0.1);">
+                            <th colspan="3" style="font-size: 14px;">Filtered Totals</th>
+                            <th id="perf-bottom-line-budget" style="font-size: 14px;">0.00</th>
+                            <th id="perf-bottom-line-actual" style="font-size: 14px;">0.00</th>
+                            <th id="perf-bottom-line-variance" colspan="2" style="font-size: 14px;">0.00</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <div class="flex-between" style="margin-top: 40px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
+                <h3 style="color: var(--primary); margin: 0;">Transactions Log</h3>
+                <button class="btn-primary" onclick="exportTableToExcel('transactions-table', 'Monthly_Transactions')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download Log</button>
+            </div>
+            <p style="color: var(--text-muted); font-size: 13px; margin-top: 10px;">Click on an <b>Expense/Income Name</b> to edit the entry.</p>
+            <div style="overflow-x: auto;">
+                <table id="transactions-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Category</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Amount (KES)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactions-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Budgets Tab -->
+        <div id="budget" class="tab-content">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>Set Monthly Target Budgets</h2>
+                <div>
+                    <label style="font-size: 13px; font-weight: 700; color: var(--text-muted); margin-right: 10px;">Viewing Month:</label>
+                    <input type="month" id="budget-month-picker" onchange="renderBudgetSetup()" style="width: auto; padding: 6px; border-radius: 8px; border: 1px solid var(--border); display: inline-block;">
+                </div>
+            </div>
+            <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
+                Budgets set here automatically roll forward to future months.
+            </p>
+
+            <form id="budget-form" onsubmit="saveSingleBudget(event)" style="margin-top: 15px; padding-bottom: 20px; border-bottom: 2px solid var(--border);">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Category (Required)</label>
+                        <input type="text" id="budget-category" list="budget-cat-memory" required placeholder="Select or type..." autocomplete="off">
+                        <datalist id="budget-cat-memory"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>Item Name (Optional)</label>
+                        <input type="text" id="budget-name" list="budget-name-memory" placeholder="Leave blank for general category budget" autocomplete="off">
+                        <datalist id="budget-name-memory"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>Target Amount (KES)</label>
+                        <input type="number" id="budget-amount" step="0.01" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn-primary" id="budget-submit-btn" style="margin-top: 10px;">Add / Update Budget</button>
+            </form>
+
+            <div class="flex-between" style="margin-top: 25px; margin-bottom: 15px;">
+                <h3 style="color: var(--primary); margin: 0;">Active Budgets for Selected Month</h3>
+            </div>
+            <div style="overflow-x: auto;">
+                <table id="budget-setup-table" style="min-width: 100%;">
+                    <thead>
+                        <tr>
+                            <th style="width: 50%;">Category</th>
+                            <th style="width: 30%;">Target Amount (KES)</th>
+                            <th style="width: 20%;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="budget-setup-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Log Entry Tab -->
+        <div id="entry" class="tab-content">
+            <h2>Log / Edit Transaction</h2>
+            <form id="tx-form" onsubmit="saveTransaction(event)" style="margin-top: 15px;">
+                <input type="hidden" id="tx-id"> 
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Transaction Name</label>
+                        <input type="text" id="tx-name" list="tx-memory" required placeholder="e.g. Uber" autocomplete="off">
+                        <datalist id="tx-memory"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>Type</label>
+                        <select id="tx-type" onchange="handleTypeChange('tx')">
+                            <option value="Expense">Expense</option>
+                            <option value="Income">Income</option>
+                            <option value="Savings">Savings (Portfolio)</option>
+                        </select>
+                    </div>
+                    <div class="form-group hidden" id="tx-savings-action-group">
+                        <label>Action</label>
+                        <select id="tx-savings-action">
+                            <option value="Savings-Deposit">Deposit (Save Cash)</option>
+                            <option value="Savings-Withdrawal">Withdraw (Use Saved Cash)</option>
+                            <option value="Starting-Balance">Set Starting Balance (Initial Funds)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label id="tx-category-label">Category</label>
+                        <div style="display: flex; gap: 5px;">
+                            <select id="tx-category-icon" style="width: 75px; padding: 10px 5px; font-size: 18px;" title="Select an icon">
+                                <option value="🏷️">🏷️</option><option value="🍔">🍔</option><option value="🚌">🚌</option>
+                                <option value="🛒">🛒</option><option value="🏠">🏠</option><option value="📚">📚</option>
+                                <option value="🍿">🍿</option><option value="🏥">🏥</option><option value="✈️">✈️</option>
+                                <option value="👗">👗</option><option value="🐾">🐾</option><option value="🎁">🎁</option>
+                                <option value="⚡">⚡</option><option value="📱">📱</option><option value="💻">💻</option>
+                                <option value="💰">💰</option><option value="📈">📈</option><option value="🐖">🐖</option>
+                                <option value="👶">👶</option><option value="🛠️">🛠️</option><option value="💼">💼</option>
+                                <option value="🚑">🚑</option><option value="🕊️">🕊️</option>
+                            </select>
+                            <input type="text" id="tx-category" list="cat-memory" required placeholder="Select or type new..." autocomplete="off" style="flex: 1;" onchange="autoSelectIcon('tx')">
+                        </div>
+                        <datalist id="cat-memory"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" id="tx-date" required>
+                    </div>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Unit Amount / Foreign FX</label>
+                        <input type="number" id="tx-actual" step="0.01" required oninput="calcKES('tx')" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Quantity</label>
+                        <input type="number" id="tx-qty" step="0.01" value="1" oninput="calcKES('tx')" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>FX Conversion Rate</label>
+                        <input type="number" id="tx-fx" step="0.01" value="1" oninput="calcKES('tx')" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Total Value (KES)</label>
+                        <input type="number" id="tx-kes" step="0.01" readonly style="background: rgba(5,150,105, 0.1); font-weight: bold; color: var(--primary);">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Notes</label>
+                    <input type="text" id="tx-notes" placeholder="Any extra details...">
+                </div>
+                <button type="submit" class="btn-primary" id="tx-submit-btn" style="margin-top: 15px;">Add to Ledger</button>
+            </form>
+        </div>
+
+        <!-- Analytics Tab -->
+        <div id="analytics" class="tab-content">
+            <div class="flex-between">
+                <h2>Analytics & Insights</h2>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <select id="analytics-period" onchange="updateAnalytics()">
+                        <option value="MTD">Month-to-Date</option>
+                        <option value="QTD">Quarter-to-Date</option>
+                        <option value="YTD">Year-to-Date</option>
+                        <option value="ALL">All Time</option>
+                    </select>
+                    <select id="analytics-cat-filter" onchange="updateCharts()">
+                        <option value="ALL">All Categories</option>
+                    </select>
+                    <select id="analytics-name-filter" onchange="updateCharts()">
+                        <option value="ALL">All Expenses</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="summary-cards" style="margin-top: 20px;">
+                <div class="card">
+                    <h3>Savings Target (30%)</h3>
+                    <div class="value" id="stat-target">0%</div>
+                </div>
+                <div class="card">
+                    <h3>Life Inflation (MoM Expense Growth)</h3>
+                    <div class="value" id="stat-inflation">0%</div>
+                </div>
+            </div>
+
+            <div class="analytics-grid">
+                <div class="card">
+                    <h3>Expense Distribution</h3>
+                    <div class="chart-container">
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Budget vs Actual (Filtered)</h3>
+                    <div class="chart-container">
+                        <canvas id="barChart"></canvas>
+                    </div>
+                </div>
+                <div class="card" style="grid-column: 1 / -1;">
+                    <div class="flex-between">
+                        <h3>Expense Inflation Tracker (%)</h3>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <select id="inflation-expense-filter" onchange="updateInflationChart()">
+                                <option value="ALL">All Expenses</option>
+                            </select>
+                            <select id="inflation-interval" onchange="updateInflationChart()">
+                                <option value="Monthly">Monthly</option>
+                                <option value="Quarterly">Quarterly</option>
+                                <option value="Half-Year">Half-Year</option>
+                                <option value="Yearly">Yearly</option>
+                                <option value="MTD">MTD (Historical)</option>
+                                <option value="QTD">QTD (Historical)</option>
+                                <option value="YTD">YTD (Historical)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="chart-container" style="height: 400px;">
+                        <canvas id="inflationChart"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
+
+        <!-- Savings Portfolio Tab -->
+        <div id="savings" class="tab-content">
+            <div class="flex-between">
+                <h2>Savings & Investments Portfolio</h2>
+            </div>
+            
+            <p style="color: var(--text-muted); font-size: 14px; margin-top: 10px; margin-bottom: 20px;">
+                Your portfolio balances. To create a new account or adjust an opening balance, use the <b>Log Entry</b> tab and select Type: Savings > Action: Opening Account Balance.
+            </p>
+
+            <div class="flex-between" style="margin-top: 20px; margin-bottom: 15px;">
+                <h3 style="margin: 0;">Current Portfolio View</h3>
+                <button class="btn-primary" onclick="exportTableToExcel('portfolio-table', 'Portfolio_Summary')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download XLSX</button>
+            </div>
+            <div style="overflow-x: auto;">
+                <table id="portfolio-table">
+                    <thead>
+                        <tr>
+                            <th>Account Type</th>
+                            <th>Opening Balance</th>
+                            <th>Net Movements (MTD)</th>
+                            <th>Current Total</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="portfolio-body"></tbody>
+                    <tfoot>
+                        <tr style="background: rgba(5,150,105,0.1);">
+                            <th style="font-size: 14px;">Grand Totals</th>
+                            <th id="port-total-start" style="font-size: 14px;">0.00</th>
+                            <th id="port-total-inflows" style="font-size: 14px;" class="positive">+0.00</th>
+                            <th id="port-total-current" style="font-size: 14px; color: var(--primary);">KES 0.00</th>
+                            <th></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <div class="flex-between" style="margin-top: 40px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
+                <h3 style="color: var(--primary); margin: 0;">Portfolio Ledger (MTD & Opening Balances)</h3>
+                <button class="btn-primary" onclick="exportTableToExcel('portfolio-ledger-table', 'Portfolio_Ledger')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download Ledger</button>
+            </div>
+            <div style="overflow-x: auto; margin-top: 10px;">
+                <table id="portfolio-ledger-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Account / Category</th>
+                            <th>Name</th>
+                            <th>Action</th>
+                            <th>Amount (KES)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="portfolio-ledger-body"></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Utilities Tab -->
+        <div id="utilities" class="tab-content">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>Utilities & Data Management</h2>
+            </div>
+            <div class="summary-cards" style="grid-template-columns: 1fr 1fr;">
+                <div class="card">
+                    <h3 style="color: var(--primary);">History Actions</h3>
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+                        <button class="btn-primary" onclick="undo()" style="margin: 0; padding: 12px;">↩ Undo Last Action</button>
+                        <button class="btn-primary" onclick="redo()" style="margin: 0; padding: 12px;">↪ Redo Action</button>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3 style="color: var(--primary);">Transactions & Portfolio</h3>
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+                        <button class="btn-primary" onclick="document.getElementById('import-csv').click()" style="margin: 0; padding: 12px;">📥 Import TX Data</button>
+                        <input type="file" id="import-csv" accept=".csv" style="display: none;" onchange="importCSV(event)">
+                        <button class="btn-primary" onclick="exportCSV()" style="margin: 0; padding: 12px;">💾 Export TX & Balances</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--primary);">Budgets</h3>
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+                        <button class="btn-primary" onclick="document.getElementById('import-budgets-csv').click()" style="margin: 0; padding: 12px;">📥 Import Budgets</button>
+                        <input type="file" id="import-budgets-csv" accept=".csv" style="display: none;" onchange="importBudgetCSV(event)">
+                        <button class="btn-primary" onclick="exportBudgetCSV()" style="margin: 0; padding: 12px;">💾 Export Budgets</button>
+                    </div>
+                </div>
+
+                <div class="card" style="border-top-color: var(--danger);">
+                    <h3 style="color: var(--danger);">Danger Zone</h3>
+                    <div style="margin-top: 15px;">
+                        <button class="btn-primary" onclick="resetData()" style="width: 100%; background: var(--danger); margin: 0; padding: 12px;">⚠ Factory Reset Data</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Help / Contact Tab -->
+        <div id="help" class="tab-content">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>Help & Support 📞</h2>
+            </div>
+            <div class="summary-cards" style="grid-template-columns: 1fr;">
+                <div class="card">
+                    <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">Contact Us</h3>
+                    <p style="color: var(--text-main); font-size: 14px; line-height: 1.6; margin-bottom: 10px;">
+                        If you encounter any issues, have feature requests, or need assistance recovering data, please reach out to our dedicated support channel:
+                    </p>
+                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.8;">
+                        <li><b>Developer:</b> Realsur Global</li>
+                        <li><b>Phone Support:</b> <a href="tel:+254701275111" style="color: var(--primary); font-weight: bold; text-decoration: none;">+254 701 275 111</a></li>
+                        <li><b>Email Support:</b> <a href="mailto:realsurglobal@gmail.com" style="color: var(--primary); font-weight: bold; text-decoration: none;">realsurglobal@gmail.com</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Instructions Tab -->
+        <div id="instructions" class="tab-content">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>How to Use Suppa Budgetor</h2>
+            </div>
+            <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
+                Welcome to your personal, fully offline financial tracker. Because this app runs entirely inside your device's browser, your data is 100% private.
+            </p>
+
+            <div class="summary-cards" style="grid-template-columns: 1fr;">
+                <div class="card">
+                    <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">1. Setting Budgets</h3>
+                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
+                        <li>Go to the <b>Budget</b> tab to set your monthly targets.</li>
+                        <li>You can set a budget for an entire <b>Category</b> (e.g., Food), or leave the Expense Name blank to act as a general bucket.</li>
+                        <li>Budgets automatically <b>roll forward</b> to future months.</li>
+                    </ul>
+                </div>
+
+                <div class="card" style="border-top-color: #3b82f6;">
+                    <h3 style="color: #3b82f6; font-size: 16px; margin-bottom: 10px;">2. Portfolio & Savings Tracking</h3>
+                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
+                        <li><b>Creating Accounts & Initial Funds:</b> In the <i>Log Entry</i> tab, select Type: <b>Savings (Portfolio)</b>, and Action: <b>Opening Account Balance</b>. Type your account name in the Account Type box. This safely establishes your initial portfolio balance without altering your unassigned cash. You can log additional Opening Balances for the same account to increase its base value.</li>
+                        <li><b>Saving Money (Deposits):</b> In the <i>Log Entry</i> tab, select Action: <b>Deposit</b>. This registers as an expense (reducing your unassigned cash) and adds the money to the chosen Portfolio balance!</li>
+                        <li><b>Spending Savings (Withdrawals):</b> When you spend saved money, do it in two steps to avoid double-counting against your budget:
+                            <ol>
+                                <li>Log a <b>Savings</b> transaction with Action: <b>Withdrawal</b>. This removes the money from your portfolio and injects cash back into your <i>Amount Unassigned</i>.</li>
+                                <li>Log your actual purchase as a standard <b>Expense</b>.</li>
+                            </ol>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">3. Viewing & Editing Data</h3>
+                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
+                        <li>The <b>Summaries</b> tab breaks down your performance with dynamic filters.</li>
+                        <li><b>To Edit or Delete:</b> In the Summaries tab, scroll down to the <i>Transactions Log</i>. Click on any gold <b>Name</b> to quickly open the edit window.</li>
+                    </ul>
+                </div>
+
+                <div class="card" style="border-top-color: var(--danger);">
+                    <h3 style="color: var(--danger); font-size: 16px; margin-bottom: 10px;">4. Backups & Data Safety (Crucial!)</h3>
+                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
+                        <li>This app stores data entirely in your browser's local storage. <b>If you clear your browser history or cache, you will lose everything.</b></li>
+                        <li>Go to the <b>Utilities</b> tab to <b>Export (💾)</b> your data regularly.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
     </div>
 
-    <div id="help" class="tab-content">
-        <div class="flex-between" style="margin-bottom: 15px;">
-            <h2>Help & Support 📞</h2>
-        </div>
-        <div class="summary-cards" style="grid-template-columns: 1fr;">
-            <div class="card">
-                <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">Contact Us</h3>
-                <p style="color: var(--text-main); font-size: 14px; line-height: 1.6; margin-bottom: 10px;">
-                    If you encounter any issues, have feature requests, or need assistance recovering data, please reach out to our dedicated support channel:
-                </p>
-                <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.8;">
-                    <li><b>Developer:</b> David Nyambosero Omenyi</li>
-                    <li><b>Email Support:</b> <a href="mailto:realsurglobal@gmail.com" style="color: var(--primary); font-weight: bold; text-decoration: none;">realsurglobal@gmail.com</a></li>
-                </ul>
-            </div>
-        </div>
-    </div>
+</div> <!-- /#appContainer Vault closing brace -->
 
-    <div id="instructions" class="tab-content">
-        <div class="flex-between" style="margin-bottom: 15px;">
-            <h2>How to Use Suppa Budgetor</h2>
-        </div>
-        <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
-            Welcome to your personal, fully offline financial tracker. Because this app runs entirely inside your device's browser, your data is 100% private.
-        </p>
-
-        <div class="summary-cards" style="grid-template-columns: 1fr;">
-            <div class="card">
-                <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">1. Setting Budgets</h3>
-                <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
-                    <li>Go to the <b>Budget</b> tab to set your monthly targets.</li>
-                    <li>You can set a budget for an entire <b>Category</b> (e.g., Food), or leave the Expense Name blank to act as a general bucket.</li>
-                    <li>Budgets automatically <b>roll forward</b> to future months.</li>
-                </ul>
-            </div>
-
-            <div class="card" style="border-top-color: #3b82f6;">
-                <h3 style="color: #3b82f6; font-size: 16px; margin-bottom: 10px;">2. Portfolio & Savings Tracking</h3>
-                <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
-                    <li><b>Creating Accounts & Initial Funds:</b> In the <i>Log Entry</i> tab, select Type: <b>Savings (Portfolio)</b>, and Action: <b>Opening Account Balance</b>. Type your account name in the Account Type box. This safely establishes your initial portfolio balance without altering your unassigned cash. You can log additional Opening Balances for the same account to increase its base value.</li>
-                    <li><b>Saving Money (Deposits):</b> In the <i>Log Entry</i> tab, select Action: <b>Deposit</b>. This registers as an expense (reducing your unassigned cash) and adds the money to the chosen Portfolio balance!</li>
-                    <li><b>Spending Savings (Withdrawals):</b> When you spend saved money, do it in two steps to avoid double-counting against your budget:
-                        <ol>
-                            <li>Log a <b>Savings</b> transaction with Action: <b>Withdrawal</b>. This removes the money from your portfolio and injects cash back into your <i>Amount Unassigned</i>.</li>
-                            <li>Log your actual purchase as a standard <b>Expense</b>.</li>
-                        </ol>
-                    </li>
-                </ul>
-            </div>
-
-            <div class="card">
-                <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">3. Viewing & Editing Data</h3>
-                <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
-                    <li>The <b>Summaries</b> tab breaks down your performance with dynamic filters.</li>
-                    <li><b>To Edit or Delete:</b> In the Summaries tab, scroll down to the <i>Transactions Log</i>. Click on any gold <b>Name</b> to quickly open the edit window.</li>
-                </ul>
-            </div>
-
-            <div class="card" style="border-top-color: var(--danger);">
-                <h3 style="color: var(--danger); font-size: 16px; margin-bottom: 10px;">4. Backups & Data Safety (Crucial!)</h3>
-                <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
-                    <li>This app stores data entirely in your browser's local storage. <b>If you clear your browser history or cache, you will lose everything.</b></li>
-                    <li>Go to the <b>Utilities</b> tab to <b>Export (💾)</b> your data regularly.</li>
-                    <li>Your custom Portfolio accounts and Opening Balances are safely packed inside your main <b>TX (Transactions)</b> backup CSV! You only need to export <b>TX</b> and <b>Budgets</b>.</li>
-                    <li>To restore your data on a new device or browser, simply click the <b>Import (📥)</b> buttons and select your saved CSV files.</li>
-                </ul>
-            </div>
-        </div>
-    </div>
-
-</div>
-
+<!-- ======================================================= -->
+<!-- 3. POP-UP MODALS (Edit transaction, Detailed Ledger, Profile) -->
+<!-- ======================================================= -->
 <div id="edit-modal" class="modal-overlay hidden">
     <div class="modal-content">
         <button class="modal-close" onclick="closeEditModal()">Close</button>
@@ -682,29 +744,14 @@
                     <label id="edit-tx-category-label">Category</label>
                     <div style="display: flex; gap: 5px;">
                         <select id="edit-tx-category-icon" style="width: 75px; padding: 10px 5px; font-size: 18px;" title="Select an icon">
-                            <option value="🏷️">🏷️</option>
-                            <option value="🍔">🍔</option>
-                            <option value="🚌">🚌</option>
-                            <option value="🛒">🛒</option>
-                            <option value="🏠">🏠</option>
-                            <option value="📚">📚</option>
-                            <option value="🍿">🍿</option>
-                            <option value="🏥">🏥</option>
-                            <option value="✈️">✈️</option>
-                            <option value="👗">👗</option>
-                            <option value="🐾">🐾</option>
-                            <option value="🎁">🎁</option>
-                            <option value="⚡">⚡</option>
-                            <option value="📱">📱</option>
-                            <option value="💻">💻</option>
-                            <option value="💰">💰</option>
-                            <option value="📈">📈</option>
-                            <option value="🐖">🐖</option>
-                            <option value="👶">👶</option>
-                            <option value="🛠️">🛠️</option>
-                            <option value="💼">💼</option>
-                            <option value="🚑">🚑</option>
-                            <option value="🕊️">🕊️</option>
+                            <option value="🏷️">🏷️</option><option value="🍔">🍔</option><option value="🚌">🚌</option>
+                            <option value="🛒">🛒</option><option value="🏠">🏠</option><option value="📚">📚</option>
+                            <option value="🍿">🍿</option><option value="🏥">🏥</option><option value="✈️">✈️</option>
+                            <option value="👗">👗</option><option value="🐾">🐾</option><option value="🎁">🎁</option>
+                            <option value="⚡">⚡</option><option value="📱">📱</option><option value="💻">💻</option>
+                            <option value="💰">💰</option><option value="📈">📈</option><option value="🐖">🐖</option>
+                            <option value="👶">👶</option><option value="🛠️">🛠️</option><option value="💼">💼</option>
+                            <option value="🚑">🚑</option><option value="🕊️">🕊️</option>
                         </select>
                         <input type="text" id="edit-tx-category" list="edit-cat-memory" required autocomplete="off" style="flex: 1;" onchange="autoSelectIcon('edit-tx')">
                     </div>
@@ -765,6 +812,28 @@
         </div>
     </div>
 </div>
+
+<!-- Profile Edit Pop-up Modal -->
+<div id="profile-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 400px; text-align: left;">
+        <button class="modal-close" onclick="closeProfileModal()">Close</button>
+        <h2 style="color: var(--primary); margin-bottom: 15px;">Edit Profile</h2>
+        <form onsubmit="saveProfile(event)">
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label>Display Name</label>
+                <input type="text" id="profile-name-input" required placeholder="e.g. David">
+            </div>
+            <div class="form-group" style="margin-bottom: 25px;">
+                <label>Avatar / Photo URL</label>
+                <input type="url" id="profile-avatar-input" placeholder="https://images.unsplash.com/...">
+            </div>
+            <button type="submit" id="save-profile-btn" class="btn-primary" style="margin: 0;">Save Profile</button>
+        </form>
+    </div>
+</div>
+
+<!-- Link to your scrambled production file generated by Netlify.toml -->
 <script src="app.js"></script>
+
 </body>
 </html>
