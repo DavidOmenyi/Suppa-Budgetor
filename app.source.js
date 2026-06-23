@@ -12,6 +12,36 @@ const supabaseClient = supabaseLib.createClient(supabaseUrl, supabaseKey);
 let currentUser = null;
 let pollingInterval = null;
 
+// Helper function to update both Paywall and App profile headers
+function updateProfileUI(displayName, avatarUrl) {
+    // 1. Update Display Names
+    ['userNameDisplay', 'appUserNameDisplay'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = displayName;
+    });
+    
+    // 2. Update Avatar Images & Fallbacks
+    const avatarPairs = [
+        { img: 'userAvatarImg', fallback: 'userAvatarFallback' },
+        { img: 'appUserAvatarImg', fallback: 'appUserAvatarFallback' }
+    ];
+    
+    avatarPairs.forEach(pair => {
+        const imgEl = document.getElementById(pair.img);
+        const fallbackEl = document.getElementById(pair.fallback);
+        if (imgEl && fallbackEl) {
+            if (avatarUrl && avatarUrl.length > 5) {
+                imgEl.src = avatarUrl;
+                imgEl.style.display = 'block';
+                fallbackEl.style.display = 'none';
+            } else {
+                imgEl.style.display = 'none';
+                fallbackEl.style.display = 'flex';
+            }
+        }
+    });
+}
+
 // ==========================================
 // 2. AUTH & PAYWALL FUNCTIONS
 // ==========================================
@@ -26,23 +56,12 @@ async function initializeApp() {
     currentUser = user;
     console.log("Logged in as:", currentUser.email);
     
-    // Load user metadata (Name and Photo)
+    // Load user metadata (Google Profile Name and Photo)
     const metadata = currentUser.user_metadata || {};
-    const displayName = metadata.display_name || currentUser.email.split('@')[0];
-    const avatarUrl = metadata.avatar_url || '';
+    const displayName = metadata.display_name || metadata.full_name || currentUser.email.split('@')[0];
+    const avatarUrl = metadata.avatar_url || metadata.picture || '';
     
-    const nameDisplay = document.getElementById('userNameDisplay');
-    if (nameDisplay) nameDisplay.textContent = displayName;
-    
-    const avatarImg = document.getElementById('userAvatarImg');
-    const avatarFallback = document.getElementById('userAvatarFallback');
-    
-    if (avatarUrl && avatarImg && avatarFallback) {
-        avatarImg.src = avatarUrl;
-        avatarImg.style.display = 'block';
-        avatarFallback.style.display = 'none';
-    }
-    
+    updateProfileUI(displayName, avatarUrl);
     checkPremiumStatus();
 }
 
@@ -115,13 +134,19 @@ function startPollingDatabase() {
 }
 
 // ------------------------------------------
-// PROFILE EDITING & LOGOUT FUNCTIONS
+// PROFILE EDITING FUNCTIONS
 // ------------------------------------------
 window.openProfileModal = function() {
     const metadata = currentUser.user_metadata || {};
-    document.getElementById('profile-name-input').value = metadata.display_name || currentUser.email.split('@')[0];
-    document.getElementById('profile-avatar-input').value = metadata.avatar_url || '';
-    document.getElementById('profileDropdown').style.display = 'none'; 
+    document.getElementById('profile-name-input').value = metadata.display_name || metadata.full_name || currentUser.email.split('@')[0];
+    document.getElementById('profile-avatar-input').value = metadata.avatar_url || metadata.picture || '';
+    
+    // Close dropdowns
+    const d1 = document.getElementById('profileDropdown');
+    const d2 = document.getElementById('appProfileDropdown');
+    if(d1) d1.style.display = 'none';
+    if(d2) d2.style.display = 'none';
+    
     document.getElementById('profile-modal').classList.remove('hidden');
 };
 
@@ -143,20 +168,9 @@ window.saveProfile = async function(e) {
             data: { display_name: newName, avatar_url: newAvatar }
         });
         if (error) throw error;
+        
         currentUser = data.user; 
-        
-        document.getElementById('userNameDisplay').textContent = newName || currentUser.email.split('@')[0];
-        const avatarImg = document.getElementById('userAvatarImg');
-        const avatarFallback = document.getElementById('userAvatarFallback');
-        
-        if (newAvatar) {
-            avatarImg.src = newAvatar;
-            avatarImg.style.display = 'block';
-            avatarFallback.style.display = 'none';
-        } else {
-            avatarImg.style.display = 'none';
-            avatarFallback.style.display = 'flex';
-        }
+        updateProfileUI(newName || currentUser.email.split('@')[0], newAvatar);
         window.closeProfileModal();
     } catch (err) {
         console.error("Error updating profile:", err);
@@ -249,20 +263,27 @@ document.addEventListener('DOMContentLoaded', () => {
     updateDatalists();
     updateUI();
 
-    // Profile Dropdown Attachments
-    const profileTrigger = document.getElementById('profileTrigger');
-    const profileDropdown = document.getElementById('profileDropdown');
-    if (profileTrigger && profileDropdown) {
-        profileTrigger.addEventListener('click', (e) => {
-            e.stopPropagation(); 
-            profileDropdown.style.display = profileDropdown.style.display === 'none' ? 'block' : 'none';
-        });
-        document.addEventListener('click', (e) => {
-            if (!profileTrigger.contains(e.target) && !profileDropdown.contains(e.target)) {
-                profileDropdown.style.display = 'none';
-            }
-        });
+    // Helper to setup Dropdowns for both Paywall and Main App
+    function setupProfileDropdown(triggerId, dropdownId) {
+        const trigger = document.getElementById(triggerId);
+        const dropdown = document.getElementById(dropdownId);
+        if (trigger && dropdown) {
+            trigger.addEventListener('click', (e) => {
+                e.stopPropagation(); 
+                dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+            });
+            document.addEventListener('click', (e) => {
+                if (!trigger.contains(e.target) && !dropdown.contains(e.target)) {
+                    dropdown.style.display = 'none';
+                }
+            });
+        }
     }
+
+    // Attach to Paywall profile UI
+    setupProfileDropdown('profileTrigger', 'profileDropdown');
+    // Attach to Main App profile UI
+    setupProfileDropdown('appProfileTrigger', 'appProfileDropdown');
 
     // Paywall Button Attachments
     const payButton = document.getElementById('payButton');
@@ -301,7 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    const possibleLogoutIds = ['logoutBtn', 'logoutBtnPaywall', 'logoutBtnApp'];
+    const possibleLogoutIds = ['logoutBtnPaywall', 'logoutBtnApp'];
     possibleLogoutIds.forEach(id => {
         const btn = document.getElementById(id);
         if (btn) btn.addEventListener('click', performLogout);
@@ -870,6 +891,9 @@ function updateUI() {
         const varClass = netVar >= 0 ? 'positive' : 'negative';
         const perfVar = document.getElementById('perf-bottom-line-variance');
         if(perfVar) { perfVar.innerText = varStr; perfVar.className = varClass; }
+
+        const incEl = document.getElementById('perf-bottom-line-income');
+        if (incEl) incEl.innerText = `KES ${totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
 
         let rawTotalBudget = 0;
         Object.values(itemsMap).forEach(item => { rawTotalBudget += getBudget(item.cat, item.name, monthStr); });
