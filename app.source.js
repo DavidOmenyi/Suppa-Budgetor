@@ -1533,9 +1533,8 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.readAsText(file);
     }
 
-    function importBudgetCSV(e) {
-        const file = e.target.files[0];
-        if(!file) return;
+function importBudgetCSV(e) {
+        const file = e.target.files[0]; if(!file) return;
         const reader = new FileReader();
         reader.onload = function(evt) {
             const rows = evt.target.result.split('\n');
