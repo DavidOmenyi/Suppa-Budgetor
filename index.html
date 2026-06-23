@@ -9,8 +9,6 @@
     <link rel="apple-touch-icon" href="app-icon.png">
     <link rel="manifest" href="manifest.json">
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <style>
@@ -122,64 +120,8 @@
 </head>
 <body>
 
-<div id="lockedScreen" style="display: none; text-align: center; padding: 50px; background: #fff; z-index: 1000; position: fixed; top: 0; left: 0; width: 100%; height: 100%;">
-    <h2>Unlock Suppa Budgetor Premium</h2>
-    <p>Get full access to all budgeting tools, charts, and analytics for just KES 100.</p>
-    
-    <div style="margin-top: 20px;">
-        <input type="text" id="phoneInput" placeholder="M-Pesa Number (e.g. 07...)" style="padding: 10px; width: 250px; font-size: 16px;">
-        <br><br>
-        <button id="payButton" style="padding: 10px 20px; font-size: 16px; background-color: #28a745; color: white; border: none; cursor: pointer;">Pay to Unlock</button>
-    </div>
-    
-    <p id="paymentStatus" style="margin-top: 15px; font-weight: bold;"></p>
-    
-    <button id="logoutBtnPaywall" style="margin-top: 30px; padding: 5px 15px; background-color: #dc3545; color: white; border: none; cursor: pointer;">Logout</button>
-
-</div>
-
-<!-- ========================================== -->
-<!-- 2. THE MAIN BUDGET APP (HIDDEN BY DEFAULT) -->
-<!-- ========================================== -->
-<!-- FIX: Increased max-width from 800px to 1100px to spread the layout -->
-<div id="appContainer" style="display: none; max-width: 1100px; margin: 0 auto; width: 100%; padding: 10px;">
-    
-    <!-- NEW: Clickable User Profile Dropdown -->
-    <div style="display: flex; justify-content: flex-end; position: relative; margin-bottom: 25px; z-index: 50;">
-        
-        <!-- The Clickable Trigger Area -->
-        <div id="profileTrigger" style="display: flex; align-items: center; gap: 12px; cursor: pointer; background: var(--surface-color); padding: 8px 16px; border-radius: 30px; border: 1px solid var(--border); box-shadow: var(--shadow); transition: 0.2s;">
-            <img id="userAvatarImg" src="" alt="User Avatar" style="width: 35px; height: 35px; border-radius: 50%; display: none; object-fit: cover;">
-            <div id="userAvatarFallback" style="background: var(--primary); color: white; border-radius: 50%; width: 35px; height: 35px; display: flex; justify-content: center; align-items: center; font-size: 18px;">👤</div>
-            <div style="text-align: right;">
-                <strong id="userNameDisplay" style="color: var(--text-main); font-size: 0.95em; display: block;">Loading...</strong>
-                <small style="color: var(--text-muted); font-size: 0.75em;">Premium Account ▾</small>
-            </div>
-        </div>
-
-        <!-- The Hidden Dropdown Menu -->
-        <div id="profileDropdown" style="display: none; position: absolute; top: 60px; right: 0; background: var(--surface-color); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); width: 220px; z-index: 100;">
-            <ul style="list-style: none; padding: 5px 0; margin: 0;">
-                <li>
-                    <button onclick="window.openProfileModal()" style="width: 100%; text-align: left; padding: 12px 20px; background: none; border: none; color: var(--text-main); cursor: pointer; font-size: 14px; transition: 0.2s;" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='none'">
-                        ✏️ Edit Profile
-                    </button>
-                </li>
-                <hr style="border: 0; border-top: 1px solid var(--border); margin: 0;">
-                <li>
-                    <!-- The Logout button moved into the dropdown -->
-                    <button id="logoutBtnApp" onclick="window.forceLogout(event)" style="width: 100%; text-align: left; padding: 12px 20px; background: none; border: none; color: var(--danger); cursor: pointer; font-size: 14px; font-weight: bold; transition: 0.2s;" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'" onmouseout="this.style.background='none'">
-                        🚪 Logout
-                    </button>
-                </li>
-            </ul>
-        </div>
-    </div>
-
-    <!-- Your existing budget tools, navigation, and charts go right here -->
-    
-	<header>
-
+<div class="app-container">
+    <header>
         <h1>Suppa Budgetor 🍀</h1>
         <div class="controls">
             <button onclick="toggleTheme()" title="Toggle Theme">🌓 Theme</button>
@@ -194,6 +136,7 @@
         <button onclick="switchTab('analytics')">Analytics</button>
         <button onclick="switchTab('savings')">Portfolio</button>
         <button onclick="switchTab('utilities')">Utilities 🛠️</button>
+        <button onclick="switchTab('help')">Help 📞</button>
         <button onclick="switchTab('instructions')">Instructions 💡</button>
     </nav>
 
@@ -403,14 +346,41 @@
                 <div class="form-group hidden" id="tx-savings-action-group">
                     <label>Action</label>
                     <select id="tx-savings-action">
-                        <option value="Savings-Withdrawal">Withdrawal</option>
-                        <option value="Savings-Deposit">Deposit</option>
-                        <option value="Starting-Balance">Opening Account Balance</option>
+                        <option value="Savings-Deposit">Deposit (Save Cash)</option>
+                        <option value="Savings-Withdrawal">Withdraw (Use Saved Cash)</option>
+                        <option value="Starting-Balance">Set Starting Balance (Initial Funds)</option>
                     </select>
                 </div>
                 <div class="form-group">
                     <label id="tx-category-label">Category</label>
-                    <input type="text" id="tx-category" list="cat-memory" required placeholder="Select or type new..." autocomplete="off">
+                    <div style="display: flex; gap: 5px;">
+                        <select id="tx-category-icon" style="width: 75px; padding: 10px 5px; font-size: 18px;" title="Select an icon">
+                            <option value="🏷️">🏷️</option>
+                            <option value="🍔">🍔</option>
+                            <option value="🚌">🚌</option>
+                            <option value="🛒">🛒</option>
+                            <option value="🏠">🏠</option>
+                            <option value="📚">📚</option>
+                            <option value="🍿">🍿</option>
+                            <option value="🏥">🏥</option>
+                            <option value="✈️">✈️</option>
+                            <option value="👗">👗</option>
+                            <option value="🐾">🐾</option>
+                            <option value="🎁">🎁</option>
+                            <option value="⚡">⚡</option>
+                            <option value="📱">📱</option>
+                            <option value="💻">💻</option>
+                            <option value="💰">💰</option>
+                            <option value="📈">📈</option>
+                            <option value="🐖">🐖</option>
+                            <option value="👶">👶</option>
+                            <option value="🛠️">🛠️</option>
+                            <option value="💼">💼</option>
+                            <option value="🚑">🚑</option>
+                            <option value="🕊️">🕊️</option>
+                        </select>
+                        <input type="text" id="tx-category" list="cat-memory" required placeholder="Select or type new..." autocomplete="off" style="flex: 1;" onchange="autoSelectIcon('tx')">
+                    </div>
                     <datalist id="cat-memory"></datalist>
                 </div>
                 <div class="form-group">
@@ -609,6 +579,24 @@
         </div>
     </div>
 
+    <div id="help" class="tab-content">
+        <div class="flex-between" style="margin-bottom: 15px;">
+            <h2>Help & Support 📞</h2>
+        </div>
+        <div class="summary-cards" style="grid-template-columns: 1fr;">
+            <div class="card">
+                <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">Contact Us</h3>
+                <p style="color: var(--text-main); font-size: 14px; line-height: 1.6; margin-bottom: 10px;">
+                    If you encounter any issues, have feature requests, or need assistance recovering data, please reach out to our dedicated support channel:
+                </p>
+                <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.8;">
+                    <li><b>Developer:</b> David Nyambosero Omenyi</li>
+                    <li><b>Email Support:</b> <a href="mailto:realsurglobal@gmail.com" style="color: var(--primary); font-weight: bold; text-decoration: none;">realsurglobal@gmail.com</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
     <div id="instructions" class="tab-content">
         <div class="flex-between" style="margin-bottom: 15px;">
             <h2>How to Use Suppa Budgetor</h2>
@@ -685,14 +673,41 @@
                 <div class="form-group hidden" id="edit-tx-savings-action-group">
                     <label>Action</label>
                     <select id="edit-tx-savings-action">
-                        <option value="Savings-Withdrawal">Withdrawal</option>
-                        <option value="Savings-Deposit">Deposit</option>
-                        <option value="Starting-Balance">Opening Account Balance</option>
+                        <option value="Savings-Deposit">Deposit (Save Cash)</option>
+                        <option value="Savings-Withdrawal">Withdraw (Use Saved Cash)</option>
+                        <option value="Starting-Balance">Set Starting Balance (Initial Funds)</option>
                     </select>
                 </div>
                 <div class="form-group">
                     <label id="edit-tx-category-label">Category</label>
-                    <input type="text" id="edit-tx-category" list="edit-cat-memory" required autocomplete="off">
+                    <div style="display: flex; gap: 5px;">
+                        <select id="edit-tx-category-icon" style="width: 75px; padding: 10px 5px; font-size: 18px;" title="Select an icon">
+                            <option value="🏷️">🏷️</option>
+                            <option value="🍔">🍔</option>
+                            <option value="🚌">🚌</option>
+                            <option value="🛒">🛒</option>
+                            <option value="🏠">🏠</option>
+                            <option value="📚">📚</option>
+                            <option value="🍿">🍿</option>
+                            <option value="🏥">🏥</option>
+                            <option value="✈️">✈️</option>
+                            <option value="👗">👗</option>
+                            <option value="🐾">🐾</option>
+                            <option value="🎁">🎁</option>
+                            <option value="⚡">⚡</option>
+                            <option value="📱">📱</option>
+                            <option value="💻">💻</option>
+                            <option value="💰">💰</option>
+                            <option value="📈">📈</option>
+                            <option value="🐖">🐖</option>
+                            <option value="👶">👶</option>
+                            <option value="🛠️">🛠️</option>
+                            <option value="💼">💼</option>
+                            <option value="🚑">🚑</option>
+                            <option value="🕊️">🕊️</option>
+                        </select>
+                        <input type="text" id="edit-tx-category" list="edit-cat-memory" required autocomplete="off" style="flex: 1;" onchange="autoSelectIcon('edit-tx')">
+                    </div>
                     <datalist id="edit-cat-memory"></datalist>
                 </div>
                 <div class="form-group">
@@ -750,27 +765,6 @@
         </div>
     </div>
 </div>
-<div id="profile-modal" class="modal-overlay hidden">
-    <div class="modal-content" style="max-width: 400px;">
-        <button class="modal-close" onclick="window.closeProfileModal()">Close</button>
-        <h2 style="color: var(--primary); margin-bottom: 15px;">Edit Profile</h2>
-        <form id="profile-form" onsubmit="window.saveProfile(event)">
-            <div class="form-grid" style="display: block;">
-                <div class="form-group" style="margin-bottom: 15px;">
-                    <label>Display Name</label>
-                    <input type="text" id="profile-name-input" placeholder="e.g. John Doe" required autocomplete="off">
-                </div>
-                <div class="form-group" style="margin-bottom: 20px;">
-                    <label>Avatar Photo URL (Optional)</label>
-                    <input type="url" id="profile-avatar-input" placeholder="https://example.com/my-photo.jpg" autocomplete="off">
-                    <small style="color: var(--text-muted); font-size: 11px; margin-top: 6px;">Paste a link to an image. Leave blank to use the default avatar.</small>
-                </div>
-            </div>
-            <button type="submit" class="btn-primary" id="save-profile-btn">Save Profile</button>
-        </form>
-    </div>
-</div>
-</div> ```
-<script src="app.source.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
