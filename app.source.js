@@ -307,24 +307,152 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ==========================================
-    // 4. YOUR EXISTING BUDGET LOGIC STARTS HERE
+    // 4. EXISTING BUDGET LOGIC STARTS HERE
     // ==========================================
     
-    const txDateEl = document.getElementById('tx-date');
-    if (txDateEl) txDateEl.valueAsDate = new Date();
-    
-    const budgetMonthPicker = document.getElementById('budget-month-picker');
-    if (budgetMonthPicker) {
-        const now = new Date();
-        budgetMonthPicker.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}`;
+    // Register Android PWA service worker
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('Service Worker Registered successfully.', reg.scope))
+                .catch(err => console.log('Service Worker registration failed:', err));
+        });
     }
-    
-    const txTypeEl = document.getElementById('tx-type');
-    if (txTypeEl) handleTypeChange('tx');
 
-    const txNameEl = document.getElementById('tx-name');
-    if (txNameEl) {
-        txNameEl.addEventListener('input', function(e) {
+    // --- State Management ---
+    let transactions = [];
+    let categoryBudgets = {}; 
+    let customMem = { Expense: [], Income: [], Savings: [], Names: [], Icons: {} };
+    
+    let historyStack = []; let redoStack = []; let currentDate = new Date();
+    
+    const categories = {
+        Expense: ['Transport', 'Food', 'Transaction Cost', 'Entertainment', 'Education', 'Childcare', 'Homecare', 'Groceries', 'Self-care', 'Work disbursements', 'Charity', 'Contingency sums'],
+        Income: ['Salary', 'Business', 'Dividends', 'Interest', 'Other'],
+        Savings: ['Sinking Funds', 'Investment', 'Emergency funds', 'Savings']
+    };
+
+    const defaultIcons = {
+        'Transport': '🚌', 'Food': '🍔', 'Transaction Cost': '💸', 'Entertainment': '🍿',
+        'Education': '📚', 'Childcare': '👶', 'Homecare': '🏠', 'Groceries': '🛒',
+        'Self-care': '💆', 'Work disbursements': '💼', 'Charity': '🕊️', 'Contingency sums': '🆘',
+        'Salary': '💵', 'Business': '🏪', 'Dividends': '📈', 'Interest': '🏦', 'Other': '📦',
+        'Sinking Funds': '⚓', 'Investment': '💎', 'Emergency funds': '🚑', 'Savings': '🐖'
+    };
+
+    const chartColors = [
+        '#059669', '#f59e0b', '#3b82f6', '#ec4899', '#8b5cf6', 
+        '#14b8a6', '#ef4444', '#84cc16', '#6366f1', '#10b981', 
+        '#f97316', '#06b6d4', '#d946ef', '#a855f7', '#22c55e', 
+        '#eab308', '#0ea5e9', '#f43f5e', '#4f46e5', '#8dc63f',
+        '#1d4ed8', '#be123c', '#4338ca', '#047857', '#b45309'
+    ];
+
+    function getIcon(cat) {
+        return defaultIcons[cat] || (customMem.Icons && customMem.Icons[cat]) || '🏷️';
+    }
+
+    function autoSelectIcon(prefix) {
+        const cat = document.getElementById(`${prefix}-category`).value.trim();
+        const iconDropdown = document.getElementById(`${prefix}-category-icon`);
+        if(cat) {
+            const icon = getIcon(cat);
+            // Ensure the icon exists in the select options
+            let optionExists = Array.from(iconDropdown.options).some(opt => opt.value === icon);
+            if(!optionExists) {
+                iconDropdown.innerHTML += `<option value="${icon}">${icon}</option>`;
+            }
+            iconDropdown.value = icon;
+        }
+    }
+
+    // --- Resilient Initialization & Data Sanitization ---
+    function repairAndLoadData() {
+        try {
+            const loadedTx = JSON.parse(localStorage.getItem('suppa_tx')) || [];
+            transactions = loadedTx.filter(t => t && typeof t === 'object' && t.id).map(t => {
+                let type = String(t.type || 'Expense').trim();
+                let cat = String(t.category || 'Uncategorized').trim();
+                
+                // Keep mapping clean: Expense, Income, Savings-Deposit, Savings-Withdrawal, Starting-Balance
+                if (type === 'Savings') type = 'Savings-Deposit';
+
+                return {
+                    id: t.id,
+                    name: String(t.name || '(General)').trim(),
+                    type: type,
+                    category: cat,
+                    date: String(t.date || new Date().toISOString().split('T')[0]).trim(),
+                    actual: Math.abs(parseFloat(t.actual) || 0),
+                    qty: parseFloat(t.qty) || 1,
+                    fx: parseFloat(t.fx) || 1,
+                    kes: Math.abs(parseFloat(t.kes) || 0),
+                    notes: String(t.notes || '').trim()
+                };
+            });
+
+            // Automatically migrate old static Starting Balances into native "Starting-Balance" transactions
+            let legacyBals = JSON.parse(localStorage.getItem('suppa_bal'));
+            if (legacyBals && Object.keys(legacyBals).length > 0) {
+                let migrated = false;
+                Object.keys(legacyBals).forEach(cat => {
+                    if (parseFloat(legacyBals[cat]) > 0) {
+                        transactions.push({
+                            id: Date.now() + Math.random(),
+                            name: 'Initial Balance Migration',
+                            type: 'Starting-Balance',
+                            category: cat,
+                            date: '2020-01-01', // Backdate to ensure it acts as a true start
+                            actual: parseFloat(legacyBals[cat]),
+                            qty: 1, fx: 1, kes: parseFloat(legacyBals[cat]), notes: 'Auto-migrated from legacy settings'
+                        });
+                        migrated = true;
+                    }
+                });
+                if(migrated) {
+                    localStorage.setItem('suppa_tx', JSON.stringify(transactions));
+                    localStorage.removeItem('suppa_bal'); 
+                }
+            }
+
+            const loadedBudgets = JSON.parse(localStorage.getItem('suppa_budgets_v2')) || {};
+            if (typeof loadedBudgets === 'object' && !Array.isArray(loadedBudgets)) {
+                Object.keys(loadedBudgets).forEach(m => {
+                    if (typeof loadedBudgets[m] === 'object' && !Array.isArray(loadedBudgets[m])) {
+                        categoryBudgets[m] = loadedBudgets[m];
+                    }
+                });
+            }
+            
+            const loadedMem = JSON.parse(localStorage.getItem('suppa_custom_mem')) || {};
+            customMem = {
+                Expense: Array.isArray(loadedMem.Expense) ? loadedMem.Expense : [],
+                Income: Array.isArray(loadedMem.Income) ? loadedMem.Income : [],
+                Savings: Array.isArray(loadedMem.Savings) ? loadedMem.Savings : [],
+                Names: Array.isArray(loadedMem.Names) ? loadedMem.Names : [],
+                Icons: loadedMem.Icons || {}
+            };
+
+        } catch (e) {
+            console.error("Data repair failed. Resetting to safe defaults.", e);
+            transactions = []; categoryBudgets = {}; 
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        repairAndLoadData();
+
+        document.getElementById('tx-date').valueAsDate = new Date();
+        const now = new Date();
+        document.getElementById('budget-month-picker').value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}`;
+        
+        handleTypeChange('tx');
+        updateDatalists();
+        updateUI();
+        initTheme();
+
+        // Auto-fill category on entry
+        document.getElementById('tx-name').addEventListener('input', function(e) {
             let val = e.target.value.trim().toLowerCase();
             if(!val) return;
             let match = transactions.slice().reverse().find(t => t.name.toLowerCase() === val);
@@ -332,997 +460,844 @@ document.addEventListener('DOMContentLoaded', () => {
                 if(match.type.includes('Savings') || match.type === 'Starting-Balance') {
                     document.getElementById('tx-type').value = 'Savings';
                     handleTypeChange('tx');
-                    const sa = document.getElementById('tx-savings-action');
-                    if (sa) sa.value = match.type;
+                    document.getElementById('tx-savings-action').value = match.type;
                 } else {
                     document.getElementById('tx-type').value = match.type;
                     handleTypeChange('tx');
                 }
-                const tc = document.getElementById('tx-category');
-                if (tc) tc.value = match.category;
+                document.getElementById('tx-category').value = match.category;
+                autoSelectIcon('tx');
             }
         });
-    }
 
-    const budgetNameEl = document.getElementById('budget-name');
-    if (budgetNameEl) {
-        budgetNameEl.addEventListener('input', function(e) {
+        // Smart Budget auto-fill
+        document.getElementById('budget-name').addEventListener('input', function(e) {
             let val = e.target.value.trim().toLowerCase();
             if(!val) return;
             let match = transactions.slice().reverse().find(t => t.name.toLowerCase() === val && t.type !== 'Income' && t.type !== 'Savings-Withdrawal' && t.type !== 'Starting-Balance');
-            if (match) {
-                const bc = document.getElementById('budget-category');
-                if (bc) bc.value = match.category;
-            }
+            if (match) document.getElementById('budget-category').value = match.category;
         });
+    });
+
+    function initTheme() { if(localStorage.getItem('suppa_theme') === 'dark') document.body.setAttribute('data-theme', 'dark'); }
+    function toggleTheme() {
+        const isDark = document.body.getAttribute('data-theme') === 'dark';
+        document.body.setAttribute('data-theme', isDark ? 'light' : 'dark');
+        localStorage.setItem('suppa_theme', isDark ? 'light' : 'dark');
+        updateCharts(); updateInflationChart();
+    }
+    
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active');
+        event.currentTarget.classList.add('active');
+        if(tabId === 'analytics') updateAnalytics();
+        if(tabId === 'budget') renderBudgetSetup();
     }
 
-    // 🔥 CRITICAL FIX: Draw the loaded data to the screen immediately!
-    updateDatalists();
-    updateUI();
-    renderBudgetSetup();
-});
-
-// --- State Management ---
-let transactions = [];
-let categoryBudgets = {}; 
-let customMem = { Expense: [], Income: [], Savings: [], Names: [] };
-
-let historyStack = []; let redoStack = []; let currentDate = new Date();
-
-const categories = {
-    Expense: ['Transport', 'Food', 'Transaction Cost', 'Entertainment', 'Education', 'Childcare', 'Homecare', 'Groceries', 'Self-care', 'Work disbursements', 'Charity', 'Contingency sums'],
-    Income: ['Salary', 'Business', 'Dividends', 'Interest', 'Other'],
-    Savings: ['Sinking Funds', 'Investment', 'Emergency funds', 'Savings']
-};
-
-const chartColors = [
-    '#059669', '#f59e0b', '#3b82f6', '#ec4899', '#8b5cf6', 
-    '#14b8a6', '#ef4444', '#84cc16', '#6366f1', '#10b981', 
-    '#f97316', '#06b6d4', '#d946ef', '#a855f7', '#22c55e', 
-    '#eab308', '#0ea5e9', '#f43f5e', '#4f46e5', '#8dc63f',
-    '#1d4ed8', '#be123c', '#4338ca', '#047857', '#b45309'
-];
-
-// --- Resilient Initialization & Data Sanitization ---
-function repairAndLoadData() {
-    console.log("📥 Loading data from Local Storage...");
-    try {
-        const rawTx = localStorage.getItem('suppa_tx');
-        const loadedTx = rawTx ? JSON.parse(rawTx) : [];
+    function addToMemory(type, cat, name, icon) {
+        let changed = false;
         
-        transactions = loadedTx.filter(t => t && typeof t === 'object' && t.id).map(t => {
-            let type = String(t.type || 'Expense').trim();
-            let cat = String(t.category || 'Uncategorized').trim();
-            
-            // Keep mapping clean: Expense, Income, Savings-Deposit, Savings-Withdrawal, Starting-Balance
-            if (type === 'Savings') type = 'Savings-Deposit';
+        let normalizedType = type;
+        if (type.includes('Savings') || type === 'Starting-Balance') normalizedType = 'Savings';
 
-            return {
-                id: t.id,
-                name: String(t.name || '(General)').trim(),
-                type: type,
-                category: cat,
-                date: String(t.date || new Date().toISOString().split('T')[0]).trim(),
-                actual: Math.abs(parseFloat(t.actual) || 0),
-                qty: parseFloat(t.qty) || 1,
-                fx: parseFloat(t.fx) || 1,
-                kes: Math.abs(parseFloat(t.kes) || 0),
-                notes: String(t.notes || '').trim()
-            };
-        });
+        if (cat && cat !== 'Uncategorized') {
+            if (!customMem[normalizedType]) customMem[normalizedType] = [];
+            if (!customMem[normalizedType].includes(cat)) { customMem[normalizedType].push(cat); changed = true; }
+            if (!customMem.Icons) customMem.Icons = {};
+            if (icon && customMem.Icons[cat] !== icon) { customMem.Icons[cat] = icon; changed = true; }
+        }
+        if (name && name !== '(General)') {
+            if (!customMem.Names.includes(name)) { customMem.Names.push(name); changed = true; }
+        }
+        if (changed) localStorage.setItem('suppa_custom_mem', JSON.stringify(customMem));
+    }
+
+    function handleTypeChange(prefix) {
+        toggleCategories(true, prefix+'-type', prefix+'-category', prefix === 'tx' ? 'cat-memory' : 'edit-cat-memory');
+        const type = document.getElementById(prefix+'-type').value;
+        const actionGroup = document.getElementById(prefix+'-savings-action-group');
+        const catLabel = document.getElementById(prefix+'-category-label');
         
-        console.log(`✅ Loaded ${transactions.length} transactions successfully.`);
+        if(type === 'Savings') {
+            actionGroup.classList.remove('hidden');
+            if (catLabel) catLabel.innerText = "Account Type";
+        } else {
+            actionGroup.classList.add('hidden');
+            if (catLabel) catLabel.innerText = "Category";
+        }
+        calcKES(prefix);
+    }
 
-        // Automatically migrate old static Starting Balances into native "Starting-Balance" transactions
-        let legacyBals = JSON.parse(localStorage.getItem('suppa_bal'));
-        if (legacyBals && Object.keys(legacyBals).length > 0) {
-            let migrated = false;
-            Object.keys(legacyBals).forEach(cat => {
-                if (parseFloat(legacyBals[cat]) > 0) {
-                    transactions.push({
-                        id: Date.now() + Math.random(),
-                        name: 'Initial Balance Migration',
-                        type: 'Starting-Balance',
-                        category: cat,
-                        date: '2020-01-01', // Backdate to ensure it acts as a true start
-                        actual: parseFloat(legacyBals[cat]),
-                        qty: 1, fx: 1, kes: parseFloat(legacyBals[cat]), notes: 'Auto-migrated from legacy settings'
-                    });
-                    migrated = true;
-                }
-            });
-            if(migrated) {
-                localStorage.setItem('suppa_tx', JSON.stringify(transactions));
-                localStorage.removeItem('suppa_bal'); 
-            }
+    function toggleCategories(clearInput = true, typeId, inputId, listId) {
+        const type = document.getElementById(typeId).value;
+        const dl = document.getElementById(listId);
+        const input = document.getElementById(inputId);
+        
+        if (clearInput && input) { input.value = ''; autoSelectIcon(inputId.split('-')[0]); }
+        if (dl) dl.innerHTML = '';
+        
+        let baseOpts = categories[type] || [];
+        let customOpts = transactions.filter(t => t.type.includes(type) || (type==='Savings' && t.type==='Starting-Balance')).map(t => t.category);
+        if (customMem[type]) customOpts.push(...customMem[type]);
+        
+        let allOpts = [...new Set([...baseOpts, ...customOpts])];
+        allOpts.forEach(c => dl.innerHTML += `<option value="${c}">${c}</option>`);
+    }
+
+    function calcKES(prefix) {
+        const actual = Math.abs(parseFloat(document.getElementById(`${prefix}-actual`).value) || 0);
+        const fx = parseFloat(document.getElementById(`${prefix}-fx`).value) || 1;
+        const qty = parseFloat(document.getElementById(`${prefix}-qty`).value) || 1;
+        document.getElementById(`${prefix}-kes`).value = (actual * fx * qty).toFixed(2);
+    }
+
+    // --- Core Logging & Edits ---
+    function saveTransaction(e) {
+        e.preventDefault();
+        saveState();
+
+        const prefix = document.getElementById('tx-id').value ? 'edit-tx' : 'tx';
+        const txIdInput = document.getElementById('tx-id').value;
+        const isUpdate = !!txIdInput;
+
+        const rawName = document.getElementById('tx-name').value.trim();
+        const rawCat = document.getElementById('tx-category').value.trim();
+        const chosenIcon = document.getElementById('tx-category-icon').value;
+        
+        let finalType = document.getElementById('tx-type').value;
+        if (finalType === 'Savings') {
+            finalType = document.getElementById('tx-savings-action').value;
         }
 
-        const loadedBudgets = JSON.parse(localStorage.getItem('suppa_budgets_v2')) || {};
-        if (typeof loadedBudgets === 'object' && !Array.isArray(loadedBudgets)) {
-            Object.keys(loadedBudgets).forEach(m => {
-                if (typeof loadedBudgets[m] === 'object' && !Array.isArray(loadedBudgets[m])) {
-                    categoryBudgets[m] = loadedBudgets[m];
-                }
-            });
-        }
-        
-        const loadedMem = JSON.parse(localStorage.getItem('suppa_custom_mem')) || {};
-        customMem = {
-            Expense: Array.isArray(loadedMem.Expense) ? loadedMem.Expense : [],
-            Income: Array.isArray(loadedMem.Income) ? loadedMem.Income : [],
-            Savings: Array.isArray(loadedMem.Savings) ? loadedMem.Savings : [],
-            Names: Array.isArray(loadedMem.Names) ? loadedMem.Names : []
+        const newTx = {
+            id: isUpdate ? parseInt(txIdInput) : Date.now(),
+            name: rawName || '(General)',
+            type: finalType,
+            category: rawCat || 'Uncategorized',
+            date: document.getElementById('tx-date').value,
+            actual: Math.abs(parseFloat(document.getElementById('tx-actual').value) || 0),
+            qty: parseFloat(document.getElementById('tx-qty').value) || 1,
+            fx: parseFloat(document.getElementById('tx-fx').value) || 1,
+            kes: parseFloat(document.getElementById('tx-kes').value) || 0,
+            notes: document.getElementById('tx-notes').value
         };
 
-    } catch (e) {
-        console.error("❌ CRITICAL: Data repair failed. A corrupted string caused the crash.", e);
-        transactions = []; 
-        categoryBudgets = {}; 
-    }
-}
+        addToMemory(newTx.type, newTx.category, newTx.name, chosenIcon);
 
-function initTheme() { if(localStorage.getItem('suppa_theme') === 'dark') document.body.setAttribute('data-theme', 'dark'); }
-function toggleTheme() {
-    const isDark = document.body.getAttribute('data-theme') === 'dark';
-    document.body.setAttribute('data-theme', isDark ? 'light' : 'dark');
-    localStorage.setItem('suppa_theme', isDark ? 'light' : 'dark');
-    updateCharts(); updateInflationChart();
-}
+        if (isUpdate) {
+            const idx = transactions.findIndex(t => t.id === newTx.id);
+            if (idx > -1) transactions[idx] = newTx;
+            document.getElementById('tx-id').value = ""; 
+        } else {
+            transactions.push(newTx);
+        }
 
-function switchTab(tabId) {
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-    document.getElementById(tabId).classList.add('active');
-    event.currentTarget.classList.add('active');
-    if(tabId === 'analytics') updateAnalytics();
-    if(tabId === 'budget') renderBudgetSetup();
-}
+        saveData(); updateDatalists(); updateUI();
+        
+        const btn = document.getElementById('tx-submit-btn');
+        const originalText = isUpdate ? "✓ Updated!" : "✓ Saved!";
+        btn.innerText = originalText; 
+        btn.style.background = "var(--success)";
 
-function addToMemory(type, cat, name) {
-    let changed = false;
-    
-    let normalizedType = type;
-    if (type.includes('Savings') || type === 'Starting-Balance') normalizedType = 'Savings';
-
-    if (cat && cat !== 'Uncategorized' && customMem[normalizedType]) {
-        if (!customMem[normalizedType].includes(cat)) { customMem[normalizedType].push(cat); changed = true; }
-    }
-    if (name && name !== '(General)') {
-        if (!customMem.Names.includes(name)) { customMem.Names.push(name); changed = true; }
-    }
-    if (changed) localStorage.setItem('suppa_custom_mem', JSON.stringify(customMem));
-}
-
-function handleTypeChange(prefix) {
-    const typeEl = document.getElementById(prefix+'-type');
-    if (!typeEl) return;
-    
-    toggleCategories(true, prefix+'-type', prefix+'-category', prefix === 'tx' ? 'cat-memory' : 'edit-cat-memory');
-    const type = typeEl.value;
-    const actionGroup = document.getElementById(prefix+'-savings-action-group');
-    const catLabel = document.getElementById(prefix+'-category-label');
-    
-    if(type === 'Savings') {
-        if (actionGroup) actionGroup.classList.remove('hidden');
-        if (catLabel) catLabel.innerText = "Account Type";
-    } else {
-        if (actionGroup) actionGroup.classList.add('hidden');
-        if (catLabel) catLabel.innerText = "Category";
-    }
-    calcKES(prefix);
-}
-
-function toggleCategories(clearInput = true, typeId, inputId, listId) {
-    const typeEl = document.getElementById(typeId);
-    if (!typeEl) return;
-    
-    const type = typeEl.value;
-    const dl = document.getElementById(listId);
-    const input = document.getElementById(inputId);
-    
-    if (clearInput && input) input.value = '';
-    if (dl) dl.innerHTML = '';
-    
-    let baseOpts = categories[type] || [];
-    let customOpts = transactions.filter(t => t.type.includes(type) || (type==='Savings' && t.type==='Starting-Balance')).map(t => t.category);
-    if (customMem[type]) customOpts.push(...customMem[type]);
-    
-    let allOpts = [...new Set([...baseOpts, ...customOpts])];
-    allOpts.forEach(c => { if (dl) dl.innerHTML += `<option value="${c}">${c}</option>`; });
-}
-
-function calcKES(prefix) {
-    const actualEl = document.getElementById(`${prefix}-actual`);
-    const fxEl = document.getElementById(`${prefix}-fx`);
-    const qtyEl = document.getElementById(`${prefix}-qty`);
-    const kesEl = document.getElementById(`${prefix}-kes`);
-    
-    if (!actualEl || !kesEl) return;
-    
-    const actual = Math.abs(parseFloat(actualEl.value) || 0);
-    const fx = parseFloat(fxEl ? fxEl.value : 1) || 1;
-    const qty = parseFloat(qtyEl ? qtyEl.value : 1) || 1;
-    kesEl.value = (actual * fx * qty).toFixed(2);
-}
-
-// --- Core Logging & Edits ---
-function saveTransaction(e) {
-    e.preventDefault();
-    saveState();
-
-    const prefix = document.getElementById('tx-id').value ? 'edit-tx' : 'tx';
-    const txIdInput = document.getElementById('tx-id').value;
-    const isUpdate = !!txIdInput;
-
-    const rawName = document.getElementById('tx-name').value.trim();
-    const rawCat = document.getElementById('tx-category').value.trim();
-    
-    let finalType = document.getElementById('tx-type').value;
-    if (finalType === 'Savings') {
-        finalType = document.getElementById('tx-savings-action').value;
+        setTimeout(() => { 
+            btn.innerText = "Add to Ledger"; 
+            btn.style.background = ""; 
+            e.target.reset(); 
+            document.getElementById('tx-date').valueAsDate = new Date(); 
+            document.getElementById('tx-fx').value = 1; document.getElementById('tx-qty').value = 1;
+            handleTypeChange('tx');
+        }, 1500);
     }
 
-    const newTx = {
-        id: isUpdate ? parseInt(txIdInput) : Date.now(),
-        name: rawName || '(General)',
-        type: finalType,
-        category: rawCat || 'Uncategorized',
-        date: document.getElementById('tx-date').value,
-        actual: Math.abs(parseFloat(document.getElementById('tx-actual').value) || 0),
-        qty: parseFloat(document.getElementById('tx-qty').value) || 1,
-        fx: parseFloat(document.getElementById('tx-fx').value) || 1,
-        kes: parseFloat(document.getElementById('tx-kes').value) || 0,
-        notes: document.getElementById('tx-notes').value
-    };
+    function editTx(id) {
+        const tx = transactions.find(t => t.id === id);
+        if(!tx) return;
+        
+        document.getElementById('tx-id').value = tx.id;
+        document.getElementById('tx-name').value = tx.name === '(General)' ? '' : tx.name;
+        
+        if (tx.type.includes('Savings') || tx.type === 'Starting-Balance') {
+            document.getElementById('tx-type').value = 'Savings';
+            handleTypeChange('tx');
+            document.getElementById('tx-savings-action').value = tx.type;
+        } else {
+            document.getElementById('tx-type').value = tx.type;
+            handleTypeChange('tx');
+        }
 
-    addToMemory(newTx.type, newTx.category, newTx.name);
-
-    if (isUpdate) {
-        const idx = transactions.findIndex(t => t.id === newTx.id);
-        if (idx > -1) transactions[idx] = newTx;
-        document.getElementById('tx-id').value = ""; 
-    } else {
-        transactions.push(newTx);
+        document.getElementById('tx-category').value = tx.category;
+        autoSelectIcon('tx');
+        document.getElementById('tx-date').value = tx.date;
+        document.getElementById('tx-actual').value = Math.abs(tx.actual);
+        document.getElementById('tx-qty').value = tx.qty;
+        document.getElementById('tx-fx').value = tx.fx;
+        document.getElementById('tx-notes').value = tx.notes || '';
+        
+        calcKES('tx');
+        closeLedger();
+        
+        document.querySelectorAll('nav button').forEach(b => {
+            if(b.textContent === 'Log Entry') b.click();
+        });
+        
+        document.getElementById('tx-submit-btn').innerText = "Update Transaction";
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    saveData(); updateDatalists(); updateUI();
-    
-    const btn = document.getElementById('tx-submit-btn');
-    const originalText = isUpdate ? "✓ Updated!" : "✓ Saved!";
-    btn.innerText = originalText; 
-    btn.style.background = "var(--success)";
+    function openEditModal(id) {
+        const tx = transactions.find(t => t.id === id);
+        if(!tx) return;
+        
+        document.getElementById('edit-tx-id').value = tx.id;
+        document.getElementById('edit-tx-name').value = tx.name === '(General)' ? '' : tx.name;
+        
+        if (tx.type.includes('Savings') || tx.type === 'Starting-Balance') {
+            document.getElementById('edit-tx-type').value = 'Savings';
+            handleTypeChange('edit-tx');
+            document.getElementById('edit-tx-savings-action').value = tx.type;
+        } else {
+            document.getElementById('edit-tx-type').value = tx.type;
+            handleTypeChange('edit-tx');
+        }
 
-    setTimeout(() => { 
-        btn.innerText = "Add to Ledger"; 
-        btn.style.background = ""; 
-        e.target.reset(); 
-        document.getElementById('tx-date').valueAsDate = new Date(); 
-        document.getElementById('tx-fx').value = 1; document.getElementById('tx-qty').value = 1;
-        handleTypeChange('tx');
-    }, 1500);
-}
-
-function editTx(id) {
-    const tx = transactions.find(t => t.id === id);
-    if(!tx) return;
-    
-    document.getElementById('tx-id').value = tx.id;
-    document.getElementById('tx-name').value = tx.name === '(General)' ? '' : tx.name;
-    
-    if (tx.type.includes('Savings') || tx.type === 'Starting-Balance') {
-        document.getElementById('tx-type').value = 'Savings';
-        handleTypeChange('tx');
-        document.getElementById('tx-savings-action').value = tx.type;
-    } else {
-        document.getElementById('tx-type').value = tx.type;
-        handleTypeChange('tx');
+        document.getElementById('edit-tx-category').value = tx.category;
+        autoSelectIcon('edit-tx');
+        document.getElementById('edit-tx-date').value = tx.date;
+        document.getElementById('edit-tx-actual').value = Math.abs(tx.actual);
+        document.getElementById('edit-tx-qty').value = tx.qty;
+        document.getElementById('edit-tx-fx').value = tx.fx;
+        document.getElementById('edit-tx-kes').value = tx.kes;
+        document.getElementById('edit-tx-notes').value = tx.notes || '';
+        
+        document.getElementById('edit-modal').classList.remove('hidden');
     }
 
-    document.getElementById('tx-category').value = tx.category;
-    document.getElementById('tx-date').value = tx.date;
-    document.getElementById('tx-actual').value = Math.abs(tx.actual);
-    document.getElementById('tx-qty').value = tx.qty;
-    document.getElementById('tx-fx').value = tx.fx;
-    document.getElementById('tx-notes').value = tx.notes || '';
-    
-    calcKES('tx');
-    closeLedger();
-    
-    document.querySelectorAll('nav button').forEach(b => {
-        if(b.textContent === 'Log Entry') b.click();
-    });
-    
-    document.getElementById('tx-submit-btn').innerText = "Update Transaction";
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-}
+    function closeEditModal() { document.getElementById('edit-modal').classList.add('hidden'); }
 
-function openEditModal(id) {
-    const tx = transactions.find(t => t.id === id);
-    if(!tx) return;
-    
-    document.getElementById('edit-tx-id').value = tx.id;
-    document.getElementById('edit-tx-name').value = tx.name === '(General)' ? '' : tx.name;
-    
-    if (tx.type.includes('Savings') || tx.type === 'Starting-Balance') {
-        document.getElementById('edit-tx-type').value = 'Savings';
-        handleTypeChange('edit-tx');
-        document.getElementById('edit-tx-savings-action').value = tx.type;
-    } else {
-        document.getElementById('edit-tx-type').value = tx.type;
-        handleTypeChange('edit-tx');
+    function updateTransaction(e) {
+        e.preventDefault();
+        saveState();
+        
+        const id = parseInt(document.getElementById('edit-tx-id').value);
+        const index = transactions.findIndex(t => t.id === id);
+        if(index === -1) return;
+        
+        let finalType = document.getElementById('edit-tx-type').value;
+        if (finalType === 'Savings') {
+            finalType = document.getElementById('edit-tx-savings-action').value;
+        }
+
+        const chosenIcon = document.getElementById('edit-tx-category-icon').value;
+
+        const newTx = {
+            id: id,
+            name: document.getElementById('edit-tx-name').value.trim() || '(General)',
+            type: finalType,
+            category: document.getElementById('edit-tx-category').value.trim() || 'Uncategorized',
+            date: document.getElementById('edit-tx-date').value,
+            actual: Math.abs(parseFloat(document.getElementById('edit-tx-actual').value) || 0),
+            qty: parseFloat(document.getElementById('edit-tx-qty').value) || 1,
+            fx: parseFloat(document.getElementById('edit-tx-fx').value) || 1,
+            kes: parseFloat(document.getElementById('edit-tx-kes').value),
+            notes: document.getElementById('edit-tx-notes').value
+        };
+
+        addToMemory(newTx.type, newTx.category, newTx.name, chosenIcon);
+        transactions[index] = newTx;
+        
+        saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
+        closeEditModal();
     }
 
-    document.getElementById('edit-tx-category').value = tx.category;
-    document.getElementById('edit-tx-date').value = tx.date;
-    document.getElementById('edit-tx-actual').value = Math.abs(tx.actual);
-    document.getElementById('edit-tx-qty').value = tx.qty;
-    document.getElementById('edit-tx-fx').value = tx.fx;
-    document.getElementById('edit-tx-kes').value = tx.kes;
-    document.getElementById('edit-tx-notes').value = tx.notes || '';
-    
-    document.getElementById('edit-modal').classList.remove('hidden');
-}
-
-function closeEditModal() { document.getElementById('edit-modal').classList.add('hidden'); }
-
-function updateTransaction(e) {
-    e.preventDefault();
-    saveState();
-    
-    const id = parseInt(document.getElementById('edit-tx-id').value);
-    const index = transactions.findIndex(t => t.id === id);
-    if(index === -1) return;
-    
-    let finalType = document.getElementById('edit-tx-type').value;
-    if (finalType === 'Savings') {
-        finalType = document.getElementById('edit-tx-savings-action').value;
+    function deleteEditTx() {
+        if(!confirm("Are you sure you want to completely delete this entry?")) return;
+        saveState();
+        const id = parseInt(document.getElementById('edit-tx-id').value);
+        transactions = transactions.filter(t => t.id !== id);
+        saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
+        closeEditModal();
     }
 
-    const newTx = {
-        id: id,
-        name: document.getElementById('edit-tx-name').value.trim() || '(General)',
-        type: finalType,
-        category: document.getElementById('edit-tx-category').value.trim() || 'Uncategorized',
-        date: document.getElementById('edit-tx-date').value,
-        actual: Math.abs(parseFloat(document.getElementById('edit-tx-actual').value) || 0),
-        qty: parseFloat(document.getElementById('edit-tx-qty').value) || 1,
-        fx: parseFloat(document.getElementById('edit-tx-fx').value) || 1,
-        kes: parseFloat(document.getElementById('edit-tx-kes').value),
-        notes: document.getElementById('edit-tx-notes').value
-    };
-
-    addToMemory(newTx.type, newTx.category, newTx.name);
-    transactions[index] = newTx;
-    
-    saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
-    closeEditModal();
-}
-
-function deleteEditTx() {
-    if(!confirm("Are you sure you want to completely delete this entry?")) return;
-    saveState();
-    const id = parseInt(document.getElementById('edit-tx-id').value);
-    transactions = transactions.filter(t => t.id !== id);
-    saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
-    closeEditModal();
-}
-
-// --- Data List Helpers ---
-function updateDatalists() {
-    const txMem = document.getElementById('tx-memory');
-    if (txMem) {
+    // --- Data List Helpers ---
+    function updateDatalists() {
+        const txMem = document.getElementById('tx-memory');
         txMem.innerHTML = '';
         let allNames = [...new Set([...transactions.map(t => t.name), ...customMem.Names])];
         allNames.forEach(n => { if(n!=='(General)') txMem.innerHTML += `<option value="${n}">${n}</option>`; });
-    }
 
-    const bCatMem = document.getElementById('budget-cat-memory');
-    const bNameMem = document.getElementById('budget-name-memory');
-    if(bCatMem && bNameMem) {
-        bCatMem.innerHTML = ''; bNameMem.innerHTML = '';
-        
-        let allCats = new Set();
-        Object.keys(categories).forEach(type => { if (type !== 'Income') categories[type].forEach(c => allCats.add(c)); });
-        if (customMem.Expense) customMem.Expense.forEach(c => allCats.add(c));
-        if (customMem.Savings) customMem.Savings.forEach(c => allCats.add(c));
-        
-        transactions.filter(t => t.type !== 'Income').forEach(t => allCats.add(t.category));
-        
-        let allNames = [...new Set([...transactions.map(t => t.name), ...customMem.Names])];
-        allNames.forEach(n => { if(n !== '(General)') bNameMem.innerHTML += `<option value="${n}">${n}</option>`; });
-        [...allCats].sort().forEach(c => { bCatMem.innerHTML += `<option value="${c}">${c}</option>`; });
-    }
-}
-
-// --- Budget Logic ---
-function getMonthStr(dateObj) { return `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2, '0')}`; }
-
-function getBudget(cat, name, targetMonthStr) {
-    const key = `${cat}::${name}`;
-    const sortedMonths = Object.keys(categoryBudgets).sort().reverse();
-    for (let m of sortedMonths) {
-        if (m <= targetMonthStr && categoryBudgets[m]) {
-            if (categoryBudgets[m][key] !== undefined) return categoryBudgets[m][key];
+        const bCatMem = document.getElementById('budget-cat-memory');
+        const bNameMem = document.getElementById('budget-name-memory');
+        if(bCatMem && bNameMem) {
+            bCatMem.innerHTML = ''; bNameMem.innerHTML = '';
+            
+            let allCats = new Set();
+            Object.keys(categories).forEach(type => { if (type !== 'Income') categories[type].forEach(c => allCats.add(c)); });
+            if (customMem.Expense) customMem.Expense.forEach(c => allCats.add(c));
+            if (customMem.Savings) customMem.Savings.forEach(c => allCats.add(c));
+            
+            transactions.filter(t => t.type !== 'Income').forEach(t => allCats.add(t.category));
+            allNames.forEach(n => { if(n !== '(General)') bNameMem.innerHTML += `<option value="${n}">${n}</option>`; });
+            [...allCats].sort().forEach(c => { bCatMem.innerHTML += `<option value="${c}">${c}</option>`; });
         }
     }
-    return 0; 
-}
 
-function saveSingleBudget(e) {
-    e.preventDefault();
-    const monthStr = document.getElementById('budget-month-picker').value;
-    let cat = document.getElementById('budget-category').value.trim();
-    let name = document.getElementById('budget-name').value.trim();
-    const amount = parseFloat(document.getElementById('budget-amount').value) || 0;
+    // --- Budget Logic ---
+    function getMonthStr(dateObj) { return `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2, '0')}`; }
 
-    if (cat && !name) {
-        let match = transactions.slice().reverse().find(t => t.name.toLowerCase() === cat.toLowerCase() && t.type !== 'Income');
-        if (match && match.category) {
-            name = cat;
-            cat = match.category;
-        } else {
+    function getBudget(cat, name, targetMonthStr) {
+        const key = `${cat}::${name}`;
+        const sortedMonths = Object.keys(categoryBudgets).sort().reverse();
+        for (let m of sortedMonths) {
+            if (m <= targetMonthStr && categoryBudgets[m]) {
+                if (categoryBudgets[m][key] !== undefined) return categoryBudgets[m][key];
+            }
+        }
+        return 0; 
+    }
+
+    function saveSingleBudget(e) {
+        e.preventDefault();
+        const monthStr = document.getElementById('budget-month-picker').value;
+        let cat = document.getElementById('budget-category').value.trim();
+        let name = document.getElementById('budget-name').value.trim();
+        const amount = parseFloat(document.getElementById('budget-amount').value) || 0;
+
+        if (cat && !name) {
+            let match = transactions.slice().reverse().find(t => t.name.toLowerCase() === cat.toLowerCase() && t.type !== 'Income');
+            if (match && match.category) {
+                name = cat;
+                cat = match.category;
+            } else {
+                name = '(General)';
+            }
+        } else if (!name) {
             name = '(General)';
         }
-    } else if (!name) {
-        name = '(General)';
-    }
 
-    if (!cat) cat = 'Uncategorized';
+        if (!cat) cat = 'Uncategorized';
 
-    let inferredType = 'Expense';
-    if (categories.Savings.includes(cat) || customMem.Savings.includes(cat) || transactions.some(t => t.category === cat && t.type.includes('Savings'))) {
-        inferredType = 'Savings';
-    }
-    addToMemory(inferredType, cat, name);
+        let inferredType = 'Expense';
+        if (categories.Savings.includes(cat) || customMem.Savings.includes(cat) || transactions.some(t => t.category === cat && t.type.includes('Savings'))) {
+            inferredType = 'Savings';
+        }
+        // Save budget category without forcing a new icon unless user went to Log Entry
+        addToMemory(inferredType, cat, name, null);
 
-    if(!categoryBudgets[monthStr]) categoryBudgets[monthStr] = {};
-    
-    categoryBudgets[monthStr][`${cat}::${name}`] = amount;
-    localStorage.setItem('suppa_budgets_v2', JSON.stringify(categoryBudgets));
-    
-    document.getElementById('budget-category').value = '';
-    document.getElementById('budget-name').value = '';
-    document.getElementById('budget-amount').value = '';
-    
-    renderBudgetSetup(); updateUI(); updateCharts();
-    
-    const btn = document.getElementById('budget-submit-btn');
-    btn.innerText = "✓ Budget Saved!"; btn.style.background = "var(--success)";
-    setTimeout(() => { btn.innerText = "Add / Update Budget"; btn.style.background = ""; }, 1500);
-}
-
-function editBudgetForm(cat, name, amount) {
-    document.getElementById('budget-category').value = cat;
-    document.getElementById('budget-name').value = name === '(General)' ? '' : name;
-    document.getElementById('budget-amount').value = amount;
-    document.getElementById('budget-amount').focus();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-function deleteBudget(cat, name, monthStr) {
-    if(!confirm("Delete this budget allocation?")) return;
-    const key = `${cat}::${name}`;
-    if(categoryBudgets[monthStr] && categoryBudgets[monthStr][key] !== undefined) {
-        categoryBudgets[monthStr][key] = 0; 
+        if(!categoryBudgets[monthStr]) categoryBudgets[monthStr] = {};
+        
+        categoryBudgets[monthStr][`${cat}::${name}`] = amount;
         localStorage.setItem('suppa_budgets_v2', JSON.stringify(categoryBudgets));
+        
+        document.getElementById('budget-category').value = '';
+        document.getElementById('budget-name').value = '';
+        document.getElementById('budget-amount').value = '';
+        
         renderBudgetSetup(); updateUI(); updateCharts();
+        
+        const btn = document.getElementById('budget-submit-btn');
+        btn.innerText = "✓ Budget Saved!"; btn.style.background = "var(--success)";
+        setTimeout(() => { btn.innerText = "Add / Update Budget"; btn.style.background = ""; }, 1500);
     }
-}
 
-function renderBudgetSetup() {
-    try {
-        const picker = document.getElementById('budget-month-picker');
-        if (!picker) return;
-        
-        const monthStr = picker.value;
-        if(!monthStr) return;
-        
-        const tbody = document.getElementById('budget-setup-body');
-        if (!tbody) return;
-        tbody.innerHTML = '';
+    function editBudgetForm(cat, name, amount) {
+        document.getElementById('budget-category').value = cat;
+        document.getElementById('budget-name').value = name === '(General)' ? '' : name;
+        document.getElementById('budget-amount').value = amount;
+        document.getElementById('budget-amount').focus();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
 
-        let activeItems = new Set();
-        Object.keys(categoryBudgets).forEach(m => {
-            if(m <= monthStr && categoryBudgets[m]) {
-                Object.keys(categoryBudgets[m]).forEach(k => {
-                    let parts = k.split('::');
-                    if(getBudget(parts[0], parts[1], monthStr) > 0) activeItems.add(k);
-                });
-            }
+    function deleteBudget(cat, name, monthStr) {
+        if(!confirm("Delete this budget allocation?")) return;
+        const key = `${cat}::${name}`;
+        if(categoryBudgets[monthStr] && categoryBudgets[monthStr][key] !== undefined) {
+            categoryBudgets[monthStr][key] = 0; 
+            localStorage.setItem('suppa_budgets_v2', JSON.stringify(categoryBudgets));
+            renderBudgetSetup(); updateUI(); updateCharts();
+        }
+    }
+
+    function renderBudgetSetup() {
+        try {
+            const monthStr = document.getElementById('budget-month-picker').value;
+            if(!monthStr) return;
+            const tbody = document.getElementById('budget-setup-body');
+            tbody.innerHTML = '';
+
+            let activeItems = new Set();
+            Object.keys(categoryBudgets).forEach(m => {
+                if(m <= monthStr && categoryBudgets[m]) {
+                    Object.keys(categoryBudgets[m]).forEach(k => {
+                        let parts = k.split('::');
+                        if(getBudget(parts[0], parts[1], monthStr) > 0) activeItems.add(k);
+                    });
+                }
+            });
+
+            Array.from(activeItems).sort().forEach(key => {
+                const parts = key.split('::');
+                const cat = parts[0]; const name = parts[1];
+                const amt = getBudget(cat, name, monthStr);
+                const isExplicit = categoryBudgets[monthStr] && categoryBudgets[monthStr][key] !== undefined;
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${getIcon(cat)} ${cat} <br><small style="color:var(--text-muted)">${name === '(General)' ? 'Category Target' : name}</small> ${!isExplicit ? '<br><small style="color:var(--accent)">(Rolled Forward)</small>' : ''}</td>
+                        <td style="font-weight:bold;">${amt.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        <td>
+                            <button type="button" style="background:var(--accent); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer;" onclick="editBudgetForm('${cat.replace(/'/g,"\\'")}', '${name.replace(/'/g,"\\'")}', ${amt})">Edit</button>
+                            ${isExplicit ? `<button type="button" style="background:var(--danger); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; margin-left:5px;" onclick="deleteBudget('${cat.replace(/'/g,"\\'")}', '${name.replace(/'/g,"\\'")}', '${monthStr}')">Del</button>` : ''}
+                        </td>
+                    </tr>
+                `;
+            });
+        } catch(e) { console.error("Error rendering budget setup", e); }
+    }
+
+    function calculateRollover(upToMonthStr) {
+        let rollover = 0;
+        let pastMonths = new Set([...transactions.filter(t=>t.date).map(t => t.date.substring(0,7))]);
+        pastMonths = Array.from(pastMonths).filter(m => m < upToMonthStr).sort();
+        
+        pastMonths.forEach(m => {
+            let mIn = 0; let mOut = 0;
+            transactions.filter(t => t.date && t.date.startsWith(m)).forEach(t => {
+                if (t.type === 'Income' || t.type === 'Savings-Withdrawal') mIn += t.kes;
+                if (t.type === 'Expense' || t.type === 'Savings-Deposit') mOut += t.kes;
+                // Starting-Balance is strictly ignored for cash flow
+            });
+            rollover += (mIn - mOut);
         });
+        return rollover;
+    }
 
-        Array.from(activeItems).sort().forEach(key => {
-            const parts = key.split('::');
-            const cat = parts[0]; const name = parts[1];
-            const amt = getBudget(cat, name, monthStr);
-            const isExplicit = categoryBudgets[monthStr] && categoryBudgets[monthStr][key] !== undefined;
+    // --- Summaries & UI ---
+    function changeMonth(delta) { currentDate.setMonth(currentDate.getMonth() + delta); updateUI(); }
 
+    function updateUI() {
+        try {
+            const monthStr = getMonthStr(currentDate);
+            const monthYear = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+            document.getElementById('current-month-display').innerText = monthYear;
+            document.getElementById('current-month-display-summaries').innerText = monthYear;
+
+            const currentMonthTxs = transactions.filter(t => t.date && t.date.startsWith(monthStr));
+            const rollover = calculateRollover(monthStr);
+
+            let totalIncome = 0; let totalSavingsWithdrawn = 0; 
+            let totalSpent = 0; let totalSaved = 0;
+
+            // Income Table
+            let incomeTxs = currentMonthTxs.filter(t => t.type === 'Income');
+            const groupedIncome = incomeTxs.reduce((acc, tx) => { acc[tx.category] = (acc[tx.category]||0) + tx.kes; return acc; }, {});
+            totalIncome = Object.values(groupedIncome).reduce((a,b)=>a+b, 0);
+
+            const incomeBody = document.getElementById('income-body'); if(incomeBody) incomeBody.innerHTML = '';
+            if (rollover !== 0 && incomeBody) {
+                incomeBody.innerHTML += `<tr><td>Rollover from Previous Months</td><td class="${rollover >= 0 ? 'positive' : 'negative'}">${rollover > 0 ? '+' : ''}${rollover.toLocaleString(undefined, {minimumFractionDigits: 2})}</td></tr>`;
+            }
+            Object.keys(groupedIncome).forEach(cat => {
+                if(incomeBody) incomeBody.innerHTML += `<tr><td><a class="ledger-link" onclick="openLedger('${cat.replace(/'/g, "\\'")}', '', true)">${getIcon(cat)} ${cat}</a></td><td class="positive">+${groupedIncome[cat].toLocaleString(undefined, {minimumFractionDigits: 2})}</td></tr>`;
+            });
+            const bliEl = document.getElementById('bottom-line-income');
+            if(bliEl) bliEl.innerText = `KES ${totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+
+            // Performance Map
+            const perfBody = document.getElementById('performance-body'); if(perfBody) perfBody.innerHTML = '';
+            const txBody = document.getElementById('transactions-body'); if(txBody) txBody.innerHTML = '';
+            
+            const catFilterEl = document.getElementById('summary-cat-filter');
+            const catFilter = catFilterEl ? catFilterEl.value : 'ALL';
+            
+            const spentFilterEl = document.getElementById('summary-spent-filter');
+            const spentFilter = spentFilterEl ? spentFilterEl.value : 'ALL';
+
+            let itemsMap = {}; 
+            
+            Object.keys(categoryBudgets).forEach(bm => {
+                if(bm <= monthStr && categoryBudgets[bm]) Object.keys(categoryBudgets[bm]).forEach(k => {
+                    let parts = k.split('::'); let cat = parts[0] || 'Uncategorized'; let name = parts[1] || '(General)';
+                    let bAmt = getBudget(cat, name, monthStr);
+                    let infType = categories.Savings.includes(cat) || customMem.Savings.includes(cat) || transactions.some(t => t.category === cat && t.type.includes('Savings')) ? 'Savings' : 'Expense';
+                    if(bAmt > 0) itemsMap[`${cat}::${name}`] = { cat: cat, name: name, type: infType, actual: 0 };
+                });
+            });
+            
+            currentMonthTxs.filter(t => t.type === 'Expense' || t.type === 'Savings-Deposit').forEach(t => {
+                let k = `${t.category}::${t.name}`;
+                if(!itemsMap[k]) itemsMap[k] = { cat: t.category, name: t.name, type: t.type === 'Savings-Deposit' ? 'Savings' : 'Expense', actual: 0 };
+                itemsMap[k].actual += t.kes;
+            });
+
+            if (catFilterEl) {
+                catFilterEl.innerHTML = '<option value="ALL">All Categories</option>';
+                let distinctCats = [...new Set(Object.values(itemsMap).map(i => i.cat))].sort();
+                distinctCats.forEach(c => catFilterEl.innerHTML += `<option value="${c}">${getIcon(c)} ${c}</option>`);
+                catFilterEl.value = distinctCats.includes(catFilter) ? catFilter : 'ALL';
+            }
+
+            let tableBudget = 0; let tableSpent = 0;
+            
+            Object.values(itemsMap).sort((a,b) => {
+                const cA = a.cat || ''; const cB = b.cat || '';
+                const nA = a.name || ''; const nB = b.name || '';
+                return cA.localeCompare(cB) || nA.localeCompare(nB);
+            }).forEach(item => {
+                let bAmt = getBudget(item.cat, item.name, monthStr);
+                let aAmt = item.actual;
+
+                if (catFilter !== 'ALL' && catFilter !== item.cat) return;
+                if (spentFilter === 'ZERO' && aAmt !== 0) return;
+                if (spentFilter === 'NON_ZERO' && aAmt === 0) return;
+                if (spentFilter === 'UNDER_BUDGET' && (bAmt === 0 || aAmt >= bAmt)) return;
+
+                tableBudget += bAmt; tableSpent += aAmt;
+
+                let variance = bAmt - aAmt;
+                let isPositive = variance >= 0;
+                const varPct = bAmt ? ((variance / bAmt) * 100).toFixed(1) : 0;
+
+                const trHtml = `
+                    <tr>
+                        <td>${getIcon(item.cat)} ${item.cat}</td>
+                        <td><a class="ledger-link" onclick="openLedger('${item.cat.replace(/'/g, "\\'")}', '${item.name.replace(/'/g, "\\'")}', false)">${item.name === '(General)' ? 'Category Target' : item.name}</a></td>
+                        <td><span style="background:var(--border); padding:2px 8px; border-radius:10px; font-size:0.8em; color:var(--primary);">${item.type}</span></td>
+                        <td>${bAmt.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                        <td>${aAmt.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                        <td class="${isPositive ? 'positive' : 'negative'}">${variance > 0 ? '+':''}${variance.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                        <td class="${isPositive ? 'positive' : 'negative'}">${varPct}%</td>
+                    </tr>
+                `;
+                if(perfBody) perfBody.innerHTML += trHtml;
+            });
+
+            // Populate Raw Logs
+            let logTxs = currentMonthTxs.filter(t => t.type !== 'Starting-Balance');
+            if(catFilter !== 'ALL') logTxs = logTxs.filter(t => t.category === catFilter);
+            
+            logTxs.sort((a,b) => new Date(b.date) - new Date(a.date)).forEach(tx => {
+                let isInc = tx.type === 'Income' || tx.type === 'Savings-Withdrawal';
+                let isSav = tx.type.includes('Savings');
+                let typeColor = isInc ? 'var(--success)' : (isSav ? '#3b82f6' : 'var(--primary)');
+                let typeBg = isInc ? 'rgba(16,185,129,0.2)' : (isSav ? 'rgba(59,130,246,0.2)' : 'var(--border)');
+                
+                let displayType = tx.type.replace('Savings-', '');
+
+                if (txBody) {
+                    txBody.innerHTML += `
+                        <tr>
+                            <td style="font-size: 0.9em; color:var(--text-muted);">${tx.date}</td>
+                            <td>${getIcon(tx.category)} ${tx.category}</td>
+                            <td><span class="ledger-link" onclick="openEditModal(${tx.id})">${tx.name}</span></td>
+                            <td><span style="background:${typeBg}; padding:2px 8px; border-radius:10px; font-size:0.8em; color:${typeColor};">${displayType}</span></td>
+                            <td class="${isInc ? 'positive' : ''}" style="font-weight: bold;">${isInc ? '+':''}${tx.kes.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                        </tr>
+                    `;
+                }
+            });
+
+            let netVar = tableBudget - tableSpent;
+            const perfBudg = document.getElementById('perf-bottom-line-budget');
+            if(perfBudg) perfBudg.innerText = tableBudget.toLocaleString(undefined, {minimumFractionDigits: 2});
+            
+            const perfAct = document.getElementById('perf-bottom-line-actual');
+            if(perfAct) perfAct.innerText = tableSpent.toLocaleString(undefined, {minimumFractionDigits: 2});
+            
+            const varStr = `${netVar >= 0 ? '+':''}${netVar.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            const varClass = netVar >= 0 ? 'positive' : 'negative';
+            const perfVar = document.getElementById('perf-bottom-line-variance');
+            if(perfVar) { perfVar.innerText = varStr; perfVar.className = varClass; }
+
+            const incEl = document.getElementById('perf-bottom-line-income');
+            if (incEl) incEl.innerText = `KES ${totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+
+            // Topline Overview (Unfiltered global totals)
+            let rawTotalBudget = 0;
+            Object.values(itemsMap).forEach(item => { rawTotalBudget += getBudget(item.cat, item.name, monthStr); });
+
+            currentMonthTxs.forEach(t => {
+                if (t.type === 'Savings-Withdrawal') totalSavingsWithdrawn += t.kes;
+                if (t.type === 'Expense') totalSpent += t.kes;
+                if (t.type === 'Savings-Deposit') totalSaved += t.kes;
+            });
+
+            let totalAvailable = totalIncome + rollover + totalSavingsWithdrawn;
+            let actualOutgoing = totalSpent + totalSaved;
+            
+            let surplusDeficit = rawTotalBudget - actualOutgoing; 
+            let amountUnassigned = totalAvailable - actualOutgoing; 
+            
+            document.getElementById('top-income').innerText = `KES ${(totalIncome + rollover).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            document.getElementById('top-rollover-text').innerText = `Includes ${rollover >= 0 ? '+':''}${rollover.toLocaleString(undefined, {minimumFractionDigits: 2})} rollover`;
+            document.getElementById('top-budget').innerText = `KES ${rawTotalBudget.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            document.getElementById('top-spent').innerText = `KES ${actualOutgoing.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            
+            document.getElementById('top-surplus').innerText = `KES ${surplusDeficit >= 0 ? '+':''}${surplusDeficit.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            document.getElementById('top-surplus').className = `value ${surplusDeficit >= 0 ? 'positive' : 'negative'}`;
+
+            const topUnassignedEl = document.getElementById('top-unassigned');
+            if (topUnassignedEl) {
+                topUnassignedEl.innerText = `KES ${amountUnassigned >= 0 ? '+':''}${amountUnassigned.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+                topUnassignedEl.className = `value ${amountUnassigned >= 0 ? 'positive' : 'negative'}`;
+            }
+            
+            updatePortfolioView(currentMonthTxs, monthStr);
+        } catch (e) {
+            console.error("UI Update Error:", e);
+        }
+    }
+
+    function openLedger(cat, name, isIncome = false) {
+        const monthStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2, '0')}`;
+        let txs = transactions.filter(t => t.date && t.date.substring(0,7) === monthStr);
+        
+        if (isIncome) {
+            txs = txs.filter(t => t.type === 'Income' && t.category === cat);
+            document.getElementById('ledger-title').innerText = `Income Ledger: ${getIcon(cat)} ${cat} (${monthStr})`;
+        } else {
+            txs = txs.filter(t => (t.type === 'Expense' || t.type === 'Savings-Deposit') && t.category === cat && t.name === name);
+            document.getElementById('ledger-title').innerText = `Ledger: ${name === '(General)' ? cat : name} (${monthStr})`;
+        }
+        
+        txs.sort((a,b) => new Date(b.date) - new Date(a.date));
+        const tbody = document.getElementById('ledger-body'); tbody.innerHTML = '';
+        
+        if (txs.length === 0) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No records found.</td></tr>`;
+        
+        txs.forEach(tx => {
             tbody.innerHTML += `
                 <tr>
-                    <td>${cat} <br><small style="color:var(--text-muted)">${name === '(General)' ? 'Category Target' : name}</small> ${!isExplicit ? '<br><small style="color:var(--accent)">(Rolled Forward)</small>' : ''}</td>
-                    <td style="font-weight:bold;">${amt.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                    <td>${tx.date}</td>
+                    <td>${tx.name}</td>
+                    <td style="font-weight:bold;">${tx.kes.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                    <td style="font-size:0.9em; color:var(--text-muted);">${tx.notes || '-'}</td>
                     <td>
-                        <button type="button" style="background:var(--accent); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer;" onclick="editBudgetForm('${cat.replace(/'/g,"\\'")}', '${name.replace(/'/g,"\\'")}', ${amt})">Edit</button>
-                        ${isExplicit ? `<button type="button" style="background:var(--danger); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; margin-left:5px;" onclick="deleteBudget('${cat.replace(/'/g,"\\'")}', '${name.replace(/'/g,"\\'")}', '${monthStr}')">Del</button>` : ''}
+                        <button onclick="editTx(${tx.id})" style="background:var(--accent);color:white;border:none;padding:4px 8px;border-radius:6px;cursor:pointer;margin-bottom:4px;">Edit</button>
                     </td>
                 </tr>
             `;
         });
-    } catch(e) { console.error("Error rendering budget setup", e); }
-}
+        document.getElementById('ledger-modal').classList.remove('hidden');
+    }
 
-function calculateRollover(upToMonthStr) {
-    let rollover = 0;
-    let pastMonths = new Set([...transactions.filter(t=>t.date).map(t => t.date.substring(0,7))]);
-    pastMonths = Array.from(pastMonths).filter(m => m < upToMonthStr).sort();
-    
-    pastMonths.forEach(m => {
-        let mIn = 0; let mOut = 0;
-        transactions.filter(t => t.date && t.date.startsWith(m)).forEach(t => {
-            if (t.type === 'Income' || t.type === 'Savings-Withdrawal') mIn += t.kes;
-            if (t.type === 'Expense' || t.type === 'Savings-Deposit') mOut += t.kes;
-        });
-        rollover += (mIn - mOut);
-    });
-    return rollover;
-}
+    function closeLedger() { document.getElementById('ledger-modal').classList.add('hidden'); }
 
-// --- Summaries & UI ---
-function changeMonth(delta) { currentDate.setMonth(currentDate.getMonth() + delta); updateUI(); }
+    // --- Savings & Balances ---
 
-function updateUI() {
-    try {
-        const monthStr = getMonthStr(currentDate);
-        const monthYear = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+    function updatePortfolioView(currentMonthTxs, monthStr) {
+        const tbody = document.getElementById('portfolio-body'); tbody.innerHTML = '';
         
-        const disp1 = document.getElementById('current-month-display');
-        const disp2 = document.getElementById('current-month-display-summaries');
-        if (disp1) disp1.innerText = monthYear;
-        if (disp2) disp2.innerText = monthYear;
-
-        const currentMonthTxs = transactions.filter(t => t.date && t.date.startsWith(monthStr));
-        const rollover = calculateRollover(monthStr);
-
-        let totalIncome = 0; let totalSavingsWithdrawn = 0; 
-        let totalSpent = 0; let totalSaved = 0;
-
-        // Income Table
-        let incomeTxs = currentMonthTxs.filter(t => t.type === 'Income');
-        const groupedIncome = incomeTxs.reduce((acc, tx) => { acc[tx.category] = (acc[tx.category]||0) + tx.kes; return acc; }, {});
-        totalIncome = Object.values(groupedIncome).reduce((a,b)=>a+b, 0);
-
-        const incomeBody = document.getElementById('income-body'); if(incomeBody) incomeBody.innerHTML = '';
-        if (rollover !== 0 && incomeBody) {
-            incomeBody.innerHTML += `<tr><td>Rollover from Previous Months</td><td class="${rollover >= 0 ? 'positive' : 'negative'}">${rollover > 0 ? '+' : ''}${rollover.toLocaleString(undefined, {minimumFractionDigits: 2})}</td></tr>`;
-        }
-        Object.keys(groupedIncome).forEach(cat => {
-            if(incomeBody) incomeBody.innerHTML += `<tr><td><a class="ledger-link" onclick="openLedger('${cat.replace(/'/g, "\\'")}', '', true)">${cat}</a></td><td class="positive">+${groupedIncome[cat].toLocaleString(undefined, {minimumFractionDigits: 2})}</td></tr>`;
-        });
-        const bliEl = document.getElementById('bottom-line-income');
-        if(bliEl) bliEl.innerText = `KES ${totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-
-        // Performance Map
-        const perfBody = document.getElementById('performance-body'); if(perfBody) perfBody.innerHTML = '';
-        const txBody = document.getElementById('transactions-body'); if(txBody) txBody.innerHTML = '';
+        let activePortCats = new Set([...customMem.Savings]);
+        transactions.filter(t => t.type.includes('Savings') || t.type === 'Starting-Balance').forEach(t => activePortCats.add(t.category));
         
-        const catFilterEl = document.getElementById('summary-cat-filter');
-        const catFilter = catFilterEl ? catFilterEl.value : 'ALL';
-        
-        const spentFilterEl = document.getElementById('summary-spent-filter');
-        const spentFilter = spentFilterEl ? spentFilterEl.value : 'ALL';
+        let grandStart = 0; let grandInflow = 0; let grandCurrent = 0;
 
-        let itemsMap = {}; 
-        
-        Object.keys(categoryBudgets).forEach(bm => {
-            if(bm <= monthStr && categoryBudgets[bm]) Object.keys(categoryBudgets[bm]).forEach(k => {
-                let parts = k.split('::'); let cat = parts[0] || 'Uncategorized'; let name = parts[1] || '(General)';
-                let bAmt = getBudget(cat, name, monthStr);
-                let infType = categories.Savings.includes(cat) || customMem.Savings.includes(cat) || transactions.some(t => t.category === cat && t.type.includes('Savings')) ? 'Savings' : 'Expense';
-                if(bAmt > 0) itemsMap[`${cat}::${name}`] = { cat: cat, name: name, type: infType, actual: 0 };
-            });
-        });
-        
-        currentMonthTxs.filter(t => t.type === 'Expense' || t.type === 'Savings-Deposit').forEach(t => {
-            let k = `${t.category}::${t.name}`;
-            if(!itemsMap[k]) itemsMap[k] = { cat: t.category, name: t.name, type: t.type === 'Savings-Deposit' ? 'Savings' : 'Expense', actual: 0 };
-            itemsMap[k].actual += t.kes;
-        });
-
-        if (catFilterEl) {
-            catFilterEl.innerHTML = '<option value="ALL">All Categories</option>';
-            let distinctCats = [...new Set(Object.values(itemsMap).map(i => i.cat))].sort();
-            distinctCats.forEach(c => catFilterEl.innerHTML += `<option value="${c}">${c}</option>`);
-            catFilterEl.value = distinctCats.includes(catFilter) ? catFilter : 'ALL';
-        }
-
-        let tableBudget = 0; let tableSpent = 0;
-        
-        Object.values(itemsMap).sort((a,b) => {
-            const cA = a.cat || ''; const cB = b.cat || '';
-            const nA = a.name || ''; const nB = b.name || '';
-            return cA.localeCompare(cB) || nA.localeCompare(nB);
-        }).forEach(item => {
-            let bAmt = getBudget(item.cat, item.name, monthStr);
-            let aAmt = item.actual;
-
-            if (catFilter !== 'ALL' && catFilter !== item.cat) return;
-            if (spentFilter === 'ZERO' && aAmt !== 0) return;
-            if (spentFilter === 'NON_ZERO' && aAmt === 0) return;
-            if (spentFilter === 'UNDER_BUDGET' && (bAmt === 0 || aAmt >= bAmt)) return;
-
-            tableBudget += bAmt; tableSpent += aAmt;
-
-            let variance = bAmt - aAmt;
-            let isPositive = variance >= 0;
-            const varPct = bAmt ? ((variance / bAmt) * 100).toFixed(1) : 0;
-
-            const trHtml = `
-                <tr>
-                    <td>${item.cat}</td>
-                    <td><a class="ledger-link" onclick="openLedger('${item.cat.replace(/'/g, "\\'")}', '${item.name.replace(/'/g, "\\'")}', false)">${item.name === '(General)' ? 'Category Target' : item.name}</a></td>
-                    <td><span style="background:var(--border); padding:2px 8px; border-radius:10px; font-size:0.8em; color:var(--primary);">${item.type}</span></td>
-                    <td>${bAmt.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                    <td>${aAmt.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                    <td class="${isPositive ? 'positive' : 'negative'}">${variance > 0 ? '+':''}${variance.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                    <td class="${isPositive ? 'positive' : 'negative'}">${varPct}%</td>
-                </tr>
-            `;
-            if(perfBody) perfBody.innerHTML += trHtml;
-        });
-
-        // Populate Raw Logs
-        let logTxs = currentMonthTxs.filter(t => t.type !== 'Starting-Balance');
-        if(catFilter !== 'ALL') logTxs = logTxs.filter(t => t.category === catFilter);
-        
-        logTxs.sort((a,b) => new Date(b.date) - new Date(a.date)).forEach(tx => {
-            let isInc = tx.type === 'Income' || tx.type === 'Savings-Withdrawal';
-            let isSav = tx.type.includes('Savings');
-            let typeColor = isInc ? 'var(--success)' : (isSav ? '#3b82f6' : 'var(--primary)');
-            let typeBg = isInc ? 'rgba(16,185,129,0.2)' : (isSav ? 'rgba(59,130,246,0.2)' : 'var(--border)');
+        Array.from(activePortCats).sort().forEach(cat => {
+            let startBal = 0; let mtdInflow = 0; let prevInflows = 0;
             
-            let displayType = tx.type.replace('Savings-', '');
-
-            if (txBody) {
-                txBody.innerHTML += `
-                    <tr>
-                        <td style="font-size: 0.9em; color:var(--text-muted);">${tx.date}</td>
-                        <td>${tx.category}</td>
-                        <td><span class="ledger-link" onclick="openEditModal(${tx.id})">${tx.name}</span></td>
-                        <td><span style="background:${typeBg}; padding:2px 8px; border-radius:10px; font-size:0.8em; color:${typeColor};">${displayType}</span></td>
-                        <td class="${isInc ? 'positive' : ''}" style="font-weight: bold;">${isInc ? '+':''}${tx.kes.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                    </tr>
-                `;
-            }
+            transactions.filter(t => t.category === cat).forEach(t => {
+                if (t.type === 'Starting-Balance') {
+                    startBal += t.kes;
+                } else if (t.date.substring(0,7) < monthStr) {
+                    if (t.type === 'Savings-Deposit') prevInflows += t.kes;
+                    if (t.type === 'Savings-Withdrawal') prevInflows -= t.kes;
+                } else if (t.date.startsWith(monthStr)) {
+                    if (t.type === 'Savings-Deposit') mtdInflow += t.kes;
+                    if (t.type === 'Savings-Withdrawal') mtdInflow -= t.kes;
+                }
+            });
+            
+            const currentTotal = startBal + prevInflows + mtdInflow;
+            
+            grandStart += startBal; grandInflow += mtdInflow; grandCurrent += currentTotal;
+            tbody.innerHTML += `
+                <tr>
+                    <td><span style="color:var(--accent)">${getIcon(cat)}</span> ${cat}</td>
+                    <td>${startBal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                    <td class="${mtdInflow >= 0 ? 'positive' : 'negative'}">${mtdInflow > 0 ? '+' : ''}${mtdInflow.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                    <td style="font-weight:800; color:var(--primary);">KES ${currentTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                    <td style="text-align: center;">
+                        <button type="button" style="background:var(--danger); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer;" onclick="deletePortfolioAccount('${cat.replace(/'/g, "\\'")}')">Del</button>
+                    </td>
+                </tr>`;
         });
 
-        let netVar = tableBudget - tableSpent;
-        const perfBudg = document.getElementById('perf-bottom-line-budget');
-        if(perfBudg) perfBudg.innerText = tableBudget.toLocaleString(undefined, {minimumFractionDigits: 2});
+        document.getElementById('port-total-start').innerText = grandStart.toLocaleString(undefined, {minimumFractionDigits: 2});
         
-        const perfAct = document.getElementById('perf-bottom-line-actual');
-        if(perfAct) perfAct.innerText = tableSpent.toLocaleString(undefined, {minimumFractionDigits: 2});
-        
-        const varStr = `${netVar >= 0 ? '+':''}${netVar.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-        const varClass = netVar >= 0 ? 'positive' : 'negative';
-        const perfVar = document.getElementById('perf-bottom-line-variance');
-        if(perfVar) { perfVar.innerText = varStr; perfVar.className = varClass; }
-
-        const incEl = document.getElementById('perf-bottom-line-income');
-        if (incEl) incEl.innerText = `KES ${totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-
-        let rawTotalBudget = 0;
-        Object.values(itemsMap).forEach(item => { rawTotalBudget += getBudget(item.cat, item.name, monthStr); });
-
-        currentMonthTxs.forEach(t => {
-            if (t.type === 'Savings-Withdrawal') totalSavingsWithdrawn += t.kes;
-            if (t.type === 'Expense') totalSpent += t.kes;
-            if (t.type === 'Savings-Deposit') totalSaved += t.kes;
-        });
-
-        let totalAvailable = totalIncome + rollover + totalSavingsWithdrawn;
-        let actualOutgoing = totalSpent + totalSaved;
-        
-        let surplusDeficit = rawTotalBudget - actualOutgoing; 
-        let amountUnassigned = totalAvailable - actualOutgoing; 
-        
-        const topIncome = document.getElementById('top-income');
-        if (topIncome) topIncome.innerText = `KES ${(totalIncome + rollover).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-        
-        const topRollover = document.getElementById('top-rollover-text');
-        if (topRollover) topRollover.innerText = `Includes ${rollover >= 0 ? '+':''}${rollover.toLocaleString(undefined, {minimumFractionDigits: 2})} rollover`;
-        
-        const topBudget = document.getElementById('top-budget');
-        if (topBudget) topBudget.innerText = `KES ${rawTotalBudget.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-        
-        const topSpent = document.getElementById('top-spent');
-        if (topSpent) topSpent.innerText = `KES ${actualOutgoing.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-        
-        const topSurplus = document.getElementById('top-surplus');
-        if (topSurplus) {
-            topSurplus.innerText = `KES ${surplusDeficit >= 0 ? '+':''}${surplusDeficit.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            topSurplus.className = `value ${surplusDeficit >= 0 ? 'positive' : 'negative'}`;
-        }
-
-        const topUnassignedEl = document.getElementById('top-unassigned');
-        if (topUnassignedEl) {
-            topUnassignedEl.innerText = `KES ${amountUnassigned >= 0 ? '+':''}${amountUnassigned.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            topUnassignedEl.className = `value ${amountUnassigned >= 0 ? 'positive' : 'negative'}`;
-        }
-        
-        updatePortfolioView(currentMonthTxs, monthStr);
-    } catch (e) {
-        console.error("UI Update Error:", e);
-    }
-}
-
-function openLedger(cat, name, isIncome = false) {
-    const monthStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2, '0')}`;
-    let txs = transactions.filter(t => t.date && t.date.substring(0,7) === monthStr);
-    
-    if (isIncome) {
-        txs = txs.filter(t => t.type === 'Income' && t.category === cat);
-        document.getElementById('ledger-title').innerText = `Income Ledger: ${cat} (${monthStr})`;
-    } else {
-        txs = txs.filter(t => (t.type === 'Expense' || t.type === 'Savings-Deposit') && t.category === cat && t.name === name);
-        document.getElementById('ledger-title').innerText = `Ledger: ${name === '(General)' ? cat : name} (${monthStr})`;
-    }
-    
-    txs.sort((a,b) => new Date(b.date) - new Date(a.date));
-    const tbody = document.getElementById('ledger-body'); tbody.innerHTML = '';
-    
-    if (txs.length === 0) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No records found.</td></tr>`;
-    
-    txs.forEach(tx => {
-        tbody.innerHTML += `
-            <tr>
-                <td>${tx.date}</td>
-                <td>${tx.name}</td>
-                <td style="font-weight:bold;">${tx.kes.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                <td style="font-size:0.9em; color:var(--text-muted);">${tx.notes || '-'}</td>
-                <td>
-                    <button onclick="editTx(${tx.id})" style="background:var(--accent);color:white;border:none;padding:4px 8px;border-radius:6px;cursor:pointer;margin-bottom:4px;">Edit</button>
-                </td>
-            </tr>
-        `;
-    });
-    document.getElementById('ledger-modal').classList.remove('hidden');
-}
-
-function closeLedger() { document.getElementById('ledger-modal').classList.add('hidden'); }
-
-// --- Savings & Balances ---
-function updatePortfolioView(currentMonthTxs, monthStr) {
-    const tbody = document.getElementById('portfolio-body'); 
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    
-    let activePortCats = new Set([...customMem.Savings]);
-    transactions.filter(t => t.type.includes('Savings') || t.type === 'Starting-Balance').forEach(t => activePortCats.add(t.category));
-    
-    let grandStart = 0; let grandInflow = 0; let grandCurrent = 0;
-
-    Array.from(activePortCats).sort().forEach(cat => {
-        let startBal = 0; let mtdInflow = 0; let prevInflows = 0;
-        
-        transactions.filter(t => t.category === cat).forEach(t => {
-            if (t.type === 'Starting-Balance') {
-                startBal += t.kes;
-            } else if (t.date.substring(0,7) < monthStr) {
-                if (t.type === 'Savings-Deposit') prevInflows += t.kes;
-                if (t.type === 'Savings-Withdrawal') prevInflows -= t.kes;
-            } else if (t.date.startsWith(monthStr)) {
-                if (t.type === 'Savings-Deposit') mtdInflow += t.kes;
-                if (t.type === 'Savings-Withdrawal') mtdInflow -= t.kes;
-            }
-        });
-        
-        const currentTotal = startBal + prevInflows + mtdInflow;
-        
-        grandStart += startBal; grandInflow += mtdInflow; grandCurrent += currentTotal;
-        tbody.innerHTML += `
-            <tr>
-                <td><span style="color:var(--accent)">💰</span> ${cat}</td>
-                <td>${startBal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                <td class="${mtdInflow >= 0 ? 'positive' : 'negative'}">${mtdInflow > 0 ? '+' : ''}${mtdInflow.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                <td style="font-weight:800; color:var(--primary);">KES ${currentTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                <td style="text-align: center;">
-                    <button type="button" style="background:var(--danger); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer;" onclick="deletePortfolioAccount('${cat.replace(/'/g, "\\'")}')">Del</button>
-                </td>
-            </tr>`;
-    });
-
-    const portTotalStart = document.getElementById('port-total-start');
-    if (portTotalStart) portTotalStart.innerText = grandStart.toLocaleString(undefined, {minimumFractionDigits: 2});
-    
-    const totInflowsEl = document.getElementById('port-total-inflows');
-    if (totInflowsEl) {
+        const totInflowsEl = document.getElementById('port-total-inflows');
         totInflowsEl.innerText = `${grandInflow > 0 ? '+' : ''}${grandInflow.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
         totInflowsEl.className = grandInflow >= 0 ? 'positive' : 'negative';
-    }
 
-    const portTotalCurrent = document.getElementById('port-total-current');
-    if (portTotalCurrent) portTotalCurrent.innerText = 'KES ' + grandCurrent.toLocaleString(undefined, {minimumFractionDigits: 2});
+        document.getElementById('port-total-current').innerText = 'KES ' + grandCurrent.toLocaleString(undefined, {minimumFractionDigits: 2});
 
-    const ledgerBody = document.getElementById('portfolio-ledger-body');
-    if(ledgerBody) {
-        ledgerBody.innerHTML = '';
-        
-        let savTxs = transactions.filter(t => t.type === 'Starting-Balance' || (t.date && t.date.startsWith(monthStr) && t.type.includes('Savings')));
-        
-        if (savTxs.length === 0) {
-            ledgerBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted);">No portfolio movements found.</td></tr>`;
-        } else {
-            savTxs.sort((a,b) => new Date(b.date) - new Date(a.date)).forEach(tx => {
-                let isStart = tx.type === 'Starting-Balance';
-                let isDep = tx.type === 'Savings-Deposit';
-                let badgeColor = isStart ? 'var(--primary)' : (isDep ? 'var(--success)' : 'var(--danger)');
-                let badgeBg = isStart ? 'var(--border)' : (isDep ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)');
-                let text = isStart ? 'Start Bal' : (isDep ? 'Deposit' : 'Withdrawal');
-                
-                let actionBadge = `<span style="background:${badgeBg}; padding:2px 8px; border-radius:10px; font-size:0.8em; color:${badgeColor};">${text}</span>`;
-                
-                ledgerBody.innerHTML += `
-                    <tr>
-                        <td style="font-size: 0.9em; color:var(--text-muted);">${tx.date}</td>
-                        <td>${tx.category}</td>
-                        <td><span class="ledger-link" onclick="openEditModal(${tx.id})">${tx.name}</span></td>
-                        <td>${actionBadge}</td>
-                        <td class="${!isStart && isDep ? 'positive' : ''}" style="font-weight: bold;">${!isStart && isDep ? '+':''}${tx.kes.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                    </tr>
-                `;
-            });
+        // Populate Portfolio Ledger (MTD & Opening Balances)
+        const ledgerBody = document.getElementById('portfolio-ledger-body');
+        if(ledgerBody) {
+            ledgerBody.innerHTML = '';
+            
+            // Include ALL Starting-Balance entries + current month's savings entries
+            let savTxs = transactions.filter(t => t.type === 'Starting-Balance' || (t.date && t.date.startsWith(monthStr) && t.type.includes('Savings')));
+            
+            if (savTxs.length === 0) {
+                ledgerBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted);">No portfolio movements found.</td></tr>`;
+            } else {
+                savTxs.sort((a,b) => new Date(b.date) - new Date(a.date)).forEach(tx => {
+                    let isStart = tx.type === 'Starting-Balance';
+                    let isDep = tx.type === 'Savings-Deposit';
+                    let badgeColor = isStart ? 'var(--primary)' : (isDep ? 'var(--success)' : 'var(--danger)');
+                    let badgeBg = isStart ? 'var(--border)' : (isDep ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)');
+                    let text = isStart ? 'Start Bal' : (isDep ? 'Deposit' : 'Withdrawal');
+                    
+                    let actionBadge = `<span style="background:${badgeBg}; padding:2px 8px; border-radius:10px; font-size:0.8em; color:${badgeColor};">${text}</span>`;
+                    
+                    ledgerBody.innerHTML += `
+                        <tr>
+                            <td style="font-size: 0.9em; color:var(--text-muted);">${tx.date}</td>
+                            <td>${getIcon(tx.category)} ${tx.category}</td>
+                            <td><span class="ledger-link" onclick="openEditModal(${tx.id})">${tx.name}</span></td>
+                            <td>${actionBadge}</td>
+                            <td class="${!isStart && isDep ? 'positive' : ''}" style="font-weight: bold;">${!isStart && isDep ? '+':''}${tx.kes.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                        </tr>
+                    `;
+                });
+            }
         }
     }
-}
 
-function deletePortfolioAccount(cat) {
-    if(!confirm(`Are you sure you want to completely delete the account "${cat}"?\n\nThis will erase ALL deposits, withdrawals, and opening balances tied to it.`)) return;
-    if(!confirm(`Final warning: Deleting "${cat}" cannot be undone. Proceed?`)) return;
+    function deletePortfolioAccount(cat) {
+        if(!confirm(`Are you sure you want to completely delete the account "${cat}"?\n\nThis will erase ALL deposits, withdrawals, and opening balances tied to it.`)) return;
+        if(!confirm(`Final warning: Deleting "${cat}" cannot be undone. Proceed?`)) return;
 
-    saveState();
+        saveState();
 
-    transactions = transactions.filter(t => !(t.category === cat && (t.type === 'Starting-Balance' || t.type.includes('Savings'))));
-    
-    if(customMem.Savings && customMem.Savings.includes(cat)) {
-        customMem.Savings = customMem.Savings.filter(c => c !== cat);
-        localStorage.setItem('suppa_custom_mem', JSON.stringify(customMem));
+        // 1. Remove all transactions related to this portfolio account
+        transactions = transactions.filter(t => !(t.category === cat && (t.type === 'Starting-Balance' || t.type.includes('Savings'))));
+        
+        // 2. Remove from custom memory so it doesn't auto-suggest
+        if(customMem.Savings && customMem.Savings.includes(cat)) {
+            customMem.Savings = customMem.Savings.filter(c => c !== cat);
+            localStorage.setItem('suppa_custom_mem', JSON.stringify(customMem));
+        }
+
+        saveData();
+        updateDatalists();
+        updateUI();
+        updateCharts();
+        updateInflationChart();
     }
 
-    saveData();
-    updateDatalists();
-    updateUI();
-    updateCharts();
-    updateInflationChart();
-}
+    // --- Analytics ---
+    let pieChartInstance = null; let barChartInstance = null; let inflationChartInstance = null;
 
-// --- Analytics ---
-let pieChartInstance = null; let barChartInstance = null; let inflationChartInstance = null;
-
-function populateChartFilters(txs) {
-    const catFilter = document.getElementById('analytics-cat-filter');
-    const nameFilter = document.getElementById('analytics-name-filter');
-    const infNameFilter = document.getElementById('inflation-expense-filter');
-    if(!catFilter || !nameFilter || !infNameFilter) return;
-    
-    const currCat = catFilter.value; const currName = nameFilter.value; const currInfName = infNameFilter.value;
-    
-    catFilter.innerHTML = '<option value="ALL">All Categories</option>';
-    nameFilter.innerHTML = '<option value="ALL">All Expenses</option>';
-    infNameFilter.innerHTML = '<option value="ALL">All Expenses Combined</option>';
-    
-    let cats = [...new Set(txs.map(e => e.category))].sort();
-    cats.forEach(c => catFilter.innerHTML += `<option value="${c}">${c}</option>`);
-    catFilter.value = cats.includes(currCat) ? currCat : 'ALL';
-    
-    let filteredForNames = txs;
-    if(catFilter.value !== 'ALL') filteredForNames = txs.filter(e => e.category === catFilter.value);
-    
-    let names = [...new Set(filteredForNames.map(e => e.name))].sort();
-    names.forEach(n => nameFilter.innerHTML += `<option value="${n}">${n}</option>`);
-    nameFilter.value = names.includes(currName) ? currName : 'ALL';
-
-    let allNames = [...new Set(txs.map(e => e.name))].sort();
-    allNames.forEach(n => infNameFilter.innerHTML += `<option value="${n}">${n}</option>`);
-    infNameFilter.value = allNames.includes(currInfName) ? currInfName : 'ALL';
-}
-
-function updateAnalytics() {
-    const periodEl = document.getElementById('analytics-period');
-    if (!periodEl) return;
-    
-    const period = periodEl.value;
-    const now = new Date();
-    const filteredTxs = transactions.filter(t => {
-        if(!t.date) return false;
-        const d = new Date(t.date);
-        if(period === 'MTD') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-        if(period === 'YTD') return d.getFullYear() === now.getFullYear();
-        if(period === 'QTD') return d.getFullYear() === now.getFullYear() && Math.floor(d.getMonth()/3) === Math.floor(now.getMonth()/3);
-        return true;
-    });
-    
-    populateChartFilters(transactions.filter(t => t.type === 'Expense' || t.type === 'Savings-Deposit')); 
-    updateCharts(filteredTxs); updateInflationChart();
-}
-
-function updateCharts(txList = null) {
-    try {
-        const analyticsEl = document.getElementById('analytics');
-        if(!analyticsEl || !analyticsEl.classList.contains('active')) return;
+    function populateChartFilters(txs) {
+        const catFilter = document.getElementById('analytics-cat-filter');
+        const nameFilter = document.getElementById('analytics-name-filter');
+        const infNameFilter = document.getElementById('inflation-expense-filter');
         
-        if(!txList) {
-            const period = document.getElementById('analytics-period').value;
-            const now = new Date();
-            txList = transactions.filter(t => {
-                if(!t.date) return false;
-                const d = new Date(t.date);
-                if(period === 'MTD') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-                if(period === 'YTD') return d.getFullYear() === now.getFullYear();
-                if(period === 'QTD') return d.getFullYear() === now.getFullYear() && Math.floor(d.getMonth()/3) === Math.floor(now.getMonth()/3);
-                return true;
-            });
-        }
-
-        const catFilter = document.getElementById('analytics-cat-filter').value;
-        const nameFilter = document.getElementById('analytics-name-filter').value;
-
-        let expenses = txList.filter(t => t.type === 'Expense' || t.type === 'Savings-Deposit');
+        const currCat = catFilter.value; const currName = nameFilter.value; const currInfName = infNameFilter.value;
         
-        const income = txList.filter(t => t.type === 'Income').reduce((s,t)=>s+t.kes, 0);
-        const savingsTotal = txList.filter(t => t.type === 'Savings-Deposit').reduce((s,t)=>s+t.kes, 0);
-        const targetPct = income ? ((savingsTotal / income) * 100).toFixed(1) : 0;
+        catFilter.innerHTML = '<option value="ALL">All Categories</option>';
+        nameFilter.innerHTML = '<option value="ALL">All Expenses</option>';
+        infNameFilter.innerHTML = '<option value="ALL">All Expenses Combined</option>';
         
-        const statTarget = document.getElementById('stat-target');
-        if (statTarget) {
-            statTarget.innerText = `${targetPct}%`;
-            statTarget.className = targetPct >= 30 ? 'value positive' : 'value negative';
-        }
-
-        const thirtyDaysAgo = new Date().setDate(new Date().getDate() - 30);
-        const sixtyDaysAgo = new Date().setDate(new Date().getDate() - 60);
-        const currentExp = transactions.filter(t => t.date && new Date(t.date) >= thirtyDaysAgo && t.type === 'Expense').reduce((s,t)=>s+t.kes,0);
-        const prevExp = transactions.filter(t => t.date && new Date(t.date) >= sixtyDaysAgo && new Date(t.date) < thirtyDaysAgo && t.type === 'Expense').reduce((s,t)=>s+t.kes,0);
-        const inflation = prevExp ? (((currentExp - prevExp) / prevExp) * 100).toFixed(1) : 0;
+        let cats = [...new Set(txs.map(e => e.category))].sort();
+        cats.forEach(c => catFilter.innerHTML += `<option value="${c}">${getIcon(c)} ${c}</option>`);
+        catFilter.value = cats.includes(currCat) ? currCat : 'ALL';
         
-        const statInflation = document.getElementById('stat-inflation');
-        if (statInflation) {
-            statInflation.innerText = `${inflation > 0 ? '+':''}${inflation}%`;
-            statInflation.className = inflation <= 0 ? 'value positive' : 'value negative';
-        }
+        let filteredForNames = txs;
+        if(catFilter.value !== 'ALL') filteredForNames = txs.filter(e => e.category === catFilter.value);
+        
+        let names = [...new Set(filteredForNames.map(e => e.name))].sort();
+        names.forEach(n => nameFilter.innerHTML += `<option value="${n}">${n}</option>`);
+        nameFilter.value = names.includes(currName) ? currName : 'ALL';
 
-        let chartExpenses = expenses;
-        if(catFilter !== 'ALL') chartExpenses = chartExpenses.filter(e => e.category === catFilter);
-        if(nameFilter !== 'ALL') chartExpenses = chartExpenses.filter(e => e.name === nameFilter);
+        let allNames = [...new Set(txs.map(e => e.name))].sort();
+        allNames.forEach(n => infNameFilter.innerHTML += `<option value="${n}">${n}</option>`);
+        infNameFilter.value = allNames.includes(currInfName) ? currInfName : 'ALL';
+    }
 
-        drawCharts(chartExpenses, catFilter, nameFilter);
-    } catch(e) { console.error("Chart Error", e); }
-}
+    function updateAnalytics() {
+        const period = document.getElementById('analytics-period').value;
+        const now = new Date();
+        const filteredTxs = transactions.filter(t => {
+            if(!t.date) return false;
+            const d = new Date(t.date);
+            if(period === 'MTD') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+            if(period === 'YTD') return d.getFullYear() === now.getFullYear();
+            if(period === 'QTD') return d.getFullYear() === now.getFullYear() && Math.floor(d.getMonth()/3) === Math.floor(now.getMonth()/3);
+            return true;
+        });
+        
+        populateChartFilters(transactions.filter(t => t.type === 'Expense' || t.type === 'Savings-Deposit')); 
+        updateCharts(filteredTxs); updateInflationChart();
+    }
 
-function drawCharts(expenses, catFilter, nameFilter) {
-    if (!document.getElementById('pieChart') || !document.getElementById('barChart')) return;
-    
-    const ctxPie = document.getElementById('pieChart').getContext('2d');
-    const ctxBar = document.getElementById('barChart').getContext('2d');
-    const textColor = getComputedStyle(document.body).getPropertyValue('--text-main').trim();
-    const isDark = document.body.getAttribute('data-theme') === 'dark';
-    if(window.Chart) {
+    function updateCharts(txList = null) {
+        try {
+            if(!document.getElementById('analytics').classList.contains('active')) return;
+            if(!txList) {
+                const period = document.getElementById('analytics-period').value;
+                const now = new Date();
+                txList = transactions.filter(t => {
+                    if(!t.date) return false;
+                    const d = new Date(t.date);
+                    if(period === 'MTD') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+                    if(period === 'YTD') return d.getFullYear() === now.getFullYear();
+                    if(period === 'QTD') return d.getFullYear() === now.getFullYear() && Math.floor(d.getMonth()/3) === Math.floor(now.getMonth()/3);
+                    return true;
+                });
+            }
+
+            const catFilter = document.getElementById('analytics-cat-filter').value;
+            const nameFilter = document.getElementById('analytics-name-filter').value;
+
+            let expenses = txList.filter(t => t.type === 'Expense' || t.type === 'Savings-Deposit');
+            
+            const income = txList.filter(t => t.type === 'Income').reduce((s,t)=>s+t.kes, 0);
+            const savingsTotal = txList.filter(t => t.type === 'Savings-Deposit').reduce((s,t)=>s+t.kes, 0);
+            const targetPct = income ? ((savingsTotal / income) * 100).toFixed(1) : 0;
+            document.getElementById('stat-target').innerText = `${targetPct}%`;
+            document.getElementById('stat-target').className = targetPct >= 30 ? 'value positive' : 'value negative';
+
+            const thirtyDaysAgo = new Date().setDate(new Date().getDate() - 30);
+            const sixtyDaysAgo = new Date().setDate(new Date().getDate() - 60);
+            const currentExp = transactions.filter(t => t.date && new Date(t.date) >= thirtyDaysAgo && t.type === 'Expense').reduce((s,t)=>s+t.kes,0);
+            const prevExp = transactions.filter(t => t.date && new Date(t.date) >= sixtyDaysAgo && new Date(t.date) < thirtyDaysAgo && t.type === 'Expense').reduce((s,t)=>s+t.kes,0);
+            const inflation = prevExp ? (((currentExp - prevExp) / prevExp) * 100).toFixed(1) : 0;
+            document.getElementById('stat-inflation').innerText = `${inflation > 0 ? '+':''}${inflation}%`;
+            document.getElementById('stat-inflation').className = inflation <= 0 ? 'value positive' : 'value negative';
+
+            let chartExpenses = expenses;
+            if(catFilter !== 'ALL') chartExpenses = chartExpenses.filter(e => e.category === catFilter);
+            if(nameFilter !== 'ALL') chartExpenses = chartExpenses.filter(e => e.name === nameFilter);
+
+            drawCharts(chartExpenses, catFilter, nameFilter);
+        } catch(e) { console.error("Chart Error", e); }
+    }
+
+    function drawCharts(expenses, catFilter, nameFilter) {
+        const ctxPie = document.getElementById('pieChart').getContext('2d');
+        const ctxBar = document.getElementById('barChart').getContext('2d');
+        const textColor = getComputedStyle(document.body).getPropertyValue('--text-main').trim();
+        const isDark = document.body.getAttribute('data-theme') === 'dark';
         Chart.defaults.color = textColor; Chart.defaults.borderColor = isDark ? '#14281f' : '#d1fae5';
-    }
 
-    const pieData = expenses.filter(t => t.kes > 0).reduce((acc, tx) => {
-        let key = catFilter === 'ALL' ? tx.category : tx.name;
-        acc[key] = (acc[key] || 0) + tx.kes; return acc;
-    }, {});
+        const pieData = expenses.filter(t => t.kes > 0).reduce((acc, tx) => {
+            let key = catFilter === 'ALL' ? tx.category : tx.name;
+            // Append icon to the pie chart labels if viewing by category
+            if(catFilter === 'ALL') key = `${getIcon(key)} ${key}`;
+            acc[key] = (acc[key] || 0) + tx.kes; return acc;
+        }, {});
 
-    const totalAmount = Object.values(pieData).reduce((a,b) => a+b, 0);
-    const pieLabels = Object.keys(pieData).map(k => {
-        let pct = totalAmount > 0 ? ((pieData[k] / totalAmount) * 100).toFixed(1) : 0;
-        return `${k} (${pct}%)`;
-    });
+        const totalAmount = Object.values(pieData).reduce((a,b) => a+b, 0);
+        const pieLabels = Object.keys(pieData).map(k => {
+            let pct = totalAmount > 0 ? ((pieData[k] / totalAmount) * 100).toFixed(1) : 0;
+            return `${k} (${pct}%)`;
+        });
 
-    if(pieChartInstance) pieChartInstance.destroy();
-    if(window.Chart) {
+        if(pieChartInstance) pieChartInstance.destroy();
         pieChartInstance = new Chart(ctxPie, {
             type: 'doughnut',
             data: { 
@@ -1344,39 +1319,37 @@ function drawCharts(expenses, catFilter, nameFilter) {
                 } 
             }
         });
-    }
 
-    const monthlyData = {};
-    expenses.forEach(t => {
-        const m = t.date.substring(0,7);
-        if(!monthlyData[m]) monthlyData[m] = { budget: 0, actual: 0 };
-        monthlyData[m].actual += t.kes;
-    });
-
-    Object.keys(monthlyData).forEach(m => {
-        let mBudget = 0;
-        let items = new Set();
-        Object.keys(categoryBudgets).forEach(bm => {
-            if(bm <= m && categoryBudgets[bm]) Object.keys(categoryBudgets[bm]).forEach(k => items.add(k));
+        const monthlyData = {};
+        expenses.forEach(t => {
+            const m = t.date.substring(0,7);
+            if(!monthlyData[m]) monthlyData[m] = { budget: 0, actual: 0 };
+            monthlyData[m].actual += t.kes;
         });
-        transactions.filter(t => t.date && t.date.startsWith(m) && (t.type === 'Expense' || t.type === 'Savings-Deposit')).forEach(t => items.add(`${t.category}::${t.name}`));
-        
-        items.forEach(k => {
-            let parts = k.split('::');
-            let c = parts[0]; let n = parts[1];
-            if (catFilter === 'ALL' || catFilter === c) {
-                if (nameFilter === 'ALL' || nameFilter === n) {
-                    mBudget += getBudget(c, n, m);
+
+        Object.keys(monthlyData).forEach(m => {
+            let mBudget = 0;
+            let items = new Set();
+            Object.keys(categoryBudgets).forEach(bm => {
+                if(bm <= m && categoryBudgets[bm]) Object.keys(categoryBudgets[bm]).forEach(k => items.add(k));
+            });
+            transactions.filter(t => t.date && t.date.startsWith(m) && (t.type === 'Expense' || t.type === 'Savings-Deposit')).forEach(t => items.add(`${t.category}::${t.name}`));
+            
+            items.forEach(k => {
+                let parts = k.split('::');
+                let c = parts[0]; let n = parts[1];
+                if (catFilter === 'ALL' || catFilter === c) {
+                    if (nameFilter === 'ALL' || nameFilter === n) {
+                        mBudget += getBudget(c, n, m);
+                    }
                 }
-            }
+            });
+            monthlyData[m].budget = mBudget;
         });
-        monthlyData[m].budget = mBudget;
-    });
 
-    const sortedMonths = Object.keys(monthlyData).sort();
+        const sortedMonths = Object.keys(monthlyData).sort();
 
-    if(barChartInstance) barChartInstance.destroy();
-    if(window.Chart) {
+        if(barChartInstance) barChartInstance.destroy();
         barChartInstance = new Chart(ctxBar, {
             type: 'bar',
             data: {
@@ -1389,206 +1362,196 @@ function drawCharts(expenses, catFilter, nameFilter) {
             options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { position: 'bottom', labels: { color: textColor, font: {size: 11}, boxWidth: 12 } } } }
         });
     }
-}
 
-function updateInflationChart() {
-    try {
-        const analyticsEl = document.getElementById('analytics');
-        const intervalEl = document.getElementById('inflation-interval');
-        const nameFilterEl = document.getElementById('inflation-expense-filter');
-        
-        if(!analyticsEl || !analyticsEl.classList.contains('active') || !intervalEl || !nameFilterEl) return;
-        
-        const interval = intervalEl.value;
-        const nameFilter = nameFilterEl.value;
+    function updateInflationChart() {
+        try {
+            if(!document.getElementById('analytics').classList.contains('active')) return;
+            const interval = document.getElementById('inflation-interval').value;
+            const nameFilter = document.getElementById('inflation-expense-filter').value;
 
-        let data = transactions.filter(t => t.date && t.type === 'Expense');
-        if (nameFilter !== 'ALL') data = data.filter(t => t.name === nameFilter);
+            let data = transactions.filter(t => t.date && t.type === 'Expense');
+            if (nameFilter !== 'ALL') data = data.filter(t => t.name === nameFilter);
 
-        const isDark = document.body.getAttribute('data-theme') === 'dark';
-        const textColor = isDark ? '#a7f3d0' : '#475569';
-        const bucketedData = {};
+            const isDark = document.body.getAttribute('data-theme') === 'dark';
+            const textColor = isDark ? '#a7f3d0' : '#475569';
+            const bucketedData = {};
 
-        const now = new Date();
-        data.forEach(t => {
-            const d = new Date(t.date);
-            const y = d.getFullYear(); const m = d.getMonth();
-            
-            if(interval === 'MTD' && d.getDate() > now.getDate()) return;
-            if(interval === 'QTD' && ((m%3) > (now.getMonth()%3) || ((m%3) === (now.getMonth()%3) && d.getDate() > now.getDate()))) return;
-            if(interval === 'YTD' && (m > now.getMonth() || (m === now.getMonth() && d.getDate() > now.getDate()))) return;
+            const now = new Date();
+            data.forEach(t => {
+                const d = new Date(t.date);
+                const y = d.getFullYear(); const m = d.getMonth();
+                
+                // Historical bounds checks
+                if(interval === 'MTD' && d.getDate() > now.getDate()) return;
+                if(interval === 'QTD' && ((m%3) > (now.getMonth()%3) || ((m%3) === (now.getMonth()%3) && d.getDate() > now.getDate()))) return;
+                if(interval === 'YTD' && (m > now.getMonth() || (m === now.getMonth() && d.getDate() > now.getDate()))) return;
 
-            let key = "";
-            if(interval === 'Monthly' || interval === 'MTD') key = `${y}-${String(m+1).padStart(2,'0')}`;
-            else if (interval === 'Quarterly' || interval === 'QTD') key = `${y}-Q${Math.floor(m/3)+1}`;
-            else if (interval === 'Half-Year') key = `${y}-H${Math.floor(m/6)+1}`;
-            else if (interval === 'Yearly' || interval === 'YTD') key = `${y}`;
-            bucketedData[key] = (bucketedData[key] || 0) + t.kes;
-        });
+                let key = "";
+                if(interval === 'Monthly' || interval === 'MTD') key = `${y}-${String(m+1).padStart(2,'0')}`;
+                else if (interval === 'Quarterly' || interval === 'QTD') key = `${y}-Q${Math.floor(m/3)+1}`;
+                else if (interval === 'Half-Year') key = `${y}-H${Math.floor(m/6)+1}`;
+                else if (interval === 'Yearly' || interval === 'YTD') key = `${y}`;
+                bucketedData[key] = (bucketedData[key] || 0) + t.kes;
+            });
 
-        const sortedKeys = Object.keys(bucketedData).sort();
-        const inflationData = []; const chartLabels = [];
+            const sortedKeys = Object.keys(bucketedData).sort();
+            const inflationData = []; const chartLabels = [];
 
-        for(let i = 0; i < sortedKeys.length; i++) {
-            const currentPeriod = sortedKeys[i];
-            const currentVal = bucketedData[currentPeriod];
-            chartLabels.push(currentPeriod);
-            if (i === 0) {
-                inflationData.push(0); 
-            } else {
-                const prevVal = bucketedData[sortedKeys[i-1]];
-                if (prevVal === 0) inflationData.push(currentVal > 0 ? 100 : 0);
-                else inflationData.push(parseFloat((((currentVal - prevVal) / prevVal) * 100).toFixed(2)));
+            for(let i = 0; i < sortedKeys.length; i++) {
+                const currentPeriod = sortedKeys[i];
+                const currentVal = bucketedData[currentPeriod];
+                chartLabels.push(currentPeriod);
+                if (i === 0) {
+                    inflationData.push(0); 
+                } else {
+                    const prevVal = bucketedData[sortedKeys[i-1]];
+                    if (prevVal === 0) inflationData.push(currentVal > 0 ? 100 : 0);
+                    else inflationData.push(parseFloat((((currentVal - prevVal) / prevVal) * 100).toFixed(2)));
+                }
             }
-        }
 
-        const canvasInf = document.getElementById('inflationChart');
-        if(!canvasInf) return;
-        const ctxInf = canvasInf.getContext('2d');
-        if(inflationChartInstance) inflationChartInstance.destroy();
-        
-        if(window.Chart) {
+            const ctxInf = document.getElementById('inflationChart').getContext('2d');
+            if(inflationChartInstance) inflationChartInstance.destroy();
+            
             inflationChartInstance = new Chart(ctxInf, {
                 type: 'line',
                 data: { labels: chartLabels, datasets: [{ label: 'Inflation / Growth %', data: inflationData, borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.2)', fill: true, tension: 0.3, pointBackgroundColor: '#d97706', pointRadius: 4 }] },
                 options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: textColor } } }, scales: { y: { title: { display: true, text: 'Growth Percentage (%)', color: textColor }, grid: { color: isDark ? '#14281f' : '#d1fae5' } }, x: { grid: { color: isDark ? '#14281f' : '#d1fae5' } } } }
             });
-        }
-    } catch(e) { console.error("Inflation Chart Error:", e); }
-}
-
-// --- Data Safety ---
-function saveState() { 
-    historyStack.push(JSON.stringify(transactions)); 
-    redoStack = []; 
-    if (historyStack.length > 20) historyStack.shift(); 
-}
-
-function undo() {
-    if (historyStack.length === 0) return alert("Nothing to undo!");
-    redoStack.push(JSON.stringify(transactions));
-    transactions = JSON.parse(historyStack.pop());
-    saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
-}
-
-function redo() {
-    if (redoStack.length === 0) return alert("Nothing to redo!");
-    historyStack.push(JSON.stringify(transactions));
-    transactions = JSON.parse(redoStack.pop());
-    saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
-}
-
-function saveData() { 
-    try {
-        localStorage.setItem('suppa_tx', JSON.stringify(transactions)); 
-        console.log("💾 Data successfully saved to Local Storage.");
-    } catch (e) {
-        console.error("❌ CRITICAL: Failed to save to Local Storage! Is your browser blocking it or out of space?", e);
-        alert("Warning: Your data could not be saved to your device. Check if your browser is blocking Local Storage in private mode.");
+        } catch(e) { console.error("Inflation Chart Error:", e); }
     }
-}
 
-function resetData() {
-    if(confirm("⚠ DANGER: This will wipe ALL transactions, budgets, and portfolio history. Are you entirely sure?")) {
-        if(confirm("Final confirmation: Type 'YES' to proceed.")) {
-            localStorage.clear(); 
-            transactions = []; categoryBudgets = {}; 
-            customMem = { Expense: [], Income: [], Savings: [], Names: [] };
-            updateDatalists(); updateUI();
+    // --- Data Safety ---
+    function saveState() { historyStack.push(JSON.stringify(transactions)); redoStack = []; if (historyStack.length > 20) historyStack.shift(); }
+    
+    function undo() {
+        if (historyStack.length === 0) return alert("Nothing to undo!");
+        redoStack.push(JSON.stringify(transactions));
+        transactions = JSON.parse(historyStack.pop());
+        saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
+    }
+
+    function redo() {
+        if (redoStack.length === 0) return alert("Nothing to redo!");
+        historyStack.push(JSON.stringify(transactions));
+        transactions = JSON.parse(redoStack.pop());
+        saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
+    }
+
+    function saveData() { localStorage.setItem('suppa_tx', JSON.stringify(transactions)); }
+
+    function resetData() {
+        if(confirm("⚠ DANGER: This will wipe ALL transactions, budgets, and portfolio history. Are you entirely sure?")) {
+            if(confirm("Final confirmation: Type 'YES' to proceed.")) {
+                localStorage.clear(); 
+                transactions = []; categoryBudgets = {}; 
+                customMem = { Expense: [], Income: [], Savings: [], Names: [], Icons: {} };
+                updateDatalists(); updateUI();
+            }
         }
     }
-}
 
-function exportCSV() {
-    if(transactions.length === 0 && customMem.Savings.length === 0) return alert("No transaction data to export!");
-    let csvContent = "ID,Name,Type,Category,Date,Actual_Amount,Quantity,FX_Rate,Total_KES,Notes\n";
-    
-    transactions.forEach(t => {
-        csvContent += `${t.id},"${t.name}",${t.type},"${t.category}",${t.date},${t.actual},${t.qty},${t.fx},${t.kes},"${(t.notes||'').replace(/"/g, '""')}"\n`;
-    });
-    
-    customMem.Savings.forEach((cat, index) => {
-        if (!transactions.some(t => t.category === cat && (t.type === 'Starting-Balance' || t.type.includes('Savings')))) {
-            csvContent += `${Date.now() + 1000 + index},"Initial Balance","Starting-Balance","${cat}","2020-01-01",0,1,1,0,"Auto-migrated empty account"\n`;
-        }
-    });
-
-    triggerDownload(csvContent, `Suppa_Transactions_Backup_${new Date().toISOString().split('T')[0]}.csv`);
-}
-
-function exportBudgetCSV() {
-    if(Object.keys(categoryBudgets).length === 0) return alert("No budget data to export!");
-    let csvContent = "Month,Category,Expense_Name,Budget_Amount\n";
-    Object.keys(categoryBudgets).sort().forEach(month => {
-        Object.keys(categoryBudgets[month]).forEach(key => {
-            let parts = key.split('::');
-            let amt = categoryBudgets[month][key];
-            if(amt > 0) csvContent += `${month},"${parts[0]}","${parts[1]}",${amt}\n`;
+    function exportCSV() {
+        if(transactions.length === 0 && customMem.Savings.length === 0) return alert("No transaction data to export!");
+        let csvContent = "ID,Name,Type,Category,Date,Actual_Amount,Quantity,FX_Rate,Total_KES,Notes\n";
+        
+        // Export actual transactions natively
+        transactions.forEach(t => {
+            csvContent += `${t.id},"${t.name}",${t.type},"${t.category}",${t.date},${t.actual},${t.qty},${t.fx},${t.kes},"${(t.notes||'').replace(/"/g, '""')}"\n`;
         });
-    });
-    triggerDownload(csvContent, `Suppa_Budgets_Backup_${new Date().toISOString().split('T')[0]}.csv`);
-}
+        
+        // Safety net: Backup any empty 'custom' portfolio account types explicitly if they don't have a record yet
+        customMem.Savings.forEach((cat, index) => {
+            if (!transactions.some(t => t.category === cat && (t.type === 'Starting-Balance' || t.type.includes('Savings')))) {
+                csvContent += `${Date.now() + 1000 + index},"Initial Balance","Starting-Balance","${cat}","2020-01-01",0,1,1,0,"Auto-migrated empty account"\n`;
+            }
+        });
 
-function triggerDownload(content, fileName) {
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute("download", fileName);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
+        triggerDownload(csvContent, `Suppa_Transactions_Backup_${new Date().toISOString().split('T')[0]}.csv`);
+    }
+    
+    function exportBudgetCSV() {
+        if(Object.keys(categoryBudgets).length === 0) return alert("No budget data to export!");
+        let csvContent = "Month,Category,Expense_Name,Budget_Amount\n";
+        Object.keys(categoryBudgets).sort().forEach(month => {
+            Object.keys(categoryBudgets[month]).forEach(key => {
+                let parts = key.split('::');
+                let amt = categoryBudgets[month][key];
+                if(amt > 0) csvContent += `${month},"${parts[0]}","${parts[1]}",${amt}\n`;
+            });
+        });
+        triggerDownload(csvContent, `Suppa_Budgets_Backup_${new Date().toISOString().split('T')[0]}.csv`);
+    }
 
-function importCSV(e) {
-    const file = e.target.files[0];
-    if(!file) return;
-    const reader = new FileReader();
-    reader.onload = function(evt) {
-        const rows = evt.target.result.split('\n');
-        saveState();
-        rows.forEach((row, i) => {
-            if(i === 0 || !row.trim()) return; 
-            const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(s => s.replace(/(^"|"$)/g, '').trim());
-            if(cols.length >= 10 && cols[0] !== 'ID') {
-                let newId = parseInt(cols[0]);
-                if(!transactions.some(t => t.id === newId)) {
-                    let importedTx = {
-                        id: newId || Date.now() + i,
-                        name: cols[1] || '(General)', type: cols[2], category: cols[3], date: cols[4],
-                        actual: parseFloat(cols[5]) || 0, qty: parseFloat(cols[6]) || 1, fx: parseFloat(cols[7]) || 1,
-                        kes: parseFloat(cols[8]) || 0, notes: cols[9] || ""
-                    };
-                    transactions.push(importedTx);
-                    addToMemory(importedTx.type, importedTx.category, importedTx.name);
+    function triggerDownload(content, fileName) {
+        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute("download", fileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    function exportTableToExcel(tableID, filename = ''){
+        var tableSelect = document.getElementById(tableID);
+        var wb = XLSX.utils.table_to_book(tableSelect, {sheet:"Sheet1", raw: true});
+        XLSX.writeFile(wb, filename+".xlsx");
+    }
+
+    function importCSV(e) {
+        const file = e.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+            const rows = evt.target.result.split('\n');
+            saveState();
+            rows.forEach((row, i) => {
+                if(i === 0 || !row.trim()) return; 
+                const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(s => s.replace(/(^"|"$)/g, '').trim());
+                if(cols.length >= 10 && cols[0] !== 'ID') {
+                    
+                    // Simple check to prevent duplicate imports
+                    let newId = parseInt(cols[0]);
+                    if(!transactions.some(t => t.id === newId)) {
+                        let importedTx = {
+                            id: newId || Date.now() + i,
+                            name: cols[1] || '(General)', type: cols[2], category: cols[3], date: cols[4],
+                            actual: parseFloat(cols[5]) || 0, qty: parseFloat(cols[6]) || 1, fx: parseFloat(cols[7]) || 1,
+                            kes: parseFloat(cols[8]) || 0, notes: cols[9] || ""
+                        };
+                        transactions.push(importedTx);
+                        // Save category & optionally assign a default icon if missing
+                        addToMemory(importedTx.type, importedTx.category, importedTx.name, null);
+                    }
                 }
-            }
-        });
-        saveData(); updateDatalists(); updateUI();
-        alert("Transactions & Portfolio CSV Imported Successfully!");
-        e.target.value = '';
-    };
-    reader.readAsText(file);
-}
+            });
+            saveData(); updateDatalists(); updateUI();
+            alert("Transactions & Portfolio CSV Imported Successfully!");
+            e.target.value = '';
+        };
+        reader.readAsText(file);
+    }
 
-function importBudgetCSV(e) {
-    const file = e.target.files[0];
-    if(!file) return;
-    const reader = new FileReader();
-    reader.onload = function(evt) {
-        const rows = evt.target.result.split('\n');
-        rows.forEach((row, i) => {
-            if(i === 0 || !row.trim()) return; 
-            const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(s => s.replace(/(^"|"$)/g, '').trim());
-            
-            if(cols.length >= 4 && cols[0].match(/^\d{4}-\d{2}$/)) {
-                if(!categoryBudgets[cols[0]]) categoryBudgets[cols[0]] = {};
-                categoryBudgets[cols[0]][`${cols[1]}::${cols[2]}`] = parseFloat(cols[3]) || 0;
-            }
-        });
-        localStorage.setItem('suppa_budgets_v2', JSON.stringify(categoryBudgets));
-        updateUI(); renderBudgetSetup();
-        alert("Budgets CSV Imported Successfully!");
-        e.target.value = '';
-    };
-    reader.readAsText(file);
-}
+    function importBudgetCSV(e) {
+        const file = e.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+            const rows = evt.target.result.split('\n');
+            rows.forEach((row, i) => {
+                if(i === 0 || !row.trim()) return; 
+                const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(s => s.replace(/(^"|"$)/g, '').trim());
+                
+                if(cols.length >= 4 && cols[0].match(/^\d{4}-\d{2}$/)) {
+                    if(!categoryBudgets[cols[0]]) categoryBudgets[cols[0]] = {};
+                    categoryBudgets[cols[0]][`${cols[1]}::${cols[2]}`] = parseFloat(cols[3]) || 0;
+                }
+            });
+            localStorage.setItem('suppa_budgets_v2', JSON.stringify(categoryBudgets));
+            updateUI(); renderBudgetSetup();
+            alert("Budgets CSV Imported Successfully!");
+            e.target.value = '';
+        };
+        reader.readAsText(file);
+    }
