@@ -8,7 +8,7 @@
     <link rel="icon" type="image/png" href="app-icon.png">
     
     <!-- Include Supabase Library -->
-    <script src="[https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2](https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2)"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
         /* Suppa Budgetor Core Theme Variables */
@@ -201,7 +201,7 @@
             <!-- Toggle Between Sign In and Sign Up -->
             <div class="toggle-mode">
                 <span id="toggleText">Don't have an account?</span>
-                <a id="toggleActionBtn">Sign Up</a>
+                <a href="#" id="toggleActionBtn">Sign Up</a>
             </div>
         </form>
 
@@ -210,7 +210,7 @@
         <div class="divider">Or</div>
 
         <button id="googleLoginBtn" class="google-btn">
-            <svg width="18" height="18" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" viewBox="0 0 48 48">
+            <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
                 <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
                 <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
                 <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
@@ -222,152 +222,174 @@
     </div>
 
     <script>
-        // --- SUPABASE CONFIGURATION ---
-        const supabaseUrl = '[https://ffzkpuiujxdqwjvmhrmx.supabase.co](https://ffzkpuiujxdqwjvmhrmx.supabase.co)'; 
-        const supabaseKey = 'sb_publishable_yNJ1bJEdGV4Vpw_itRG1mA_XOBP8efu'; 
-        const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+        // Wait until HTML is completely loaded before attaching click events
+        document.addEventListener('DOMContentLoaded', () => {
 
-        const authMessage = document.getElementById('authMessage');
-        const emailInput = document.getElementById('email');
-        const passwordInput = document.getElementById('password');
-        const loginBtn = document.getElementById('loginBtn');
-        const forgotPasswordContainer = document.getElementById('forgotPasswordContainer');
-
-        let isSignUpMode = false; 
-
-        document.getElementById('loginForm').reset();
-
-        function showMessage(msg, isError = true) {
-            authMessage.style.display = 'block';
-            authMessage.textContent = msg;
-            authMessage.className = isError ? 'error-msg' : 'success-msg';
-        }
-
-        // ==========================================
-        // 1. TOGGLE SIGN IN / SIGN UP MODE
-        // ==========================================
-        document.getElementById('toggleActionBtn').addEventListener('click', () => {
-            isSignUpMode = !isSignUpMode;
-            authMessage.style.display = 'none';
+            // --- SUPABASE CONFIGURATION ---
+            const supabaseUrl = 'https://ffzkpuiujxdqwjvmhrmx.supabase.co'; 
+            const supabaseKey = 'sb_publishable_yNJ1bJEdGV4Vpw_itRG1mA_XOBP8efu'; 
             
-            if (isSignUpMode) {
-                document.getElementById('headerSubtitle').textContent = "Create an account to start budgeting.";
-                loginBtn.textContent = "Sign Up";
-                document.getElementById('toggleText').textContent = "Already have an account?";
-                document.getElementById('toggleActionBtn').textContent = "Sign In";
-                forgotPasswordContainer.style.display = 'none'; 
-            } else {
-                document.getElementById('headerSubtitle').textContent = "Log in to Track your Budget.";
-                loginBtn.textContent = "Sign In";
-                document.getElementById('toggleText').textContent = "Don't have an account?";
-                document.getElementById('toggleActionBtn').textContent = "Sign Up";
-                forgotPasswordContainer.style.display = 'block'; 
-            }
-        });
-
-        // ==========================================
-        // 2. TOGGLE PASSWORD VISIBILITY
-        // ==========================================
-        const togglePassword = document.getElementById('togglePassword');
-
-        togglePassword.addEventListener('click', () => {
-            const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
-            passwordInput.setAttribute('type', type);
-            togglePassword.textContent = type === 'password' ? '👁️' : '🙈';
-        });
-
-        // ==========================================
-        // 3. FORGOT PASSWORD LOGIC
-        // ==========================================
-        const forgotPasswordBtn = document.getElementById('forgotPasswordBtn');
-        
-        forgotPasswordBtn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            const email = emailInput.value.trim();
-            
-            if (!email) {
-                showMessage("Please enter your email address first, then click Forgot Password.", true);
+            if (!window.supabase) {
+                alert("Critical Error: Supabase failed to load. Please check your connection.");
                 return;
             }
-
-            try {
-                const { data, error } = await supabaseClient.auth.resetPasswordForEmail(email, {
-                    redirectTo: '[https://suppabudgetorapp.netlify.app/index.html](https://suppabudgetorapp.netlify.app/index.html)',
-                });
-                if (error) throw error;
-                showMessage("Password reset email sent! Please check your inbox (and spam folder).", false);
-            } catch (error) {
-                showMessage(error.message, true);
-            }
-        });
-
-        // ==========================================
-        // 4. MAIN FORM SUBMIT (Sign In OR Sign Up)
-        // ==========================================
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
             
-            const password = passwordInput.value;
-            const email = emailInput.value.trim();
+            const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 
-            loginBtn.disabled = true;
-            loginBtn.textContent = isSignUpMode ? 'Creating Account...' : 'Signing In...';
-            authMessage.style.display = 'none';
+            // Fetch DOM Elements
+            const authMessage = document.getElementById('authMessage');
+            const emailInput = document.getElementById('email');
+            const passwordInput = document.getElementById('password');
+            const loginBtn = document.getElementById('loginBtn');
+            const forgotPasswordContainer = document.getElementById('forgotPasswordContainer');
+            const loginForm = document.getElementById('loginForm');
+            const toggleActionBtn = document.getElementById('toggleActionBtn');
 
-            try {
+            let isSignUpMode = false; 
+
+            // Safely reset form
+            try { loginForm.reset(); } catch(e) {}
+
+            function showMessage(msg, isError = true) {
+                authMessage.style.display = 'block';
+                authMessage.textContent = msg;
+                authMessage.className = isError ? 'error-msg' : 'success-msg';
+            }
+
+            // ==========================================
+            // 1. TOGGLE SIGN IN / SIGN UP MODE
+            // ==========================================
+            toggleActionBtn.addEventListener('click', (e) => {
+                e.preventDefault(); // Stop the link from jumping to top of page
+                
+                isSignUpMode = !isSignUpMode;
+                authMessage.style.display = 'none';
+                
                 if (isSignUpMode) {
-                    const { data, error } = await supabaseClient.auth.signUp({
-                        email: email,
-                        password: password
-                    });
-
-                    if (error) throw error;
-
-                    if (data?.user && data.user.identities && data.user.identities.length === 0) {
-                         showMessage("An account with this email already exists. Please Sign In.", true);
-                    } else if (data?.session === null) {
-                         showMessage("Success! Please check your email inbox to verify your account before logging in.", false);
-                    } else {
-                         e.target.reset(); 
-                         window.location.href = 'index.html';
-                    }
+                    document.getElementById('headerSubtitle').textContent = "Create an account to start budgeting.";
+                    loginBtn.textContent = "Sign Up";
+                    document.getElementById('toggleText').textContent = "Already have an account?";
+                    toggleActionBtn.textContent = "Sign In";
+                    forgotPasswordContainer.style.display = 'none'; 
                 } else {
-                    const { data, error } = await supabaseClient.auth.signInWithPassword({
-                        email: email,
-                        password: password
-                    });
+                    document.getElementById('headerSubtitle').textContent = "Log in to Track your Budget.";
+                    loginBtn.textContent = "Sign In";
+                    document.getElementById('toggleText').textContent = "Don't have an account?";
+                    toggleActionBtn.textContent = "Sign Up";
+                    forgotPasswordContainer.style.display = 'block'; 
+                }
+            });
 
-                    if (error) throw error;
+            // ==========================================
+            // 2. TOGGLE PASSWORD VISIBILITY
+            // ==========================================
+            const togglePassword = document.getElementById('togglePassword');
 
-                    e.target.reset(); 
-                    window.location.href = 'index.html';
+            togglePassword.addEventListener('click', () => {
+                const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+                passwordInput.setAttribute('type', type);
+                togglePassword.textContent = type === 'password' ? '👁️' : '🙈';
+            });
+
+            // ==========================================
+            // 3. FORGOT PASSWORD LOGIC
+            // ==========================================
+            const forgotPasswordBtn = document.getElementById('forgotPasswordBtn');
+            
+            forgotPasswordBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                const email = emailInput.value.trim();
+                
+                if (!email) {
+                    showMessage("Please enter your email address first, then click Forgot Password.", true);
+                    return;
                 }
 
-            } catch (error) {
-                showMessage(error.message, true);
-                passwordInput.value = ''; 
-                passwordInput.focus(); 
-            } finally {
-                loginBtn.disabled = false;
-                loginBtn.textContent = isSignUpMode ? 'Sign Up' : 'Sign In';
-            }
-        });
+                try {
+                    const { data, error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+                        redirectTo: 'https://suppabudgetorapp.netlify.app/index.html',
+                    });
+                    if (error) throw error;
+                    showMessage("Password reset email sent! Please check your inbox (and spam folder).", false);
+                } catch (error) {
+                    showMessage(error.message, true);
+                }
+            });
 
-        // ==========================================
-        // 5. GOOGLE LOGIN LOGIC
-        // ==========================================
-        document.getElementById('googleLoginBtn').addEventListener('click', async () => {
-            try {
-                const { data, error } = await supabaseClient.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: {
-                        redirectTo: '[https://suppabudgetorapp.netlify.app/index.html](https://suppabudgetorapp.netlify.app/index.html)'
+            // ==========================================
+            // 4. MAIN FORM SUBMIT (Sign In OR Sign Up)
+            // ==========================================
+            loginForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const password = passwordInput.value;
+                const email = emailInput.value.trim();
+
+                if (!email || !password) {
+                    showMessage("Email and password are required.", true);
+                    return;
+                }
+
+                loginBtn.disabled = true;
+                loginBtn.textContent = isSignUpMode ? 'Creating Account...' : 'Signing In...';
+                authMessage.style.display = 'none';
+
+                try {
+                    if (isSignUpMode) {
+                        const { data, error } = await supabaseClient.auth.signUp({
+                            email: email,
+                            password: password
+                        });
+
+                        if (error) throw error;
+
+                        if (data?.user && data.user.identities && data.user.identities.length === 0) {
+                             showMessage("An account with this email already exists. Please Sign In.", true);
+                        } else if (data?.session === null) {
+                             showMessage("Success! Please check your email inbox to verify your account before logging in.", false);
+                        } else {
+                             loginForm.reset(); 
+                             window.location.href = 'index.html';
+                        }
+                    } else {
+                        const { data, error } = await supabaseClient.auth.signInWithPassword({
+                            email: email,
+                            password: password
+                        });
+
+                        if (error) throw error;
+
+                        loginForm.reset(); 
+                        window.location.href = 'index.html';
                     }
-                });
-                if (error) throw error;
-            } catch (error) {
-                showMessage(error.message, true);
-            }
+
+                } catch (error) {
+                    showMessage(error.message, true);
+                    passwordInput.value = ''; 
+                    passwordInput.focus(); 
+                } finally {
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = isSignUpMode ? 'Sign Up' : 'Sign In';
+                }
+            });
+
+            // ==========================================
+            // 5. GOOGLE LOGIN LOGIC
+            // ==========================================
+            document.getElementById('googleLoginBtn').addEventListener('click', async () => {
+                try {
+                    const { data, error } = await supabaseClient.auth.signInWithOAuth({
+                        provider: 'google',
+                        options: {
+                            redirectTo: 'https://suppabudgetorapp.netlify.app/index.html'
+                        }
+                    });
+                    if (error) throw error;
+                } catch (error) {
+                    showMessage(error.message, true);
+                }
+            });
+
         });
     </script>
 </body>
