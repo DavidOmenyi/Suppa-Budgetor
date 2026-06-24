@@ -86,6 +86,350 @@
         }
         input:focus { border-color: var(--accent); outline: none; background: var(--surface-color); }
 
+        .password-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        
+        .password-wrapper input {
+            padding-right: 40px; 
+        }
+        
+        .toggle-password {
+            position: absolute;
+            right: 12px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+            color: var(--text-muted);
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .forgot-password {
+            text-align: right;
+            margin-top: -5px;
+            margin-bottom: 15px;
+        }
+        .forgot-password a {
+            color: var(--primary);
+            font-size: 13px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        .forgot-password a:hover { color: var(--accent); text-decoration: underline; }
+
+        .btn-primary { 
+            background: linear-gradient(135deg, var(--primary), var(--primary-hover)); 
+            color: #fff; border: none; padding: 12px 16px; border-radius: 20px; 
+            cursor: pointer; font-weight: bold; width: 100%; text-transform: uppercase; 
+            transition: 0.3s; margin-top: 5px; font-size: 14px; box-shadow: 0 4px 6px rgba(5, 150, 105, 0.2);
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+
+        /* NEW: Sign Up Toggle Link styling */
+        .toggle-mode {
+            text-align: center;
+            margin-top: 15px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        .toggle-mode a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: bold;
+            cursor: pointer;
+            margin-left: 5px;
+        }
+        .toggle-mode a:hover { text-decoration: underline; }
+
+        .divider { 
+            margin: 25px 0; color: var(--text-muted); font-size: 12px; 
+            display: flex; align-items: center; text-transform: uppercase; font-weight: bold;
+        }
+        .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); margin: 0 10px; }
+
+        .google-btn {
+            background: var(--surface-color); color: var(--text-muted); border: 2px solid var(--border);
+            padding: 10px; border-radius: 20px; cursor: pointer; font-weight: bold; width: 100%;
+            display: flex; justify-content: center; align-items: center; gap: 10px; transition: 0.3s; font-size: 14px;
+        }
+        .google-btn:hover { background: var(--bg-color); border-color: var(--primary); color: var(--primary); }
+
+        #authMessage { 
+            font-size: 13px; margin-top: 15px; font-weight: bold; display: none; 
+            padding: 10px; border-radius: 8px; line-height: 1.4;
+        }
+        .error-msg { color: var(--danger); background: rgba(239, 68, 68, 0.1); }
+        .success-msg { color: var(--success); background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success); }
+    </style>
+</head>
+<body>
+
+    <div class="login-card">
+        <h1 id="headerTitle">Suppa Budgetor 🍀</h1>
+        <p class="subtitle" id="headerSubtitle">Log in to Track your Budget.</p>
+
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" placeholder="you@example.com" required autocomplete="email">
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <div class="password-wrapper">
+                    <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+                    <button type="button" id="togglePassword" class="toggle-password" title="Toggle password visibility">
+                        👁️
+                    </button>
+                </div>
+            </div>
+
+            <!-- Forgot Password Link -->
+            <div class="forgot-password" id="forgotPasswordContainer">
+                <a href="#" id="forgotPasswordBtn">Forgot Password?</a>
+            </div>
+
+            <button type="submit" class="btn-primary" id="loginBtn">Sign In</button>
+
+            <!-- NEW: Toggle Between Sign In and Sign Up -->
+            <div class="toggle-mode">
+                <span id="toggleText">Don't have an account?</span>
+                <a id="toggleActionBtn">Sign Up</a>
+            </div>
+        </form>
+
+        <p id="authMessage"></p>
+
+        <div class="divider">Or</div>
+
+        <button id="googleLoginBtn" class="google-btn">
+            <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                <path fill="none" d="M0 0h48v48H0z"/>
+            </svg>
+            Continue with Google
+        </button>
+    </div>
+
+    <script>
+        // --- SUPABASE CONFIGURATION ---
+        const supabaseUrl = 'https://ffzkpuiujxdqwjvmhrmx.supabase.co'; 
+        const supabaseKey = 'sb_publishable_yNJ1bJEdGV4Vpw_itRG1mA_XOBP8efu'; 
+        const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        const authMessage = document.getElementById('authMessage');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const loginBtn = document.getElementById('loginBtn');
+        const forgotPasswordContainer = document.getElementById('forgotPasswordContainer');
+
+        let isSignUpMode = false; // Tracks whether the form is in Sign In or Sign Up mode
+
+        document.getElementById('loginForm').reset();
+
+        function showMessage(msg, isError = true) {
+            authMessage.style.display = 'block';
+            authMessage.textContent = msg;
+            authMessage.className = isError ? 'error-msg' : 'success-msg';
+        }
+
+        // ==========================================
+        // 1. TOGGLE SIGN IN / SIGN UP MODE
+        // ==========================================
+        document.getElementById('toggleActionBtn').addEventListener('click', () => {
+            isSignUpMode = !isSignUpMode;
+            authMessage.style.display = 'none';
+            
+            if (isSignUpMode) {
+                // Switch to Sign Up UI
+                document.getElementById('headerSubtitle').textContent = "Create an account to start budgeting.";
+                loginBtn.textContent = "Sign Up";
+                document.getElementById('toggleText').textContent = "Already have an account?";
+                document.getElementById('toggleActionBtn').textContent = "Sign In";
+                forgotPasswordContainer.style.display = 'none'; // Hide forgot password during sign up
+            } else {
+                // Switch back to Sign In UI
+                document.getElementById('headerSubtitle').textContent = "Log in to Track your Budget.";
+                loginBtn.textContent = "Sign In";
+                document.getElementById('toggleText').textContent = "Don't have an account?";
+                document.getElementById('toggleActionBtn').textContent = "Sign Up";
+                forgotPasswordContainer.style.display = 'block'; // Show forgot password during sign in
+            }
+        });
+
+        // ==========================================
+        // 2. TOGGLE PASSWORD VISIBILITY
+        // ==========================================
+        const togglePassword = document.getElementById('togglePassword');
+
+        togglePassword.addEventListener('click', () => {
+            const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+            passwordInput.setAttribute('type', type);
+            togglePassword.textContent = type === 'password' ? '👁️' : '🙈';
+        });
+
+        // ==========================================
+        // 3. FORGOT PASSWORD LOGIC
+        // ==========================================
+        const forgotPasswordBtn = document.getElementById('forgotPasswordBtn');
+        
+        forgotPasswordBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const email = emailInput.value.trim();
+            
+            if (!email) {
+                showMessage("Please enter your email address first, then click Forgot Password.", true);
+                return;
+            }
+
+            try {
+                const { data, error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+                    redirectTo: 'https://suppabudgetorapp.netlify.app/index.html',
+                });
+                if (error) throw error;
+                showMessage("Password reset email sent! Please check your inbox (and spam folder).", false);
+            } catch (error) {
+                showMessage(error.message, true);
+            }
+        });
+
+        // ==========================================
+        // 4. MAIN FORM SUBMIT (Sign In OR Sign Up)
+        // ==========================================
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const password = passwordInput.value;
+            const email = emailInput.value.trim();
+
+            loginBtn.disabled = true;
+            loginBtn.textContent = isSignUpMode ? 'Creating Account...' : 'Signing In...';
+            authMessage.style.display = 'none';
+
+            try {
+                if (isSignUpMode) {
+                    // --- SIGN UP LOGIC ---
+                    const { data, error } = await supabaseClient.auth.signUp({
+                        email: email,
+                        password: password
+                    });
+
+                    if (error) throw error;
+
+                    // If Supabase requires email confirmation, let them know.
+                    if (data?.user && data.user.identities && data.user.identities.length === 0) {
+                         showMessage("An account with this email already exists. Please Sign In.", true);
+                    } else if (data?.session === null) {
+                         showMessage("Success! Please check your email inbox to verify your account before logging in.", false);
+                    } else {
+                         // Auto login if email confirmation is turned off
+                         e.target.reset(); 
+                         window.location.href = 'index.html';
+                    }
+                } else {
+                    // --- SIGN IN LOGIC ---
+                    const { data, error } = await supabaseClient.auth.signInWithPassword({
+                        email: email,
+                        password: password
+                    });
+
+                    if (error) throw error;
+
+                    e.target.reset(); 
+                    window.location.href = 'index.html';
+                }
+
+            } catch (error) {
+                showMessage(error.message, true);
+                passwordInput.value = ''; 
+                passwordInput.focus(); 
+            } finally {
+                loginBtn.disabled = false;
+                loginBtn.textContent = isSignUpMode ? 'Sign Up' : 'Sign In';
+            }
+        });
+
+        // ==========================================
+        // 5. GOOGLE LOGIN LOGIC
+        // ==========================================
+        document.getElementById('googleLoginBtn').addEventListener('click', async () => {
+            try {
+                const { data, error } = await supabaseClient.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: {
+                        redirectTo: 'https://suppabudgetorapp.netlify.app/index.html'
+                    }
+                });
+                if (error) throw error;
+            } catch (error) {
+                showMessage(error.message, true);
+            }
+        });
+    </script>
+</body>
+</html>
+        
+        body { 
+            background-color: var(--bg-color); 
+            color: var(--text-main); 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .login-card {
+            background: var(--surface-color);
+            padding: 40px 30px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .login-card::before { 
+            content: ''; 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 5px; 
+            background: linear-gradient(90deg, var(--primary), var(--accent)); 
+        }
+
+        h1 { color: var(--primary); font-weight: 800; letter-spacing: -0.5px; margin-bottom: 5px; font-size: 26px; }
+        .subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 30px; }
+
+        .form-group { display: flex; flex-direction: column; text-align: left; margin-bottom: 15px; }
+        label { font-size: 12px; font-weight: 700; margin-bottom: 5px; color: var(--text-muted); text-transform: uppercase; }
+        
+        input { 
+            padding: 12px; 
+            border: 2px solid var(--border); 
+            border-radius: var(--radius); 
+            background: var(--bg-color); 
+            color: var(--text-main); 
+            transition: 0.2s; 
+            width: 100%; 
+            font-size: 15px;
+        }
+        input:focus { border-color: var(--accent); outline: none; background: var(--surface-color); }
+
         /* NEW: Password Wrapper and Toggle Icon */
         .password-wrapper {
             position: relative;
