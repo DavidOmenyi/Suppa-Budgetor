@@ -10,7 +10,6 @@
     <link rel="manifest" href="manifest.json">
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
@@ -48,14 +47,8 @@
         body { background-color: var(--bg-color); color: var(--text-main); transition: background-color 0.4s ease; -webkit-user-select: none; user-select: none; }
         
         /* Paywall Lock Screen Vault */
-        #lockedScreen {
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background-color: var(--bg-color);
-            z-index: 999999; padding: 15px; overflow-y: auto;
-        }
-        .paywall-center-wrapper {
-            min-height: 95vh; display: flex; justify-content: center; align-items: center;
-        }
+        #lockedScreen { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--bg-color); z-index: 999999; padding: 15px; overflow-y: auto; }
+        .paywall-center-wrapper { min-height: 95vh; display: flex; justify-content: center; align-items: center; }
         .paywall-card { max-width: 440px; width: 100%; }
 
         /* Layout */
@@ -64,21 +57,14 @@
         h1 { color: var(--primary); font-weight: 800; letter-spacing: -0.5px; text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.25); }
         
         .controls { display: flex; flex-wrap: wrap; gap: 6px; }
-        .controls button { 
-            background: var(--surface-color); border: 1px solid var(--primary); color: var(--primary); 
-            padding: 6px 12px; border-radius: 20px; cursor: pointer; transition: 0.3s; font-weight: 600; font-size: 13px;
-        }
+        .controls button { background: var(--surface-color); border: 1px solid var(--primary); color: var(--primary); padding: 6px 12px; border-radius: 20px; cursor: pointer; transition: 0.3s; font-weight: 600; font-size: 13px; }
         .controls button:hover { background: var(--primary); color: #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         .controls button.negative { border-color: var(--danger); color: var(--danger); }
         .controls button.negative:hover { background: var(--danger); color: #fff; }
         
         /* Navigation */
         nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid var(--border); padding-bottom: 10px; justify-content: space-between;}
-        nav button { 
-            flex: 1 1 auto; text-align: center;
-            background: none; border: none; font-size: 15px; font-weight: 600; color: var(--text-muted); 
-            cursor: pointer; padding: 8px 16px; border-radius: var(--radius); transition: 0.3s;
-        }
+        nav button { flex: 1 1 auto; text-align: center; background: none; border: none; font-size: 15px; font-weight: 600; color: var(--text-muted); cursor: pointer; padding: 8px 16px; border-radius: var(--radius); transition: 0.3s; }
         nav button:hover { color: var(--accent); background: rgba(245, 158, 11, 0.1); }
         nav button.active { color: #fff; background: var(--primary); box-shadow: var(--shadow); }
 
@@ -160,7 +146,7 @@
                 <span style="font-size: 52px;">🍀</span>
                 <h2 style="color: var(--primary); font-weight: 800; margin: 10px 0;">Suppa Budgetor Pro</h2>
                 <p style="color: var(--text-muted); font-size: 14px; line-height: 1.5; margin-bottom: 25px;">
-                    You are in restricted mode. Unlock full offline data storage, Smart Mpesa message paste, and automated investment ledgers.
+                    You are in restricted mode. Unlock full offline data storage, custom multi-currency FX converters, and automated investment ledgers.
                 </p>
 
                 <div style="display: flex; flex-direction: column; gap: 12px; max-width: 280px; margin: 0 auto;">
@@ -207,29 +193,29 @@
         <header>
             <h1>Suppa Budgetor 🍀</h1>
             <div class="controls">
-                <button onclick="toggleTheme()" title="Toggle Theme">🌓 Theme</button>
+                <button onclick="window.toggleTheme()" title="Toggle Theme">🌓 Theme</button>
             </div>
         </header>
 
         <nav>
-            <button class="active" onclick="switchTab('home')">Overview</button>
-            <button onclick="switchTab('summaries')">Summaries</button>
-            <button onclick="switchTab('budget')">Budget</button>
-            <button onclick="switchTab('entry')">Log Entry</button>
-            <button onclick="switchTab('analytics')">Analytics</button>
-            <button onclick="switchTab('savings')">Portfolio</button>
-            <button onclick="switchTab('utilities')">Utilities 🛠️</button>
-            <button onclick="switchTab('help')">Help 📞</button>
-            <button onclick="switchTab('instructions')">Instructions 💡</button>
+            <button class="active" onclick="window.switchTab('home')">Overview</button>
+            <button onclick="window.switchTab('summaries')">Summaries</button>
+            <button onclick="window.switchTab('budget')">Budget</button>
+            <button onclick="window.switchTab('entry')">Log Entry</button>
+            <button onclick="window.switchTab('analytics')">Analytics</button>
+            <button onclick="window.switchTab('savings')">Portfolio</button>
+            <button onclick="window.switchTab('utilities')">Utilities 🛠️</button>
+            <button onclick="window.switchTab('help')">Help 📞</button>
+            <button onclick="window.switchTab('instructions')">Instructions 💡</button>
         </nav>
 
         <div id="home" class="tab-content active">
             <div class="flex-between" style="margin-bottom: 15px;">
                 <h2>Financial Overview</h2>
                 <div style="display: flex; gap: 10px; align-items: center;">
-                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="changeMonth(-1)">⬅</button>
+                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="window.changeMonth(-1)">⬅</button>
                     <span id="current-month-display" style="font-weight: 800; font-size: 18px; min-width: 150px; text-align: center; color: var(--primary);"></span>
-                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="changeMonth(1)">➡</button>
+                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="window.changeMonth(1)">➡</button>
                 </div>
             </div>
             
@@ -285,9 +271,9 @@
             <div class="flex-between" style="margin-bottom: 15px;">
                 <h2>Detailed Summaries</h2>
                 <div style="display: flex; gap: 10px; align-items: center;">
-                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="changeMonth(-1)">⬅</button>
+                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="window.changeMonth(-1)">⬅</button>
                     <span id="current-month-display-summaries" style="font-weight: 800; font-size: 18px; min-width: 150px; text-align: center; color: var(--primary);"></span>
-                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="changeMonth(1)">➡</button>
+                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="window.changeMonth(1)">➡</button>
                 </div>
             </div>
 
@@ -295,12 +281,12 @@
                 <h3 style="color: var(--primary); margin: 0;">Category Performance</h3>
                 <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                     <label style="font-size: 13px; font-weight: 700; color: var(--text-muted);">Category Filter:</label>
-                    <select id="summary-cat-filter" onchange="updateUI()" style="padding: 6px; border-radius: 8px; border: 1px solid var(--border); width: auto;">
+                    <select id="summary-cat-filter" onchange="window.updateUI()" style="padding: 6px; border-radius: 8px; border: 1px solid var(--border); width: auto;">
                         <option value="ALL">All Categories</option>
                     </select>
                     
                     <label style="font-size: 13px; font-weight: 700; color: var(--text-muted);">Actual Spent:</label>
-                    <select id="summary-spent-filter" onchange="updateUI()" style="padding: 6px; border-radius: 8px; border: 1px solid var(--border); width: auto;">
+                    <select id="summary-spent-filter" onchange="window.updateUI()" style="padding: 6px; border-radius: 8px; border: 1px solid var(--border); width: auto;">
                         <option value="ALL">All Amounts</option>
                         <option value="ZERO">Zero Spent Only</option>
                         <option value="NON_ZERO">Spent > 0 Only</option>
@@ -310,7 +296,7 @@
             </div>
             <div class="flex-between" style="margin-top: 10px;">
                 <p style="color: var(--text-muted); font-size: 13px; margin: 0;">Click an <b>Expense Name</b> to view all matching records in the detailed ledger.</p>
-                <button class="btn-primary" onclick="exportTableToExcel('performance-table', 'Category_Performance')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download XLSX</button>
+                <button class="btn-primary" onclick="window.exportTableToExcel('performance-table', 'Category_Performance')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download XLSX</button>
             </div>
             
             <div style="overflow-x: auto; margin-top: 10px;">
@@ -340,7 +326,7 @@
 
             <div class="flex-between" style="margin-top: 40px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
                 <h3 style="color: var(--primary); margin: 0;">Transactions Log</h3>
-                <button class="btn-primary" onclick="exportTableToExcel('transactions-table', 'Monthly_Transactions')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download Log</button>
+                <button class="btn-primary" onclick="window.exportTableToExcel('transactions-table', 'Monthly_Transactions')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download Log</button>
             </div>
             <p style="color: var(--text-muted); font-size: 13px; margin-top: 10px;">Click on an <b>Expense/Income Name</b> to edit the entry.</p>
             <div style="overflow-x: auto;">
@@ -364,14 +350,14 @@
                 <h2>Set Monthly Target Budgets</h2>
                 <div>
                     <label style="font-size: 13px; font-weight: 700; color: var(--text-muted); margin-right: 10px;">Viewing Month:</label>
-                    <input type="month" id="budget-month-picker" onchange="renderBudgetSetup()" style="width: auto; padding: 6px; border-radius: 8px; border: 1px solid var(--border); display: inline-block;">
+                    <input type="month" id="budget-month-picker" onchange="window.renderBudgetSetup()" style="width: auto; padding: 6px; border-radius: 8px; border: 1px solid var(--border); display: inline-block;">
                 </div>
             </div>
             <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
                 Budgets set here automatically roll forward to future months.
             </p>
 
-            <form id="budget-form" onsubmit="saveSingleBudget(event)" style="margin-top: 15px; padding-bottom: 20px; border-bottom: 2px solid var(--border);">
+            <form id="budget-form" onsubmit="window.saveSingleBudget(event)" style="margin-top: 15px; padding-bottom: 20px; border-bottom: 2px solid var(--border);">
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Category (Required)</label>
@@ -410,13 +396,13 @@
 
         <div id="entry" class="tab-content">
             <h2>Log / Edit Transaction</h2>
-                    <div class="card" style="margin-top: 15px; margin-bottom: 25px; border-left: 4px solid var(--success);">
-            <h3 style="color: var(--success); margin-bottom: 8px;">🤖 Smart M-Pesa Paste</h3>
-            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">Paste your M-Pesa SMS below to instantly auto-fill the form below!</p>
-            <textarea id="mpesa-paste-box" placeholder="e.g. OHE0000000 Confirmed. Ksh1,500.00 paid to JAVA HOUSE..." style="width: 100%; height: 60px; padding: 10px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px;"></textarea>
-        </div>
+            <div class="card" style="margin-top: 15px; margin-bottom: 25px; border-left: 4px solid var(--success);">
+                <h3 style="color: var(--success); margin-bottom: 8px;">🤖 Smart M-Pesa Paste</h3>
+                <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">Paste your M-Pesa SMS below to instantly auto-fill the form below!</p>
+                <textarea id="mpesa-paste-box" placeholder="e.g. OHE0000000 Confirmed. Ksh1,500.00 paid to JAVA HOUSE..." style="width: 100%; height: 60px; padding: 10px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px;"></textarea>
+            </div>
 
-            <form id="tx-form" onsubmit="saveTransaction(event)" style="margin-top: 15px;">
+            <form id="tx-form" onsubmit="window.saveTransaction(event)" style="margin-top: 15px;">
                 <input type="hidden" id="tx-id"> 
                 <div class="form-grid">
                     <div class="form-group">
@@ -426,7 +412,7 @@
                     </div>
                     <div class="form-group">
                         <label>Type</label>
-                        <select id="tx-type" onchange="handleTypeChange('tx')">
+                        <select id="tx-type" onchange="window.handleTypeChange('tx')">
                             <option value="Expense">Expense</option>
                             <option value="Income">Income</option>
                             <option value="Savings">Savings (Portfolio)</option>
@@ -453,7 +439,7 @@
                                 <option value="👶">👶</option><option value="🛠️">🛠️</option><option value="💼">💼</option>
                                 <option value="🚑">🚑</option><option value="🕊️">🕊️</option>
                             </select>
-                            <input type="text" id="tx-category" list="cat-memory" required placeholder="Select or type new..." autocomplete="off" style="flex: 1;" onchange="autoSelectIcon('tx')">
+                            <input type="text" id="tx-category" list="cat-memory" required placeholder="Select or type new..." autocomplete="off" style="flex: 1;" onchange="window.autoSelectIcon('tx')">
                         </div>
                         <datalist id="cat-memory"></datalist>
                     </div>
@@ -465,15 +451,15 @@
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Unit Amount / Foreign FX</label>
-                        <input type="number" id="tx-actual" step="0.01" required oninput="calcKES('tx')" min="0">
+                        <input type="number" id="tx-actual" step="0.01" required oninput="window.calcKES('tx')" min="0">
                     </div>
                     <div class="form-group">
                         <label>Quantity</label>
-                        <input type="number" id="tx-qty" step="0.01" value="1" oninput="calcKES('tx')" min="0">
+                        <input type="number" id="tx-qty" step="0.01" value="1" oninput="window.calcKES('tx')" min="0">
                     </div>
                     <div class="form-group">
                         <label>FX Conversion Rate</label>
-                        <input type="number" id="tx-fx" step="0.01" value="1" oninput="calcKES('tx')" min="0">
+                        <input type="number" id="tx-fx" step="0.01" value="1" oninput="window.calcKES('tx')" min="0">
                     </div>
                     <div class="form-group">
                         <label>Total Value (KES)</label>
@@ -492,16 +478,16 @@
             <div class="flex-between">
                 <h2>Analytics & Insights</h2>
                 <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                    <select id="analytics-period" onchange="updateAnalytics()">
+                    <select id="analytics-period" onchange="window.updateAnalytics()">
                         <option value="MTD">Month-to-Date</option>
                         <option value="QTD">Quarter-to-Date</option>
                         <option value="YTD">Year-to-Date</option>
                         <option value="ALL">All Time</option>
                     </select>
-                    <select id="analytics-cat-filter" onchange="updateCharts()">
+                    <select id="analytics-cat-filter" onchange="window.updateCharts()">
                         <option value="ALL">All Categories</option>
                     </select>
-                    <select id="analytics-name-filter" onchange="updateCharts()">
+                    <select id="analytics-name-filter" onchange="window.updateCharts()">
                         <option value="ALL">All Expenses</option>
                     </select>
                 </div>
@@ -517,15 +503,16 @@
                     <div class="value" id="stat-inflation">0%</div>
                 </div>
             </div>
-                    <div class="card" style="margin-top: 20px; margin-bottom: 20px; border: 2px solid var(--primary); background: rgba(5, 150, 105, 0.03);">
-            <div class="flex-between">
-                <h3 style="color: var(--primary);">🧠 AI Financial Advisor</h3>
-                <button id="ai-insight-btn" class="btn-primary" onclick="fetchAIInsights()" style="width: auto; padding: 6px 12px; font-size: 12px; margin: 0;">Get AI Advice ✨</button>
+            
+            <div class="card" style="margin-top: 20px; margin-bottom: 20px; border: 2px solid var(--primary); background: rgba(5, 150, 105, 0.03);">
+                <div class="flex-between">
+                    <h3 style="color: var(--primary);">🧠 AI Financial Advisor</h3>
+                    <button id="ai-insight-btn" class="btn-primary" onclick="window.fetchAIInsights()" style="width: auto; padding: 6px 12px; font-size: 12px; margin: 0;">Get AI Advice ✨</button>
+                </div>
+                <div id="ai-insight-container" style="margin-top: 15px; font-size: 14px; line-height: 1.6; color: var(--text-main);">
+                    Click the button to have AI analyze your recent spending patterns and find ways to save money.
+                </div>
             </div>
-            <div id="ai-insight-container" style="margin-top: 15px; font-size: 14px; line-height: 1.6; color: var(--text-main);">
-                Click the button to have AI analyze your recent spending patterns and find ways to save money.
-            </div>
-        </div>
 
             <div class="analytics-grid">
                 <div class="card">
@@ -544,10 +531,10 @@
                     <div class="flex-between">
                         <h3>Expense Inflation Tracker (%)</h3>
                         <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                            <select id="inflation-expense-filter" onchange="updateInflationChart()">
+                            <select id="inflation-expense-filter" onchange="window.updateInflationChart()">
                                 <option value="ALL">All Expenses</option>
                             </select>
-                            <select id="inflation-interval" onchange="updateInflationChart()">
+                            <select id="inflation-interval" onchange="window.updateInflationChart()">
                                 <option value="Monthly">Monthly</option>
                                 <option value="Quarterly">Quarterly</option>
                                 <option value="Half-Year">Half-Year</option>
@@ -576,7 +563,7 @@
 
             <div class="flex-between" style="margin-top: 20px; margin-bottom: 15px;">
                 <h3 style="margin: 0;">Current Portfolio View</h3>
-                <button class="btn-primary" onclick="exportTableToExcel('portfolio-table', 'Portfolio_Summary')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download XLSX</button>
+                <button class="btn-primary" onclick="window.exportTableToExcel('portfolio-table', 'Portfolio_Summary')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download XLSX</button>
             </div>
             <div style="overflow-x: auto;">
                 <table id="portfolio-table">
@@ -604,7 +591,7 @@
 
             <div class="flex-between" style="margin-top: 40px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
                 <h3 style="color: var(--primary); margin: 0;">Portfolio Ledger (MTD & Opening Balances)</h3>
-                <button class="btn-primary" onclick="exportTableToExcel('portfolio-ledger-table', 'Portfolio_Ledger')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download Ledger</button>
+                <button class="btn-primary" onclick="window.exportTableToExcel('portfolio-ledger-table', 'Portfolio_Ledger')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download Ledger</button>
             </div>
             <div style="overflow-x: auto; margin-top: 10px;">
                 <table id="portfolio-ledger-table">
@@ -630,8 +617,8 @@
                 <div class="card">
                     <h3 style="color: var(--primary);">History Actions</h3>
                     <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
-                        <button class="btn-primary" onclick="undo()" style="margin: 0; padding: 12px;">↩ Undo Last Action</button>
-                        <button class="btn-primary" onclick="redo()" style="margin: 0; padding: 12px;">↪ Redo Action</button>
+                        <button class="btn-primary" onclick="window.undo()" style="margin: 0; padding: 12px;">↩ Undo Last Action</button>
+                        <button class="btn-primary" onclick="window.redo()" style="margin: 0; padding: 12px;">↪ Redo Action</button>
                     </div>
                 </div>
                 
@@ -639,8 +626,8 @@
                     <h3 style="color: var(--primary);">Transactions & Portfolio</h3>
                     <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
                         <button class="btn-primary" onclick="document.getElementById('import-csv').click()" style="margin: 0; padding: 12px;">📥 Import TX Data</button>
-                        <input type="file" id="import-csv" accept=".csv" style="display: none;" onchange="importCSV(event)">
-                        <button class="btn-primary" onclick="exportCSV()" style="margin: 0; padding: 12px;">💾 Export TX & Balances</button>
+                        <input type="file" id="import-csv" accept=".csv" style="display: none;" onchange="window.importCSV(event)">
+                        <button class="btn-primary" onclick="window.exportCSV()" style="margin: 0; padding: 12px;">💾 Export TX & Balances</button>
                     </div>
                 </div>
 
@@ -648,15 +635,15 @@
                     <h3 style="color: var(--primary);">Budgets</h3>
                     <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
                         <button class="btn-primary" onclick="document.getElementById('import-budgets-csv').click()" style="margin: 0; padding: 12px;">📥 Import Budgets</button>
-                        <input type="file" id="import-budgets-csv" accept=".csv" style="display: none;" onchange="importBudgetCSV(event)">
-                        <button class="btn-primary" onclick="exportBudgetCSV()" style="margin: 0; padding: 12px;">💾 Export Budgets</button>
+                        <input type="file" id="import-budgets-csv" accept=".csv" style="display: none;" onchange="window.importBudgetCSV(event)">
+                        <button class="btn-primary" onclick="window.exportBudgetCSV()" style="margin: 0; padding: 12px;">💾 Export Budgets</button>
                     </div>
                 </div>
 
                 <div class="card" style="border-top-color: var(--danger);">
                     <h3 style="color: var(--danger);">Danger Zone</h3>
                     <div style="margin-top: 15px;">
-                        <button class="btn-primary" onclick="resetData()" style="width: 100%; background: var(--danger); margin: 0; padding: 12px;">⚠ Factory Reset Data</button>
+                        <button class="btn-primary" onclick="window.resetData()" style="width: 100%; background: var(--danger); margin: 0; padding: 12px;">⚠ Factory Reset Data</button>
                     </div>
                 </div>
             </div>
@@ -734,11 +721,13 @@
         </div>
 
     </div>
-</div> <div id="edit-modal" class="modal-overlay hidden">
+</div> 
+
+<div id="edit-modal" class="modal-overlay hidden">
     <div class="modal-content">
-        <button class="modal-close" onclick="closeEditModal()">Close</button>
+        <button class="modal-close" onclick="window.closeEditModal()">Close</button>
         <h2 style="color: var(--primary); margin-bottom: 15px;">Edit Transaction</h2>
-        <form id="edit-tx-form" onsubmit="updateTransaction(event)">
+        <form id="edit-tx-form" onsubmit="window.updateTransaction(event)">
             <input type="hidden" id="edit-tx-id">
             <div class="form-grid">
                 <div class="form-group">
@@ -747,7 +736,7 @@
                 </div>
                 <div class="form-group">
                     <label>Type</label>
-                    <select id="edit-tx-type" onchange="handleTypeChange('edit-tx')">
+                    <select id="edit-tx-type" onchange="window.handleTypeChange('edit-tx')">
                         <option value="Expense">Expense</option>
                         <option value="Income">Income</option>
                         <option value="Savings">Savings (Portfolio)</option>
@@ -774,7 +763,7 @@
                             <option value="👶">👶</option><option value="🛠️">🛠️</option><option value="💼">💼</option>
                             <option value="🚑">🚑</option><option value="🕊️">🕊️</option>
                         </select>
-                        <input type="text" id="edit-tx-category" list="edit-cat-memory" required autocomplete="off" style="flex: 1;" onchange="autoSelectIcon('edit-tx')">
+                        <input type="text" id="edit-tx-category" list="edit-cat-memory" required autocomplete="off" style="flex: 1;" onchange="window.autoSelectIcon('edit-tx')">
                     </div>
                     <datalist id="edit-cat-memory"></datalist>
                 </div>
@@ -786,15 +775,15 @@
             <div class="form-grid">
                 <div class="form-group">
                     <label>Unit Amount</label>
-                    <input type="number" id="edit-tx-actual" step="0.01" required oninput="calcKES('edit-tx')" min="0">
+                    <input type="number" id="edit-tx-actual" step="0.01" required oninput="window.calcKES('edit-tx')" min="0">
                 </div>
                 <div class="form-group">
                     <label>Quantity</label>
-                    <input type="number" id="edit-tx-qty" step="0.01" required oninput="calcKES('edit-tx')" min="0">
+                    <input type="number" id="edit-tx-qty" step="0.01" required oninput="window.calcKES('edit-tx')" min="0">
                 </div>
                 <div class="form-group">
                     <label>FX</label>
-                    <input type="number" id="edit-tx-fx" step="0.01" required oninput="calcKES('edit-tx')" min="0">
+                    <input type="number" id="edit-tx-fx" step="0.01" required oninput="window.calcKES('edit-tx')" min="0">
                 </div>
                 <div class="form-group">
                     <label>Total Value (KES)</label>
@@ -807,7 +796,7 @@
             </div>
             <div class="flex-between">
                 <button type="submit" class="btn-primary" style="width: auto;">Save Changes</button>
-                <button type="button" class="btn-primary" style="width: auto; background: var(--danger);" onclick="deleteEditTx()">Delete Entry</button>
+                <button type="button" class="btn-primary" style="width: auto; background: var(--danger);" onclick="window.deleteEditTx()">Delete Entry</button>
             </div>
         </form>
     </div>
@@ -815,7 +804,7 @@
 
 <div id="ledger-modal" class="modal-overlay hidden">
     <div class="modal-content">
-        <button class="modal-close" onclick="closeLedger()">Close</button>
+        <button class="modal-close" onclick="window.closeLedger()">Close</button>
         <h2 id="ledger-title" style="color: var(--primary); margin-bottom: 15px;">Detailed Ledger</h2>
         <div style="overflow-x: auto;">
             <table>
@@ -825,7 +814,7 @@
                         <th>Name</th>
                         <th>Amount (KES)</th>
                         <th>Notes</th>
-                        <th>Action</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="ledger-body"></tbody>
@@ -855,7 +844,7 @@
     </div>
 </div>
 
-<script src="app.js"></script>
+<script src="app.source.js"></script>
 
 </body>
 </html>
