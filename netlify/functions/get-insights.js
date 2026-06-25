@@ -55,7 +55,10 @@ exports.handler = async (event, context) => {
         console.error("AI Function Failed:", error);
         return { 
             statusCode: 500, 
-            body: JSON.stringify({ success: false, message: error.message }) 
+            body: JSON.stringify({ 
+                success: false, 
+                message: "Function Error: " + error.message,
+                stack: error.stack // Added for easier debugging in the browser console
+            }) 
         };
     }
-};
