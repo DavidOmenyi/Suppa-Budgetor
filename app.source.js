@@ -1,5 +1,5 @@
 // ==========================================
-// 1. SUPABASE AUTH & CONFIGURATION
+// 1. SUPABASE AUTH & MONETIZATION LOGIC
 // ==========================================
 
 const supabaseUrl = 'https://ffzkpuiujxdqwjvmhrmx.supabase.co'; 
@@ -12,7 +12,7 @@ let currentUser = null;
 let pollingInterval = null;
 
 // ==========================================
-// 2. GLOBAL STATE & MEMORY
+// 2. GLOBAL STATE & CONFIGURATION
 // ==========================================
 let transactions = [];
 let categoryBudgets = {}; 
@@ -51,7 +51,8 @@ let inflationChartInstance = null;
 // 3. GLOBAL FUNCTIONS (Accessible by HTML)
 // ==========================================
 
-window.updateProfileUI = function(displayName, avatarUrl) {
+// --- Auth & Profile ---
+function updateProfileUI(displayName, avatarUrl) {
     ['userNameDisplay', 'appUserNameDisplay'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.textContent = displayName;
@@ -76,9 +77,9 @@ window.updateProfileUI = function(displayName, avatarUrl) {
             }
         }
     });
-};
+}
 
-window.initializeApp = async function() {
+async function initializeApp() {
     const { data: { user } } = await supabaseClient.auth.getUser();
     if (!user) {
         window.location.href = 'login.html';
@@ -90,40 +91,40 @@ window.initializeApp = async function() {
     const displayName = metadata.display_name || metadata.full_name || currentUser.email.split('@')[0];
     const avatarUrl = metadata.avatar_url || metadata.picture || '';
     
-    window.updateProfileUI(displayName, avatarUrl);
-    window.checkPremiumStatus();
-};
+    updateProfileUI(displayName, avatarUrl);
+    checkPremiumStatus();
+}
 
-window.checkPremiumStatus = async function() {
+async function checkPremiumStatus() {
     const { data, error } = await supabaseClient
         .from('profiles')
         .select('is_premium')
         .eq('id', currentUser.id)
         .single();
         
-    if (data && data.is_premium === true) window.unlockApp();
-    else window.lockApp();
-};
+    if (data && data.is_premium === true) unlockApp();
+    else lockApp();
+}
 
-window.unlockApp = function() {
+function unlockApp() {
     const lockedScreen = document.getElementById('lockedScreen');
     const appContainer = document.getElementById('appContainer');
     if (lockedScreen) lockedScreen.style.display = 'none';
     if (appContainer) appContainer.style.display = 'block';
     if (pollingInterval) clearInterval(pollingInterval);
-};
+}
 
-window.lockApp = function() {
+function lockApp() {
     const lockedScreen = document.getElementById('lockedScreen');
     const appContainer = document.getElementById('appContainer');
     if (lockedScreen) lockedScreen.style.display = 'block';
     if (appContainer) appContainer.style.display = 'none';
-};
+}
 
-window.startPollingDatabase = function() {
+function startPollingDatabase() {
     pollingInterval = setInterval(async () => {
         const { data } = await supabaseClient.from('profiles').select('is_premium').eq('id', currentUser.id).single();
-        if (data && data.is_premium === true) window.unlockApp();
+        if (data && data.is_premium === true) unlockApp();
     }, 3000); 
 
     setTimeout(() => {
@@ -135,7 +136,7 @@ window.startPollingDatabase = function() {
             if (payButton) { payButton.disabled = false; payButton.textContent = "Pay to Unlock"; }
         }
     }, 120000); 
-};
+}
 
 window.openProfileModal = function() {
     const metadata = currentUser.user_metadata || {};
@@ -165,7 +166,7 @@ window.saveProfile = async function(e) {
         if (error) throw error;
         
         currentUser = data.user; 
-        window.updateProfileUI(newName || currentUser.email.split('@')[0], newAvatar);
+        updateProfileUI(newName || currentUser.email.split('@')[0], newAvatar);
         window.closeProfileModal();
     } catch (err) {
         alert("Failed to update profile: " + err.message);
@@ -181,20 +182,23 @@ window.forceLogout = async function(e) {
     window.location.href = 'login.html';
 };
 
-window.getIcon = function(cat) { return defaultIcons[cat] || (customMem.Icons && customMem.Icons[cat]) || '🏷️'; };
+async function performLogout(e) { window.forceLogout(e); }
 
-window.autoSelectIcon = function(prefix) {
+// --- Core Budget Functions ---
+function getIcon(cat) { return defaultIcons[cat] || (customMem.Icons && customMem.Icons[cat]) || '🏷️'; }
+
+function autoSelectIcon(prefix) {
     const cat = document.getElementById(`${prefix}-category`).value.trim();
     const iconDropdown = document.getElementById(`${prefix}-category-icon`);
     if(cat && iconDropdown) {
-        const icon = window.getIcon(cat);
+        const icon = getIcon(cat);
         let optionExists = Array.from(iconDropdown.options).some(opt => opt.value === icon);
         if(!optionExists) iconDropdown.innerHTML += `<option value="${icon}">${icon}</option>`;
         iconDropdown.value = icon;
     }
-};
+}
 
-window.repairAndLoadData = function() {
+function repairAndLoadData() {
     try {
         const loadedTx = JSON.parse(localStorage.getItem('suppa_tx')) || [];
         transactions = loadedTx.filter(t => t && typeof t === 'object' && t.id).map(t => {
@@ -235,27 +239,27 @@ window.repairAndLoadData = function() {
         console.error("Data repair failed.", e);
         transactions = []; categoryBudgets = {}; 
     }
-};
+}
 
-window.initTheme = function() { if(localStorage.getItem('suppa_theme') === 'dark') document.body.setAttribute('data-theme', 'dark'); };
+function initTheme() { if(localStorage.getItem('suppa_theme') === 'dark') document.body.setAttribute('data-theme', 'dark'); }
 
-window.toggleTheme = function() {
+function toggleTheme() {
     const isDark = document.body.getAttribute('data-theme') === 'dark';
     document.body.setAttribute('data-theme', isDark ? 'light' : 'dark');
     localStorage.setItem('suppa_theme', isDark ? 'light' : 'dark');
-    window.updateCharts(); window.updateInflationChart();
-};
+    updateCharts(); updateInflationChart();
+}
 
-window.switchTab = function(tabId) {
+function switchTab(tabId) {
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
     document.getElementById(tabId).classList.add('active');
     event.currentTarget.classList.add('active');
-    if(tabId === 'analytics') window.updateAnalytics();
-    if(tabId === 'budget') window.renderBudgetSetup();
-};
+    if(tabId === 'analytics') updateAnalytics();
+    if(tabId === 'budget') renderBudgetSetup();
+}
 
-window.addToMemory = function(type, cat, name, icon) {
+function addToMemory(type, cat, name, icon) {
     let changed = false;
     let normalizedType = type;
     if (type.includes('Savings') || type === 'Starting-Balance') normalizedType = 'Savings';
@@ -270,26 +274,10 @@ window.addToMemory = function(type, cat, name, icon) {
         if (!customMem.Names.includes(name)) { customMem.Names.push(name); changed = true; }
     }
     if (changed) localStorage.setItem('suppa_custom_mem', JSON.stringify(customMem));
-};
+}
 
-window.toggleCategories = function(clearInput = true, typeId, inputId, listId) {
-    const type = document.getElementById(typeId).value;
-    const dl = document.getElementById(listId);
-    const input = document.getElementById(inputId);
-    
-    if (clearInput && input) { input.value = ''; window.autoSelectIcon(inputId.split('-')[0]); }
-    if (dl) dl.innerHTML = '';
-    
-    let baseOpts = categories[type] || [];
-    let customOpts = transactions.filter(t => t.type.includes(type) || (type==='Savings' && t.type==='Starting-Balance')).map(t => t.category);
-    if (customMem[type]) customOpts.push(...customMem[type]);
-    
-    let allOpts = [...new Set([...baseOpts, ...customOpts])];
-    allOpts.forEach(c => dl.innerHTML += `<option value="${c}">${c}</option>`);
-};
-
-window.handleTypeChange = function(prefix) {
-    window.toggleCategories(true, prefix+'-type', prefix+'-category', prefix === 'tx' ? 'cat-memory' : 'edit-cat-memory');
+function handleTypeChange(prefix) {
+    toggleCategories(true, prefix+'-type', prefix+'-category', prefix === 'tx' ? 'cat-memory' : 'edit-cat-memory');
     const type = document.getElementById(prefix+'-type').value;
     const actionGroup = document.getElementById(prefix+'-savings-action-group');
     const catLabel = document.getElementById(prefix+'-category-label');
@@ -301,18 +289,34 @@ window.handleTypeChange = function(prefix) {
         actionGroup.classList.add('hidden');
         if (catLabel) catLabel.innerText = "Category";
     }
-    window.calcKES(prefix);
-};
+    calcKES(prefix);
+}
 
-window.calcKES = function(prefix) {
+function toggleCategories(clearInput = true, typeId, inputId, listId) {
+    const type = document.getElementById(typeId).value;
+    const dl = document.getElementById(listId);
+    const input = document.getElementById(inputId);
+    
+    if (clearInput && input) { input.value = ''; autoSelectIcon(inputId.split('-')[0]); }
+    if (dl) dl.innerHTML = '';
+    
+    let baseOpts = categories[type] || [];
+    let customOpts = transactions.filter(t => t.type.includes(type) || (type==='Savings' && t.type==='Starting-Balance')).map(t => t.category);
+    if (customMem[type]) customOpts.push(...customMem[type]);
+    
+    let allOpts = [...new Set([...baseOpts, ...customOpts])];
+    allOpts.forEach(c => dl.innerHTML += `<option value="${c}">${c}</option>`);
+}
+
+function calcKES(prefix) {
     const actual = Math.abs(parseFloat(document.getElementById(`${prefix}-actual`).value) || 0);
     const fx = parseFloat(document.getElementById(`${prefix}-fx`).value) || 1;
     const qty = parseFloat(document.getElementById(`${prefix}-qty`).value) || 1;
     document.getElementById(`${prefix}-kes`).value = (actual * fx * qty).toFixed(2);
-};
+}
 
-window.saveTransaction = function(e) {
-    e.preventDefault(); window.saveState();
+function saveTransaction(e) {
+    e.preventDefault(); saveState();
 
     const prefix = document.getElementById('tx-id').value ? 'edit-tx' : 'tx';
     const txIdInput = document.getElementById('tx-id').value;
@@ -334,7 +338,7 @@ window.saveTransaction = function(e) {
         kes: parseFloat(document.getElementById('tx-kes').value) || 0, notes: document.getElementById('tx-notes').value
     };
 
-    window.addToMemory(newTx.type, newTx.category, newTx.name, chosenIcon);
+    addToMemory(newTx.type, newTx.category, newTx.name, chosenIcon);
 
     if (isUpdate) {
         const idx = transactions.findIndex(t => t.id === newTx.id);
@@ -344,7 +348,7 @@ window.saveTransaction = function(e) {
         transactions.push(newTx);
     }
 
-    window.saveData(); window.updateDatalists(); window.updateUI();
+    saveData(); updateDatalists(); updateUI();
     
     const btn = document.getElementById('tx-submit-btn');
     btn.innerText = isUpdate ? "✓ Updated!" : "✓ Saved!"; btn.style.background = "var(--success)";
@@ -353,9 +357,9 @@ window.saveTransaction = function(e) {
         btn.innerText = "Add to Ledger"; btn.style.background = ""; e.target.reset(); 
         document.getElementById('tx-date').valueAsDate = new Date(); 
         document.getElementById('tx-fx').value = 1; document.getElementById('tx-qty').value = 1;
-        window.handleTypeChange('tx');
+        handleTypeChange('tx');
     }, 1500);
-};
+}
 
 window.openEditModal = function(id) {
     const tx = transactions.find(t => t.id === id);
@@ -365,13 +369,13 @@ window.openEditModal = function(id) {
     document.getElementById('edit-tx-name').value = tx.name === '(General)' ? '' : tx.name;
     
     if (tx.type.includes('Savings') || tx.type === 'Starting-Balance') {
-        document.getElementById('edit-tx-type').value = 'Savings'; window.handleTypeChange('edit-tx');
+        document.getElementById('edit-tx-type').value = 'Savings'; handleTypeChange('edit-tx');
         document.getElementById('edit-tx-savings-action').value = tx.type;
     } else {
-        document.getElementById('edit-tx-type').value = tx.type; window.handleTypeChange('edit-tx');
+        document.getElementById('edit-tx-type').value = tx.type; handleTypeChange('edit-tx');
     }
 
-    document.getElementById('edit-tx-category').value = tx.category; window.autoSelectIcon('edit-tx');
+    document.getElementById('edit-tx-category').value = tx.category; autoSelectIcon('edit-tx');
     document.getElementById('edit-tx-date').value = tx.date;
     document.getElementById('edit-tx-actual').value = Math.abs(tx.actual);
     document.getElementById('edit-tx-qty').value = tx.qty;
@@ -382,10 +386,38 @@ window.openEditModal = function(id) {
     document.getElementById('edit-modal').classList.remove('hidden');
 };
 
+window.editTx = function(id) {
+    const tx = transactions.find(t => t.id === id);
+    if(!tx) return;
+    
+    document.getElementById('tx-id').value = tx.id;
+    document.getElementById('tx-name').value = tx.name === '(General)' ? '' : tx.name;
+    
+    if (tx.type.includes('Savings') || tx.type === 'Starting-Balance') {
+        document.getElementById('tx-type').value = 'Savings'; handleTypeChange('tx');
+        document.getElementById('tx-savings-action').value = tx.type;
+    } else {
+        document.getElementById('tx-type').value = tx.type; handleTypeChange('tx');
+    }
+
+    document.getElementById('tx-category').value = tx.category; autoSelectIcon('tx');
+    document.getElementById('tx-date').value = tx.date;
+    document.getElementById('tx-actual').value = Math.abs(tx.actual);
+    document.getElementById('tx-qty').value = tx.qty;
+    document.getElementById('tx-fx').value = tx.fx;
+    document.getElementById('tx-notes').value = tx.notes || '';
+    
+    calcKES('tx'); closeLedger();
+    
+    document.querySelectorAll('nav button').forEach(b => { if(b.textContent === 'Log Entry') b.click(); });
+    document.getElementById('tx-submit-btn').innerText = "Update Transaction";
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
 window.closeEditModal = function() { document.getElementById('edit-modal').classList.add('hidden'); };
 
 window.updateTransaction = function(e) {
-    e.preventDefault(); window.saveState();
+    e.preventDefault(); saveState();
     
     const id = parseInt(document.getElementById('edit-tx-id').value);
     const index = transactions.findIndex(t => t.id === id);
@@ -404,77 +436,22 @@ window.updateTransaction = function(e) {
         kes: parseFloat(document.getElementById('edit-tx-kes').value), notes: document.getElementById('edit-tx-notes').value
     };
 
-    window.addToMemory(newTx.type, newTx.category, newTx.name, chosenIcon);
+    addToMemory(newTx.type, newTx.category, newTx.name, chosenIcon);
     transactions[index] = newTx;
-    window.saveData(); window.updateDatalists(); window.updateUI(); window.updateCharts(); window.updateInflationChart();
-    window.closeEditModal();
+    saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
+    closeEditModal();
 };
 
 window.deleteEditTx = function() {
     if(!confirm("Are you sure you want to completely delete this entry?")) return;
-    window.saveState();
+    saveState();
     const id = parseInt(document.getElementById('edit-tx-id').value);
     transactions = transactions.filter(t => t.id !== id);
-    window.saveData(); window.updateDatalists(); window.updateUI(); window.updateCharts(); window.updateInflationChart();
-    window.closeEditModal();
+    saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
+    closeEditModal();
 };
 
-// NEW LEDGER FUNCTIONS
-window.openLedger = function(cat, name, isIncome = false) {
-    const monthStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2, '0')}`;
-    let txs = transactions.filter(t => t.date && t.date.substring(0,7) === monthStr);
-    
-    if (isIncome) {
-        txs = txs.filter(t => t.type === 'Income' && t.category === cat);
-        document.getElementById('ledger-title').innerText = `Income Ledger: ${cat} (${monthStr})`;
-    } else {
-        txs = txs.filter(t => (t.type === 'Expense' || t.type === 'Savings-Deposit') && t.category === cat && t.name === name);
-        document.getElementById('ledger-title').innerText = `Ledger: ${name === '(General)' ? cat : name} (${monthStr})`;
-    }
-    
-    txs.sort((a,b) => new Date(b.date) - new Date(a.date));
-    const tbody = document.getElementById('ledger-body'); 
-    tbody.innerHTML = '';
-    
-    if (txs.length === 0) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No records found.</td></tr>`;
-    
-    txs.forEach(tx => {
-        tbody.innerHTML += `
-            <tr>
-                <td>${tx.date}</td>
-                <td>${tx.name}</td>
-                <td style="font-weight:bold;">${tx.kes.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                <td style="font-size:0.9em; color:var(--text-muted);">${tx.notes || '-'}</td>
-                <td>
-                    <button onclick="window.editTx(${tx.id})" style="background:var(--accent); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; margin-bottom:4px; font-size:12px;">Edit</button>
-                    <button onclick="window.deleteTxFromLedger(${tx.id})" style="background:var(--danger); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-size:12px;">Del</button>
-                </td>
-            </tr>
-        `;
-    });
-    document.getElementById('ledger-modal').classList.remove('hidden');
-};
-
-window.closeLedger = function() { document.getElementById('ledger-modal').classList.add('hidden'); };
-
-window.editTx = function(id) {
-    window.closeLedger();
-    window.openEditModal(id);
-};
-
-window.deleteTxFromLedger = function(id) {
-    if(!confirm("Are you sure you want to delete this transaction?")) return;
-    window.saveState();
-    transactions = transactions.filter(t => t.id !== id);
-    window.saveData(); 
-    window.updateDatalists(); 
-    window.updateUI(); 
-    window.updateCharts(); 
-    window.updateInflationChart();
-    window.closeLedger();
-};
-
-window.updateDatalists = function() {
+function updateDatalists() {
     const txMem = document.getElementById('tx-memory'); txMem.innerHTML = '';
     let allNames = [...new Set([...transactions.map(t => t.name), ...customMem.Names])];
     allNames.forEach(n => { if(n!=='(General)') txMem.innerHTML += `<option value="${n}">${n}</option>`; });
@@ -491,11 +468,11 @@ window.updateDatalists = function() {
         allNames.forEach(n => { if(n !== '(General)') bNameMem.innerHTML += `<option value="${n}">${n}</option>`; });
         [...allCats].sort().forEach(c => { bCatMem.innerHTML += `<option value="${c}">${c}</option>`; });
     }
-};
+}
 
-window.getMonthStr = function(dateObj) { return `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2, '0')}`; };
+function getMonthStr(dateObj) { return `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2, '0')}`; }
 
-window.getBudget = function(cat, name, targetMonthStr) {
+function getBudget(cat, name, targetMonthStr) {
     const key = `${cat}::${name}`;
     const sortedMonths = Object.keys(categoryBudgets).sort().reverse();
     for (let m of sortedMonths) {
@@ -504,7 +481,7 @@ window.getBudget = function(cat, name, targetMonthStr) {
         }
     }
     return 0; 
-};
+}
 
 window.saveSingleBudget = function(e) {
     e.preventDefault();
@@ -521,14 +498,14 @@ window.saveSingleBudget = function(e) {
 
     let inferredType = 'Expense';
     if (categories.Savings.includes(cat) || customMem.Savings.includes(cat) || transactions.some(t => t.category === cat && t.type.includes('Savings'))) inferredType = 'Savings';
-    window.addToMemory(inferredType, cat, name, null);
+    addToMemory(inferredType, cat, name, null);
 
     if(!categoryBudgets[monthStr]) categoryBudgets[monthStr] = {};
     categoryBudgets[monthStr][`${cat}::${name}`] = amount;
     localStorage.setItem('suppa_budgets_v2', JSON.stringify(categoryBudgets));
     
     document.getElementById('budget-category').value = ''; document.getElementById('budget-name').value = ''; document.getElementById('budget-amount').value = '';
-    window.renderBudgetSetup(); window.updateUI(); window.updateCharts();
+    renderBudgetSetup(); updateUI(); updateCharts();
     
     const btn = document.getElementById('budget-submit-btn');
     btn.innerText = "✓ Budget Saved!"; btn.style.background = "var(--success)";
@@ -549,7 +526,7 @@ window.deleteBudget = function(cat, name, monthStr) {
     if(categoryBudgets[monthStr] && categoryBudgets[monthStr][key] !== undefined) {
         categoryBudgets[monthStr][key] = 0; 
         localStorage.setItem('suppa_budgets_v2', JSON.stringify(categoryBudgets));
-        window.renderBudgetSetup(); window.updateUI(); window.updateCharts();
+        renderBudgetSetup(); updateUI(); updateCharts();
     }
 };
 
@@ -564,7 +541,7 @@ window.renderBudgetSetup = function() {
             if(m <= monthStr && categoryBudgets[m]) {
                 Object.keys(categoryBudgets[m]).forEach(k => {
                     let parts = k.split('::');
-                    if(window.getBudget(parts[0], parts[1], monthStr) > 0) activeItems.add(k);
+                    if(getBudget(parts[0], parts[1], monthStr) > 0) activeItems.add(k);
                 });
             }
         });
@@ -572,16 +549,16 @@ window.renderBudgetSetup = function() {
         Array.from(activeItems).sort().forEach(key => {
             const parts = key.split('::');
             const cat = parts[0]; const name = parts[1];
-            const amt = window.getBudget(cat, name, monthStr);
+            const amt = getBudget(cat, name, monthStr);
             const isExplicit = categoryBudgets[monthStr] && categoryBudgets[monthStr][key] !== undefined;
 
             tbody.innerHTML += `
                 <tr>
-                    <td>${window.getIcon(cat)} ${cat} <br><small style="color:var(--text-muted)">${name === '(General)' ? 'Category Target' : name}</small> ${!isExplicit ? '<br><small style="color:var(--accent)">(Rolled Forward)</small>' : ''}</td>
+                    <td>${getIcon(cat)} ${cat} <br><small style="color:var(--text-muted)">${name === '(General)' ? 'Category Target' : name}</small> ${!isExplicit ? '<br><small style="color:var(--accent)">(Rolled Forward)</small>' : ''}</td>
                     <td style="font-weight:bold;">${amt.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                     <td>
-                        <button type="button" style="background:var(--accent); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer;" onclick="window.editBudgetForm('${cat.replace(/'/g,"\\'")}', '${name.replace(/'/g,"\\'")}', ${amt})">Edit</button>
-                        ${isExplicit ? `<button type="button" style="background:var(--danger); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; margin-left:5px;" onclick="window.deleteBudget('${cat.replace(/'/g,"\\'")}', '${name.replace(/'/g,"\\'")}', '${monthStr}')">Del</button>` : ''}
+                        <button type="button" style="background:var(--accent); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer;" onclick="editBudgetForm('${cat.replace(/'/g,"\\'")}', '${name.replace(/'/g,"\\'")}', ${amt})">Edit</button>
+                        ${isExplicit ? `<button type="button" style="background:var(--danger); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; margin-left:5px;" onclick="deleteBudget('${cat.replace(/'/g,"\\'")}', '${name.replace(/'/g,"\\'")}', '${monthStr}')">Del</button>` : ''}
                     </td>
                 </tr>
             `;
@@ -589,7 +566,7 @@ window.renderBudgetSetup = function() {
     } catch(e) { console.error("Error rendering budget setup", e); }
 };
 
-window.calculateRollover = function(upToMonthStr) {
+function calculateRollover(upToMonthStr) {
     let rollover = 0;
     let pastMonths = new Set([...transactions.filter(t=>t.date).map(t => t.date.substring(0,7))]);
     pastMonths = Array.from(pastMonths).filter(m => m < upToMonthStr).sort();
@@ -602,19 +579,19 @@ window.calculateRollover = function(upToMonthStr) {
         rollover += (mIn - mOut);
     });
     return rollover;
-};
+}
 
-window.changeMonth = function(delta) { currentDate.setMonth(currentDate.getMonth() + delta); window.updateUI(); };
+window.changeMonth = function(delta) { currentDate.setMonth(currentDate.getMonth() + delta); updateUI(); };
 
 window.updateUI = function() {
     try {
-        const monthStr = window.getMonthStr(currentDate);
+        const monthStr = getMonthStr(currentDate);
         const monthYear = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
         document.getElementById('current-month-display').innerText = monthYear;
         document.getElementById('current-month-display-summaries').innerText = monthYear;
 
         const currentMonthTxs = transactions.filter(t => t.date && t.date.startsWith(monthStr));
-        const rollover = window.calculateRollover(monthStr);
+        const rollover = calculateRollover(monthStr);
 
         let totalIncome = 0; let totalSavingsWithdrawn = 0; 
         let totalSpent = 0; let totalSaved = 0;
@@ -628,7 +605,7 @@ window.updateUI = function() {
             incomeBody.innerHTML += `<tr><td>Rollover from Previous Months</td><td class="${rollover >= 0 ? 'positive' : 'negative'}">${rollover > 0 ? '+' : ''}${rollover.toLocaleString(undefined, {minimumFractionDigits: 2})}</td></tr>`;
         }
         Object.keys(groupedIncome).forEach(cat => {
-            if(incomeBody) incomeBody.innerHTML += `<tr><td><a class="ledger-link" onclick="window.openLedger('${cat.replace(/'/g, "\\'")}', '', true)">${window.getIcon(cat)} ${cat}</a></td><td class="positive">+${groupedIncome[cat].toLocaleString(undefined, {minimumFractionDigits: 2})}</td></tr>`;
+            if(incomeBody) incomeBody.innerHTML += `<tr><td><a class="ledger-link" onclick="openLedger('${cat.replace(/'/g, "\\'")}', '', true)">${getIcon(cat)} ${cat}</a></td><td class="positive">+${groupedIncome[cat].toLocaleString(undefined, {minimumFractionDigits: 2})}</td></tr>`;
         });
         const bliEl = document.getElementById('bottom-line-income');
         if(bliEl) bliEl.innerText = `KES ${totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
@@ -643,7 +620,7 @@ window.updateUI = function() {
         Object.keys(categoryBudgets).forEach(bm => {
             if(bm <= monthStr && categoryBudgets[bm]) Object.keys(categoryBudgets[bm]).forEach(k => {
                 let parts = k.split('::'); let cat = parts[0] || 'Uncategorized'; let name = parts[1] || '(General)';
-                let bAmt = window.getBudget(cat, name, monthStr);
+                let bAmt = getBudget(cat, name, monthStr);
                 let infType = categories.Savings.includes(cat) || customMem.Savings.includes(cat) || transactions.some(t => t.category === cat && t.type.includes('Savings')) ? 'Savings' : 'Expense';
                 if(bAmt > 0) itemsMap[`${cat}::${name}`] = { cat: cat, name: name, type: infType, actual: 0 };
             });
@@ -658,7 +635,7 @@ window.updateUI = function() {
         if (catFilterEl) {
             catFilterEl.innerHTML = '<option value="ALL">All Categories</option>';
             let distinctCats = [...new Set(Object.values(itemsMap).map(i => i.cat))].sort();
-            distinctCats.forEach(c => catFilterEl.innerHTML += `<option value="${c}">${window.getIcon(c)} ${c}</option>`);
+            distinctCats.forEach(c => catFilterEl.innerHTML += `<option value="${c}">${getIcon(c)} ${c}</option>`);
             catFilterEl.value = distinctCats.includes(catFilter) ? catFilter : 'ALL';
         }
 
@@ -669,7 +646,7 @@ window.updateUI = function() {
             const nA = a.name || ''; const nB = b.name || '';
             return cA.localeCompare(cB) || nA.localeCompare(nB);
         }).forEach(item => {
-            let bAmt = window.getBudget(item.cat, item.name, monthStr);
+            let bAmt = getBudget(item.cat, item.name, monthStr);
             let aAmt = item.actual;
 
             if (catFilter !== 'ALL' && catFilter !== item.cat) return;
@@ -684,8 +661,8 @@ window.updateUI = function() {
 
             const trHtml = `
                 <tr>
-                    <td>${window.getIcon(item.cat)} ${item.cat}</td>
-                    <td><a class="ledger-link" onclick="window.openLedger('${item.cat.replace(/'/g, "\\'")}', '${item.name.replace(/'/g, "\\'")}', false)">${item.name === '(General)' ? 'Category Target' : item.name}</a></td>
+                    <td>${getIcon(item.cat)} ${item.cat}</td>
+                    <td><a class="ledger-link" onclick="openLedger('${item.cat.replace(/'/g, "\\'")}', '${item.name.replace(/'/g, "\\'")}', false)">${item.name === '(General)' ? 'Category Target' : item.name}</a></td>
                     <td><span style="background:var(--border); padding:2px 8px; border-radius:10px; font-size:0.8em; color:var(--primary);">${item.type}</span></td>
                     <td>${bAmt.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
                     <td>${aAmt.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
@@ -710,8 +687,8 @@ window.updateUI = function() {
                 txBody.innerHTML += `
                     <tr>
                         <td style="font-size: 0.9em; color:var(--text-muted);">${tx.date}</td>
-                        <td>${window.getIcon(tx.category)} ${tx.category}</td>
-                        <td><span class="ledger-link" onclick="window.openEditModal(${tx.id})">${tx.name}</span></td>
+                        <td>${getIcon(tx.category)} ${tx.category}</td>
+                        <td><span class="ledger-link" onclick="openEditModal(${tx.id})">${tx.name}</span></td>
                         <td><span style="background:${typeBg}; padding:2px 8px; border-radius:10px; font-size:0.8em; color:${typeColor};">${displayType}</span></td>
                         <td class="${isInc ? 'positive' : ''}" style="font-weight: bold;">${isInc ? '+':''}${tx.kes.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
                     </tr>
@@ -732,7 +709,7 @@ window.updateUI = function() {
         if(perfVar) { perfVar.innerText = varStr; perfVar.className = varClass; }
 
         let rawTotalBudget = 0;
-        Object.values(itemsMap).forEach(item => { rawTotalBudget += window.getBudget(item.cat, item.name, monthStr); });
+        Object.values(itemsMap).forEach(item => { rawTotalBudget += getBudget(item.cat, item.name, monthStr); });
 
         currentMonthTxs.forEach(t => {
             if (t.type === 'Savings-Withdrawal') totalSavingsWithdrawn += t.kes;
@@ -759,13 +736,46 @@ window.updateUI = function() {
             topUnassignedEl.className = `value ${amountUnassigned >= 0 ? 'positive' : 'negative'}`;
         }
         
-        window.updatePortfolioView(currentMonthTxs, monthStr);
+        updatePortfolioView(currentMonthTxs, monthStr);
     } catch (e) {
         console.error("UI Update Error:", e);
     }
 };
 
-window.updatePortfolioView = function(currentMonthTxs, monthStr) {
+window.openLedger = function(cat, name, isIncome = false) {
+    const monthStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2, '0')}`;
+    let txs = transactions.filter(t => t.date && t.date.substring(0,7) === monthStr);
+    
+    if (isIncome) {
+        txs = txs.filter(t => t.type === 'Income' && t.category === cat);
+        document.getElementById('ledger-title').innerText = `Income Ledger: ${getIcon(cat)} ${cat} (${monthStr})`;
+    } else {
+        txs = txs.filter(t => (t.type === 'Expense' || t.type === 'Savings-Deposit') && t.category === cat && t.name === name);
+        document.getElementById('ledger-title').innerText = `Ledger: ${name === '(General)' ? cat : name} (${monthStr})`;
+    }
+    
+    txs.sort((a,b) => new Date(b.date) - new Date(a.date));
+    const tbody = document.getElementById('ledger-body'); tbody.innerHTML = '';
+    
+    if (txs.length === 0) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No records found.</td></tr>`;
+    
+    txs.forEach(tx => {
+        tbody.innerHTML += `
+            <tr>
+                <td>${tx.date}</td>
+                <td>${tx.name}</td>
+                <td style="font-weight:bold;">${tx.kes.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                <td style="font-size:0.9em; color:var(--text-muted);">${tx.notes || '-'}</td>
+                <td><button onclick="editTx(${tx.id})" style="background:var(--accent);color:white;border:none;padding:4px 8px;border-radius:6px;cursor:pointer;margin-bottom:4px;">Edit</button></td>
+            </tr>
+        `;
+    });
+    document.getElementById('ledger-modal').classList.remove('hidden');
+};
+
+window.closeLedger = function() { document.getElementById('ledger-modal').classList.add('hidden'); };
+
+function updatePortfolioView(currentMonthTxs, monthStr) {
     const tbody = document.getElementById('portfolio-body'); tbody.innerHTML = '';
     
     let activePortCats = new Set([...customMem.Savings]);
@@ -792,11 +802,11 @@ window.updatePortfolioView = function(currentMonthTxs, monthStr) {
         grandStart += startBal; grandInflow += mtdInflow; grandCurrent += currentTotal;
         tbody.innerHTML += `
             <tr>
-                <td><span style="color:var(--accent)">${window.getIcon(cat)}</span> ${cat}</td>
+                <td><span style="color:var(--accent)">${getIcon(cat)}</span> ${cat}</td>
                 <td>${startBal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                 <td class="${mtdInflow >= 0 ? 'positive' : 'negative'}">${mtdInflow > 0 ? '+' : ''}${mtdInflow.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                 <td style="font-weight:800; color:var(--primary);">KES ${currentTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                <td style="text-align: center;"><button type="button" style="background:var(--danger); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer;" onclick="window.deletePortfolioAccount('${cat.replace(/'/g, "\\'")}')">Del</button></td>
+                <td style="text-align: center;"><button type="button" style="background:var(--danger); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer;" onclick="deletePortfolioAccount('${cat.replace(/'/g, "\\'")}')">Del</button></td>
             </tr>`;
     });
 
@@ -826,8 +836,8 @@ window.updatePortfolioView = function(currentMonthTxs, monthStr) {
                 ledgerBody.innerHTML += `
                     <tr>
                         <td style="font-size: 0.9em; color:var(--text-muted);">${tx.date}</td>
-                        <td>${window.getIcon(tx.category)} ${tx.category}</td>
-                        <td><span class="ledger-link" onclick="window.openEditModal(${tx.id})">${tx.name}</span></td>
+                        <td>${getIcon(tx.category)} ${tx.category}</td>
+                        <td><span class="ledger-link" onclick="openEditModal(${tx.id})">${tx.name}</span></td>
                         <td>${actionBadge}</td>
                         <td class="${!isStart && isDep ? 'positive' : ''}" style="font-weight: bold;">${!isStart && isDep ? '+':''}${tx.kes.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
                     </tr>
@@ -835,23 +845,23 @@ window.updatePortfolioView = function(currentMonthTxs, monthStr) {
             });
         }
     }
-};
+}
 
 window.deletePortfolioAccount = function(cat) {
     if(!confirm(`Are you sure you want to completely delete the account "${cat}"?\n\nThis will erase ALL deposits, withdrawals, and opening balances tied to it.`)) return;
     if(!confirm(`Final warning: Deleting "${cat}" cannot be undone. Proceed?`)) return;
 
-    window.saveState();
+    saveState();
     transactions = transactions.filter(t => !(t.category === cat && (t.type === 'Starting-Balance' || t.type.includes('Savings'))));
     
     if(customMem.Savings && customMem.Savings.includes(cat)) {
         customMem.Savings = customMem.Savings.filter(c => c !== cat);
         localStorage.setItem('suppa_custom_mem', JSON.stringify(customMem));
     }
-    window.saveData(); window.updateDatalists(); window.updateUI(); window.updateCharts(); window.updateInflationChart();
+    saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
 };
 
-window.populateChartFilters = function(txs) {
+function populateChartFilters(txs) {
     const catFilter = document.getElementById('analytics-cat-filter');
     const nameFilter = document.getElementById('analytics-name-filter');
     const infNameFilter = document.getElementById('inflation-expense-filter');
@@ -862,7 +872,7 @@ window.populateChartFilters = function(txs) {
     infNameFilter.innerHTML = '<option value="ALL">All Expenses Combined</option>';
     
     let cats = [...new Set(txs.map(e => e.category))].sort();
-    cats.forEach(c => catFilter.innerHTML += `<option value="${c}">${window.getIcon(c)} ${c}</option>`);
+    cats.forEach(c => catFilter.innerHTML += `<option value="${c}">${getIcon(c)} ${c}</option>`);
     catFilter.value = cats.includes(currCat) ? currCat : 'ALL';
     
     let filteredForNames = txs;
@@ -875,7 +885,7 @@ window.populateChartFilters = function(txs) {
     let allNames = [...new Set(txs.map(e => e.name))].sort();
     allNames.forEach(n => infNameFilter.innerHTML += `<option value="${n}">${n}</option>`);
     infNameFilter.value = allNames.includes(currInfName) ? currInfName : 'ALL';
-};
+}
 
 window.updateAnalytics = function() {
     const period = document.getElementById('analytics-period').value;
@@ -889,8 +899,8 @@ window.updateAnalytics = function() {
         return true;
     });
     
-    window.populateChartFilters(transactions.filter(t => t.type === 'Expense' || t.type === 'Savings-Deposit')); 
-    window.updateCharts(filteredTxs); window.updateInflationChart();
+    populateChartFilters(transactions.filter(t => t.type === 'Expense' || t.type === 'Savings-Deposit')); 
+    updateCharts(filteredTxs); updateInflationChart();
 };
 
 window.updateCharts = function(txList = null) {
@@ -932,11 +942,11 @@ window.updateCharts = function(txList = null) {
         if(catFilter !== 'ALL') chartExpenses = chartExpenses.filter(e => e.category === catFilter);
         if(nameFilter !== 'ALL') chartExpenses = chartExpenses.filter(e => e.name === nameFilter);
 
-        window.drawCharts(chartExpenses, catFilter, nameFilter);
+        drawCharts(chartExpenses, catFilter, nameFilter);
     } catch(e) { console.error("Chart Error", e); }
 };
 
-window.drawCharts = function(expenses, catFilter, nameFilter) {
+function drawCharts(expenses, catFilter, nameFilter) {
     const ctxPie = document.getElementById('pieChart').getContext('2d');
     const ctxBar = document.getElementById('barChart').getContext('2d');
     const textColor = getComputedStyle(document.body).getPropertyValue('--text-main').trim();
@@ -945,7 +955,7 @@ window.drawCharts = function(expenses, catFilter, nameFilter) {
 
     const pieData = expenses.filter(t => t.kes > 0).reduce((acc, tx) => {
         let key = catFilter === 'ALL' ? tx.category : tx.name;
-        if(catFilter === 'ALL') key = `${window.getIcon(key)} ${key}`;
+        if(catFilter === 'ALL') key = `${getIcon(key)} ${key}`;
         acc[key] = (acc[key] || 0) + tx.kes; return acc;
     }, {});
 
@@ -979,7 +989,7 @@ window.drawCharts = function(expenses, catFilter, nameFilter) {
         items.forEach(k => {
             let parts = k.split('::'); let c = parts[0]; let n = parts[1];
             if (catFilter === 'ALL' || catFilter === c) {
-                if (nameFilter === 'ALL' || nameFilter === n) { mBudget += window.getBudget(c, n, m); }
+                if (nameFilter === 'ALL' || nameFilter === n) { mBudget += getBudget(c, n, m); }
             }
         });
         monthlyData[m].budget = mBudget;
@@ -999,7 +1009,7 @@ window.drawCharts = function(expenses, catFilter, nameFilter) {
         },
         options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { position: 'bottom', labels: { color: textColor, font: {size: 11}, boxWidth: 12 } } } }
     });
-};
+}
 
 window.updateInflationChart = function() {
     try {
@@ -1088,17 +1098,17 @@ window.fetchAIInsights = async function() {
     }
 };
 
-window.undo = function() { if (historyStack.length === 0) return alert("Nothing to undo!"); redoStack.push(JSON.stringify(transactions)); transactions = JSON.parse(historyStack.pop()); window.saveData(); window.updateDatalists(); window.updateUI(); window.updateCharts(); window.updateInflationChart(); };
-window.redo = function() { if (redoStack.length === 0) return alert("Nothing to redo!"); historyStack.push(JSON.stringify(transactions)); transactions = JSON.parse(redoStack.pop()); window.saveData(); window.updateDatalists(); window.updateUI(); window.updateCharts(); window.updateInflationChart(); };
-window.saveState = function() { historyStack.push(JSON.stringify(transactions)); redoStack = []; if (historyStack.length > 20) historyStack.shift(); };
-window.saveData = function() { localStorage.setItem('suppa_tx', JSON.stringify(transactions)); };
+window.undo = function() { if (historyStack.length === 0) return alert("Nothing to undo!"); redoStack.push(JSON.stringify(transactions)); transactions = JSON.parse(historyStack.pop()); saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart(); };
+window.redo = function() { if (redoStack.length === 0) return alert("Nothing to redo!"); historyStack.push(JSON.stringify(transactions)); transactions = JSON.parse(redoStack.pop()); saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart(); };
+function saveState() { historyStack.push(JSON.stringify(transactions)); redoStack = []; if (historyStack.length > 20) historyStack.shift(); }
+function saveData() { localStorage.setItem('suppa_tx', JSON.stringify(transactions)); }
 
 window.resetData = function() {
     if(confirm("⚠ DANGER: This will wipe ALL transactions, budgets, and portfolio history. Are you entirely sure?")) {
         if(confirm("Final confirmation: Type 'YES' to proceed.")) {
             localStorage.clear(); transactions = []; categoryBudgets = {}; 
             customMem = { Expense: [], Income: [], Savings: [], Names: [], Icons: {} };
-            window.updateDatalists(); window.updateUI();
+            updateDatalists(); updateUI();
         }
     }
 };
@@ -1112,7 +1122,7 @@ window.exportCSV = function() {
             csvContent += `${Date.now() + 1000 + index},"Initial Balance","Starting-Balance","${cat}","2020-01-01",0,1,1,0,"Auto-migrated empty account"\n`;
         }
     });
-    window.triggerDownload(csvContent, `Suppa_Transactions_Backup_${new Date().toISOString().split('T')[0]}.csv`);
+    triggerDownload(csvContent, `Suppa_Transactions_Backup_${new Date().toISOString().split('T')[0]}.csv`);
 };
 
 window.exportBudgetCSV = function() {
@@ -1124,14 +1134,14 @@ window.exportBudgetCSV = function() {
             if(amt > 0) csvContent += `${month},"${parts[0]}","${parts[1]}",${amt}\n`;
         });
     });
-    window.triggerDownload(csvContent, `Suppa_Budgets_Backup_${new Date().toISOString().split('T')[0]}.csv`);
+    triggerDownload(csvContent, `Suppa_Budgets_Backup_${new Date().toISOString().split('T')[0]}.csv`);
 };
 
-window.triggerDownload = function(content, fileName) {
+function triggerDownload(content, fileName) {
     const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.setAttribute("download", fileName);
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
-};
+}
 
 window.exportTableToExcel = function(tableID, filename = ''){
     var tableSelect = document.getElementById(tableID);
@@ -1143,7 +1153,7 @@ window.importCSV = function(e) {
     const file = e.target.files[0]; if(!file) return;
     const reader = new FileReader();
     reader.onload = function(evt) {
-        const rows = evt.target.result.split('\n'); window.saveState();
+        const rows = evt.target.result.split('\n'); saveState();
         rows.forEach((row, i) => {
             if(i === 0 || !row.trim()) return; 
             const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(s => s.replace(/(^"|"$)/g, '').trim());
@@ -1155,11 +1165,11 @@ window.importCSV = function(e) {
                         actual: parseFloat(cols[5]) || 0, qty: parseFloat(cols[6]) || 1, fx: parseFloat(cols[7]) || 1, kes: parseFloat(cols[8]) || 0, notes: cols[9] || ""
                     };
                     transactions.push(importedTx);
-                    window.addToMemory(importedTx.type, importedTx.category, importedTx.name, null);
+                    addToMemory(importedTx.type, importedTx.category, importedTx.name, null);
                 }
             }
         });
-        window.saveData(); window.updateDatalists(); window.updateUI(); alert("Transactions & Portfolio CSV Imported Successfully!"); e.target.value = '';
+        saveData(); updateDatalists(); updateUI(); alert("Transactions & Portfolio CSV Imported Successfully!"); e.target.value = '';
     };
     reader.readAsText(file);
 };
@@ -1178,11 +1188,10 @@ window.importBudgetCSV = function(e) {
             }
         });
         localStorage.setItem('suppa_budgets_v2', JSON.stringify(categoryBudgets));
-        window.updateUI(); window.renderBudgetSetup(); alert("Budgets CSV Imported Successfully!"); e.target.value = '';
+        updateUI(); renderBudgetSetup(); alert("Budgets CSV Imported Successfully!"); e.target.value = '';
     };
     reader.readAsText(file);
 };
-
 
 // ==========================================
 // 4. EVENT LISTENERS (Only runs after page loads)
@@ -1190,9 +1199,9 @@ window.importBudgetCSV = function(e) {
 document.addEventListener('DOMContentLoaded', () => {
     
     // Load Data
-    window.repairAndLoadData();
-    window.initTheme();
-    window.initializeApp();
+    repairAndLoadData();
+    initTheme();
+    initializeApp();
 
     // Setup initial dates
     const dateInput = document.getElementById('tx-date');
@@ -1202,9 +1211,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if(monthPicker) monthPicker.value = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2, '0')}`;
     
     // Initial Render
-    window.handleTypeChange('tx');
-    window.updateDatalists();
-    window.updateUI();
+    handleTypeChange('tx');
+    updateDatalists();
+    updateUI();
 
     // Profile Dropdowns
     const setupProfileDropdown = (triggerId, dropdownId) => {
@@ -1249,7 +1258,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (response.ok && result.success) {
                     if (paymentStatus) { paymentStatus.textContent = "Prompt sent! Enter your PIN on your phone."; paymentStatus.style.color = "orange"; }
-                    window.startPollingDatabase(); 
+                    startPollingDatabase(); 
                 } else {
                     throw new Error(result.message || "Payment failed to initiate.");
                 }
@@ -1271,14 +1280,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (match) {
                 if(match.type.includes('Savings') || match.type === 'Starting-Balance') {
                     document.getElementById('tx-type').value = 'Savings';
-                    window.handleTypeChange('tx');
+                    handleTypeChange('tx');
                     document.getElementById('tx-savings-action').value = match.type;
                 } else {
                     document.getElementById('tx-type').value = match.type;
-                    window.handleTypeChange('tx');
+                    handleTypeChange('tx');
                 }
                 document.getElementById('tx-category').value = match.category;
-                window.autoSelectIcon('tx');
+                autoSelectIcon('tx');
             }
         });
     }
@@ -1319,7 +1328,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else if (vLower.includes('uber') || vLower.includes('bolt') || vLower.includes('fuel')) {
                         document.getElementById('tx-category').value = 'Transport';
                     }
-                    window.autoSelectIcon('tx');
+                    autoSelectIcon('tx');
                 }
 
                 if (dateMatch) {
@@ -1330,7 +1339,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.getElementById('tx-date').value = `${year}-${month}-${day}`;
                 }
                 
-                window.calcKES('tx');
+                calcKES('tx');
                 setTimeout(() => e.target.value = '', 500);
                 
                 if (costMatch) {
@@ -1340,7 +1349,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             id: Date.now() + 1, name: 'M-Pesa Fee', type: 'Expense', category: 'Transaction Cost',
                             date: document.getElementById('tx-date').value, actual: txCost, qty: 1, fx: 1, kes: txCost, notes: 'Auto-extracted'
                         });
-                        window.saveData(); window.updateDatalists(); window.updateUI();
+                        saveData(); updateDatalists(); updateUI();
                     }
                 }
             }
