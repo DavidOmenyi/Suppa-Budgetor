@@ -214,18 +214,6 @@ function repairAndLoadData() {
             };
         });
 
-        let legacyBals = JSON.parse(localStorage.getItem('suppa_bal'));
-        if (legacyBals && Object.keys(legacyBals).length > 0) {
-            let migrated = false;
-            Object.keys(legacyBals).forEach(cat => {
-                if (parseFloat(legacyBals[cat]) > 0) {
-                    transactions.push({ id: Date.now() + Math.random(), name: 'Initial Balance Migration', type: 'Starting-Balance', category: cat, date: '2020-01-01', actual: parseFloat(legacyBals[cat]), qty: 1, fx: 1, kes: parseFloat(legacyBals[cat]), notes: 'Auto-migrated' });
-                    migrated = true;
-                }
-            });
-            if(migrated) { localStorage.setItem('suppa_tx', JSON.stringify(transactions)); localStorage.removeItem('suppa_bal'); }
-        }
-
         const loadedBudgets = JSON.parse(localStorage.getItem('suppa_budgets_v2')) || {};
         if (typeof loadedBudgets === 'object' && !Array.isArray(loadedBudgets)) {
             Object.keys(loadedBudgets).forEach(m => {
@@ -250,11 +238,21 @@ function toggleTheme() {
     updateCharts(); updateInflationChart();
 }
 
-function switchTab(tabId) {
+function switchTab(tabId, event) {
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    
     document.getElementById(tabId).classList.add('active');
-    event.currentTarget.classList.add('active');
+    
+    const e = event || window.event;
+    if (e && e.currentTarget) {
+        e.currentTarget.classList.add('active');
+    } else {
+         const btn = document.querySelector(`nav button[onclick*="${tabId}"]`);
+         if(btn) btn.classList.add('active');
+    }
+
+    if(tabId === 'summaries' || tabId === 'home') updateUI();
     if(tabId === 'analytics') updateAnalytics();
     if(tabId === 'budget') renderBudgetSetup();
 }
@@ -414,6 +412,19 @@ window.editTx = function(id) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
+// Global Delete Tx Method
+window.deleteTx = function(id) {
+    if(!confirm("Are you sure you want to completely delete this entry?")) return;
+    saveState();
+    transactions = transactions.filter(t => t.id !== id);
+    saveData(); 
+    updateDatalists(); 
+    updateUI(); 
+    updateCharts(); 
+    updateInflationChart();
+    closeLedger(); // Refresh/close ledger context
+};
+
 window.closeEditModal = function() { document.getElementById('edit-modal').classList.add('hidden'); };
 
 window.updateTransaction = function(e) {
@@ -443,11 +454,8 @@ window.updateTransaction = function(e) {
 };
 
 window.deleteEditTx = function() {
-    if(!confirm("Are you sure you want to completely delete this entry?")) return;
-    saveState();
     const id = parseInt(document.getElementById('edit-tx-id').value);
-    transactions = transactions.filter(t => t.id !== id);
-    saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
+    deleteTx(id);
     closeEditModal();
 };
 
@@ -688,9 +696,13 @@ window.updateUI = function() {
                     <tr>
                         <td style="font-size: 0.9em; color:var(--text-muted);">${tx.date}</td>
                         <td>${getIcon(tx.category)} ${tx.category}</td>
-                        <td><span class="ledger-link" onclick="openEditModal(${tx.id})">${tx.name}</span></td>
+                        <td>${tx.name}</td>
                         <td><span style="background:${typeBg}; padding:2px 8px; border-radius:10px; font-size:0.8em; color:${typeColor};">${displayType}</span></td>
                         <td class="${isInc ? 'positive' : ''}" style="font-weight: bold;">${isInc ? '+':''}${tx.kes.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                        <td style="white-space: nowrap;">
+                            <button type="button" style="background:var(--accent); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; margin-right: 4px;" onclick="openEditModal(${tx.id})">Edit</button>
+                            <button type="button" style="background:var(--danger); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer;" onclick="deleteTx(${tx.id})">Del</button>
+                        </td>
                     </tr>
                 `;
             }
@@ -766,7 +778,10 @@ window.openLedger = function(cat, name, isIncome = false) {
                 <td>${tx.name}</td>
                 <td style="font-weight:bold;">${tx.kes.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                 <td style="font-size:0.9em; color:var(--text-muted);">${tx.notes || '-'}</td>
-                <td><button onclick="editTx(${tx.id})" style="background:var(--accent);color:white;border:none;padding:4px 8px;border-radius:6px;cursor:pointer;margin-bottom:4px;">Edit</button></td>
+                <td style="white-space: nowrap;">
+                    <button onclick="editTx(${tx.id})" style="background:var(--accent);color:white;border:none;padding:4px 8px;border-radius:6px;cursor:pointer;margin-bottom:4px;margin-right:4px;">Edit</button>
+                    <button onclick="deleteTx(${tx.id})" style="background:var(--danger);color:white;border:none;padding:4px 8px;border-radius:6px;cursor:pointer;margin-bottom:4px;">Del</button>
+                </td>
             </tr>
         `;
     });
