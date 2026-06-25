@@ -410,6 +410,12 @@
 
         <div id="entry" class="tab-content">
             <h2>Log / Edit Transaction</h2>
+                    <div class="card" style="margin-top: 15px; margin-bottom: 25px; border-left: 4px solid var(--success);">
+            <h3 style="color: var(--success); margin-bottom: 8px;">🤖 Smart M-Pesa Paste</h3>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">Paste your M-Pesa SMS below to instantly auto-fill the form below!</p>
+            <textarea id="mpesa-paste-box" placeholder="e.g. OHE0000000 Confirmed. Ksh1,500.00 paid to JAVA HOUSE..." style="width: 100%; height: 60px; padding: 10px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px;"></textarea>
+        </div>
+
             <form id="tx-form" onsubmit="saveTransaction(event)" style="margin-top: 15px;">
                 <input type="hidden" id="tx-id"> 
                 <div class="form-grid">
