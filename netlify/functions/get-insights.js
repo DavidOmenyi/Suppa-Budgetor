@@ -1,5 +1,4 @@
 // netlify/functions/get-insights.js
-const fetch = require('node-fetch');
 
 exports.handler = async (event, context) => {
     // Only allow POST requests
@@ -11,10 +10,10 @@ exports.handler = async (event, context) => {
         const payload = JSON.parse(event.body);
         const allTransactions = payload.transactions || [];
 
-        // 1. Get only Expenses from the last 60 entries to keep the AI prompt small and fast
+        // 1. Get only Expenses from the last 60 entries
         const recentExpenses = allTransactions
             .filter(t => t.type === 'Expense')
-            .sort((a, b) => new Date(b.date) - new Date(a.date)) // Newest first
+            .sort((a, b) => new Date(b.date) - new Date(a.date)) 
             .slice(0, 60) 
             .map(t => `${t.date}: ${t.category} - ${t.name} (KES ${t.kes})`)
             .join('\n');
@@ -29,7 +28,7 @@ exports.handler = async (event, context) => {
         
         Expenses:\n${recentExpenses}`;
 
-        // 3. Call the Google Gemini API (Ensure GEMINI_API_KEY is in your Netlify Environment Variables)
+        // 3. Call the Google Gemini API using native global fetch
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -40,7 +39,6 @@ exports.handler = async (event, context) => {
 
         const data = await response.json();
 
-        // Catch Google API errors
         if (!response.ok || !data.candidates) {
             console.error("Google API Error:", JSON.stringify(data));
             throw new Error("AI provider returned an error.");
