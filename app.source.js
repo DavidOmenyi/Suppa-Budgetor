@@ -262,6 +262,70 @@ document.addEventListener('DOMContentLoaded', () => {
     handleTypeChange('tx');
     updateDatalists();
     updateUI();
+        // ==========================================
+    // M-PESA SMART PASTE LOGIC
+    // ==========================================
+    const pasteBox = document.getElementById('mpesa-paste-box');
+    if (pasteBox) {
+        pasteBox.addEventListener('input', function(e) {
+            const sms = e.target.value.trim();
+            if (!sms) return;
+            
+            const amountMatch = sms.match(/Ksh([\d,]+\.\d{2})/);
+            const paidToMatch = sms.match(/paid to (.*?)(?=\. on)/) || sms.match(/paid to (.*?)(?= on)/);
+            const dateMatch = sms.match(/on (\d{1,2}\/\d{1,2}\/\d{2})/);
+            const costMatch = sms.match(/Transaction cost, Ksh([\d,]+\.\d{2})/);
+
+            if (amountMatch) {
+                // Fill Amount
+                const amount = parseFloat(amountMatch[1].replace(/,/g, ''));
+                document.getElementById('tx-actual').value = amount;
+                
+                // Fill Name & Guess Category
+                if (paidToMatch) {
+                    const vendor = paidToMatch[1].trim();
+                    document.getElementById('tx-name').value = vendor;
+                    
+                    const vLower = vendor.toLowerCase();
+                    if (vLower.includes('java') || vLower.includes('kfc') || vLower.includes('naivas') || vLower.includes('quickmart')) {
+                        document.getElementById('tx-category').value = 'Food';
+                    } else if (vLower.includes('uber') || vLower.includes('bolt') || vLower.includes('fuel')) {
+                        document.getElementById('tx-category').value = 'Transport';
+                    }
+                    autoSelectIcon('tx');
+                }
+
+                // Fill Date
+                if (dateMatch) {
+                    const parts = dateMatch[1].split('/');
+                    const year = "20" + parts[2];
+                    const month = parts[1].padStart(2, '0');
+                    const day = parts[0].padStart(2, '0');
+                    document.getElementById('tx-date').value = `${year}-${month}-${day}`;
+                }
+                
+                calcKES('tx');
+                
+                // Clear the box after extracting
+                setTimeout(() => e.target.value = '', 500);
+                
+                // Ask to log transaction cost
+                if (costMatch) {
+                    const txCost = parseFloat(costMatch[1].replace(/,/g, ''));
+                    if(txCost > 0 && confirm(`Also log KES ${txCost} as a Transaction Cost?`)) {
+                        transactions.push({
+                            id: Date.now() + 1,
+                            name: 'M-Pesa Fee', type: 'Expense', category: 'Transaction Cost',
+                            date: document.getElementById('tx-date').value,
+                            actual: txCost, qty: 1, fx: 1, kes: txCost, notes: 'Auto-extracted'
+                        });
+                        saveData(); updateDatalists(); updateUI();
+                    }
+                }
+            }
+        });
+    }
+
 
     // Helper to setup Dropdowns for both Paywall and Main App
     function setupProfileDropdown(triggerId, dropdownId) {
@@ -1357,4 +1421,40 @@ function importBudgetCSV(e) {
         e.target.value = '';
     };
     reader.readAsText(file);
+        // ==========================================
+    // AI INSIGHTS LOGIC
+    // ==========================================
+    window.fetchAIInsights = async function() {
+        const btn = document.getElementById('ai-insight-btn');
+        const container = document.getElementById('ai-insight-container');
+        
+        btn.innerText = "Analyzing... 🧠";
+        btn.disabled = true;
+        container.innerHTML = `<div style="text-align: center; color: var(--text-muted);">Fetching your personalized insights... this takes about 5 seconds.</div>`;
+
+        try {
+            const response = await fetch('/.netlify/functions/get-insights', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ transactions: transactions })
+            });
+            
+            const result = await response.json();
+            if(result.success) {
+                // Convert markdown bullet points to HTML formatting
+                let htmlOutput = result.insights.replace(/\n\*/g, '<br>•');
+                htmlOutput = htmlOutput.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                container.innerHTML = htmlOutput;
+            } else {
+                throw new Error(result.message || "Failed to load");
+            }
+        } catch (error) {
+            console.error("AI Fetch Error:", error);
+            container.innerHTML = `<span style="color:var(--danger); font-weight:bold;">Error fetching insights. Please check your internet connection or try again later.</span>`;
+        } finally {
+            btn.innerText = "Refresh Advice ✨";
+            btn.disabled = false;
+        }
+    };
+
 }
