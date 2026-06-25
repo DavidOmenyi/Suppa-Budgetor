@@ -1,34 +1,40 @@
-// netlify/functions/get-insights.js
+const fetch = require('node-fetch');
 
 exports.handler = async (event, context) => {
     // Only allow POST requests
     if (event.httpMethod !== 'POST') {
-        return { statusCode: 405, body: JSON.stringify({ success: false, message: "Method Not Allowed" }) };
+        return { 
+            statusCode: 405, 
+            body: JSON.stringify({ success: false, message: "Method Not Allowed" }) 
+        };
     }
 
     try {
         const payload = JSON.parse(event.body);
         const allTransactions = payload.transactions || [];
 
-        // 1. Get only Expenses from the last 60 entries
+        // 1. Get only Expenses
         const recentExpenses = allTransactions
             .filter(t => t.type === 'Expense')
-            .sort((a, b) => new Date(b.date) - new Date(a.date)) 
+            .sort((a, b) => new Date(b.date) - new Date(a.date))
             .slice(0, 60) 
             .map(t => `${t.date}: ${t.category} - ${t.name} (KES ${t.kes})`)
             .join('\n');
 
         if (!recentExpenses || recentExpenses.length === 0) {
-             return { statusCode: 200, body: JSON.stringify({ success: true, insights: "You haven't logged any recent expenses yet. Start tracking your budget to get AI advice!" }) };
+             return { 
+                 statusCode: 200, 
+                 body: JSON.stringify({ success: true, insights: "You haven't logged any recent expenses yet. Start tracking your budget to get AI advice!" }) 
+             };
         }
 
-        // 2. Instruct the AI on how to analyze the data
+        // 2. Prepare AI Prompt
         const prompt = `You are an expert financial advisor specializing in Kenyan budgets. Analyze the following recent expenses. 
-        Provide 3 short, highly specific, and actionable bullet points to help the user identify spending leaks and save money. Do not write a long intro or conclusion, just give the 3 insights.
+        Provide 3 short, highly specific, and actionable bullet points to help the user identify spending leaks and save money. Do not write a long intro or conclusion, just give the 3 insights formatted clearly.
         
         Expenses:\n${recentExpenses}`;
 
-        // 3. Call the Google Gemini API using native global fetch
+        // 3. Call the Google Gemini API
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -55,10 +61,7 @@ exports.handler = async (event, context) => {
         console.error("AI Function Failed:", error);
         return { 
             statusCode: 500, 
-            body: JSON.stringify({ 
-                success: false, 
-                message: "Function Error: " + error.message,
-                stack: error.stack // Added for easier debugging in the browser console
-            }) 
+            body: JSON.stringify({ success: false, message: error.message }) 
         };
     }
+};
