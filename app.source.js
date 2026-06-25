@@ -1,1363 +1,850 @@
-// ==========================================
-// 1. SUPABASE AUTH & MONETIZATION LOGIC
-// ==========================================
-
-const supabaseUrl = 'https://ffzkpuiujxdqwjvmhrmx.supabase.co'; 
-const supabaseKey = 'sb_publishable_yNJ1bJEdGV4Vpw_itRG1mA_XOBP8efu'; 
-
-const supabaseLib = window.supabase || supabase;
-const supabaseClient = supabaseLib.createClient(supabaseUrl, supabaseKey);
-
-let currentUser = null;
-let pollingInterval = null;
-
-// ==========================================
-// 2. GLOBAL STATE & CONFIGURATION
-// ==========================================
-let transactions = [];
-let categoryBudgets = {}; 
-let customMem = { Expense: [], Income: [], Savings: [], Names: [], Icons: {} };
-let historyStack = []; 
-let redoStack = []; 
-let currentDate = new Date();
-
-const categories = {
-    Expense: ['Transport', 'Food', 'Transaction Cost', 'Entertainment', 'Education', 'Childcare', 'Homecare', 'Groceries', 'Self-care', 'Work disbursements', 'Charity', 'Contingency sums'],
-    Income: ['Salary', 'Business', 'Dividends', 'Interest', 'Other'],
-    Savings: ['Sinking Funds', 'Investment', 'Emergency funds', 'Savings']
-};
-
-const defaultIcons = {
-    'Transport': '🚌', 'Food': '🍔', 'Transaction Cost': '💸', 'Entertainment': '🍿',
-    'Education': '📚', 'Childcare': '👶', 'Homecare': '🏠', 'Groceries': '🛒',
-    'Self-care': '💆', 'Work disbursements': '💼', 'Charity': '🕊️', 'Contingency sums': '🆘',
-    'Salary': '💵', 'Business': '🏪', 'Dividends': '📈', 'Interest': '🏦', 'Other': '📦',
-    'Sinking Funds': '⚓', 'Investment': '💎', 'Emergency funds': '🚑', 'Savings': '🐖'
-};
-
-const chartColors = [
-    '#059669', '#f59e0b', '#3b82f6', '#ec4899', '#8b5cf6', 
-    '#14b8a6', '#ef4444', '#84cc16', '#6366f1', '#10b981', 
-    '#f97316', '#06b6d4', '#d946ef', '#a855f7', '#22c55e', 
-    '#eab308', '#0ea5e9', '#f43f5e', '#4f46e5', '#8dc63f',
-    '#1d4ed8', '#be123c', '#4338ca', '#047857', '#b45309'
-];
-
-let pieChartInstance = null; 
-let barChartInstance = null; 
-let inflationChartInstance = null;
-
-// ==========================================
-// 3. GLOBAL FUNCTIONS (Accessible by HTML)
-// ==========================================
-
-// --- Auth & Profile ---
-function updateProfileUI(displayName, avatarUrl) {
-    ['userNameDisplay', 'appUserNameDisplay'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = displayName;
-    });
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Suppa Budgetor</title>
     
-    const avatarPairs = [
-        { img: 'userAvatarImg', fallback: 'userAvatarFallback' },
-        { img: 'appUserAvatarImg', fallback: 'appUserAvatarFallback' }
-    ];
-    
-    avatarPairs.forEach(pair => {
-        const imgEl = document.getElementById(pair.img);
-        const fallbackEl = document.getElementById(pair.fallback);
-        if (imgEl && fallbackEl) {
-            if (avatarUrl && avatarUrl.length > 5) {
-                imgEl.src = avatarUrl;
-                imgEl.style.display = 'block';
-                fallbackEl.style.display = 'none';
-            } else {
-                imgEl.style.display = 'none';
-                fallbackEl.style.display = 'flex';
-            }
-        }
-    });
-}
+    <link rel="icon" type="image/png" href="app-icon.png">
+    <link rel="apple-touch-icon" href="app-icon.png">
+    <link rel="manifest" href="manifest.json">
 
-async function initializeApp() {
-    const { data: { user } } = await supabaseClient.auth.getUser();
-    if (!user) {
-        window.location.href = 'login.html';
-        return;
-    }
-    
-    currentUser = user;
-    const metadata = currentUser.user_metadata || {};
-    const displayName = metadata.display_name || metadata.full_name || currentUser.email.split('@')[0];
-    const avatarUrl = metadata.avatar_url || metadata.picture || '';
-    
-    updateProfileUI(displayName, avatarUrl);
-    checkPremiumStatus();
-}
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
-async function checkPremiumStatus() {
-    const { data, error } = await supabaseClient
-        .from('profiles')
-        .select('is_premium')
-        .eq('id', currentUser.id)
-        .single();
-        
-    if (data && data.is_premium === true) unlockApp();
-    else lockApp();
-}
-
-function unlockApp() {
-    const lockedScreen = document.getElementById('lockedScreen');
-    const appContainer = document.getElementById('appContainer');
-    if (lockedScreen) lockedScreen.style.display = 'none';
-    if (appContainer) appContainer.style.display = 'block';
-    if (pollingInterval) clearInterval(pollingInterval);
-}
-
-function lockApp() {
-    const lockedScreen = document.getElementById('lockedScreen');
-    const appContainer = document.getElementById('appContainer');
-    if (lockedScreen) lockedScreen.style.display = 'block';
-    if (appContainer) appContainer.style.display = 'none';
-}
-
-function startPollingDatabase() {
-    pollingInterval = setInterval(async () => {
-        const { data } = await supabaseClient.from('profiles').select('is_premium').eq('id', currentUser.id).single();
-        if (data && data.is_premium === true) unlockApp();
-    }, 3000); 
-
-    setTimeout(() => {
-        if (pollingInterval) {
-            clearInterval(pollingInterval);
-            const paymentStatus = document.getElementById('paymentStatus');
-            const payButton = document.getElementById('payButton');
-            if (paymentStatus) { paymentStatus.textContent = "Payment timed out. Please try again."; paymentStatus.style.color = "red"; }
-            if (payButton) { payButton.disabled = false; payButton.textContent = "Pay to Unlock"; }
-        }
-    }, 120000); 
-}
-
-window.openProfileModal = function() {
-    const metadata = currentUser.user_metadata || {};
-    document.getElementById('profile-name-input').value = metadata.display_name || metadata.full_name || currentUser.email.split('@')[0];
-    document.getElementById('profile-avatar-input').value = metadata.avatar_url || metadata.picture || '';
-    
-    const d1 = document.getElementById('profileDropdown');
-    const d2 = document.getElementById('appProfileDropdown');
-    if(d1) d1.style.display = 'none';
-    if(d2) d2.style.display = 'none';
-    
-    document.getElementById('profile-modal').classList.remove('hidden');
-};
-
-window.closeProfileModal = function() { document.getElementById('profile-modal').classList.add('hidden'); };
-
-window.saveProfile = async function(e) {
-    e.preventDefault();
-    const btn = document.getElementById('save-profile-btn');
-    btn.textContent = "Saving..."; btn.disabled = true;
-
-    const newName = document.getElementById('profile-name-input').value.trim();
-    const newAvatar = document.getElementById('profile-avatar-input').value.trim();
-
-    try {
-        const { data, error } = await supabaseClient.auth.updateUser({ data: { display_name: newName, avatar_url: newAvatar } });
-        if (error) throw error;
-        
-        currentUser = data.user; 
-        updateProfileUI(newName || currentUser.email.split('@')[0], newAvatar);
-        window.closeProfileModal();
-    } catch (err) {
-        alert("Failed to update profile: " + err.message);
-    } finally {
-        btn.textContent = "Save Profile"; btn.disabled = false;
-    }
-};
-
-window.forceLogout = async function(e) {
-    if (e && e.preventDefault) e.preventDefault();
-    if (e && e.target) { e.target.innerText = "Logging out..."; e.target.style.opacity = "0.6"; }
-    try { await supabaseClient.auth.signOut(); } catch (err) { console.error("SignOut error:", err); }
-    window.location.href = 'login.html';
-};
-
-async function performLogout(e) { window.forceLogout(e); }
-
-// --- Core Budget Functions ---
-function getIcon(cat) { return defaultIcons[cat] || (customMem.Icons && customMem.Icons[cat]) || '🏷️'; }
-
-function autoSelectIcon(prefix) {
-    const cat = document.getElementById(`${prefix}-category`).value.trim();
-    const iconDropdown = document.getElementById(`${prefix}-category-icon`);
-    if(cat && iconDropdown) {
-        const icon = getIcon(cat);
-        let optionExists = Array.from(iconDropdown.options).some(opt => opt.value === icon);
-        if(!optionExists) iconDropdown.innerHTML += `<option value="${icon}">${icon}</option>`;
-        iconDropdown.value = icon;
-    }
-}
-
-function repairAndLoadData() {
-    try {
-        const loadedTx = JSON.parse(localStorage.getItem('suppa_tx')) || [];
-        transactions = loadedTx.filter(t => t && typeof t === 'object' && t.id).map(t => {
-            let type = String(t.type || 'Expense').trim();
-            let cat = String(t.category || 'Uncategorized').trim();
-            if (type === 'Savings') type = 'Savings-Deposit';
-
-            return {
-                id: t.id, name: String(t.name || '(General)').trim(), type: type,
-                category: cat, date: String(t.date || new Date().toISOString().split('T')[0]).trim(),
-                actual: Math.abs(parseFloat(t.actual) || 0), qty: parseFloat(t.qty) || 1, fx: parseFloat(t.fx) || 1,
-                kes: Math.abs(parseFloat(t.kes) || 0), notes: String(t.notes || '').trim()
-            };
-        });
-
-        let legacyBals = JSON.parse(localStorage.getItem('suppa_bal'));
-        if (legacyBals && Object.keys(legacyBals).length > 0) {
-            let migrated = false;
-            Object.keys(legacyBals).forEach(cat => {
-                if (parseFloat(legacyBals[cat]) > 0) {
-                    transactions.push({ id: Date.now() + Math.random(), name: 'Initial Balance Migration', type: 'Starting-Balance', category: cat, date: '2020-01-01', actual: parseFloat(legacyBals[cat]), qty: 1, fx: 1, kes: parseFloat(legacyBals[cat]), notes: 'Auto-migrated' });
-                    migrated = true;
-                }
-            });
-            if(migrated) { localStorage.setItem('suppa_tx', JSON.stringify(transactions)); localStorage.removeItem('suppa_bal'); }
+    <style>
+        :root {
+            --bg-color: #f0fdf4; 
+            --surface-color: #ffffff;
+            --text-main: #064e3b; 
+            --text-muted: #475569;
+            --primary: #059669; 
+            --primary-hover: #047857;
+            --accent: #f59e0b; 
+            --accent-hover: #d97706;
+            --success: #10b981;
+            --danger: #ef4444;
+            --border: #d1fae5;
+            --shadow: 0 10px 15px -3px rgba(5, 150, 105, 0.1), 0 4px 6px -2px rgba(5, 150, 105, 0.05);
+            --radius: 12px;
         }
 
-        const loadedBudgets = JSON.parse(localStorage.getItem('suppa_budgets_v2')) || {};
-        if (typeof loadedBudgets === 'object' && !Array.isArray(loadedBudgets)) {
-            Object.keys(loadedBudgets).forEach(m => {
-                if (typeof loadedBudgets[m] === 'object' && !Array.isArray(loadedBudgets[m])) { categoryBudgets[m] = loadedBudgets[m]; }
-            });
-        }
-        
-        const loadedMem = JSON.parse(localStorage.getItem('suppa_custom_mem')) || {};
-        customMem = { Expense: Array.isArray(loadedMem.Expense) ? loadedMem.Expense : [], Income: Array.isArray(loadedMem.Income) ? loadedMem.Income : [], Savings: Array.isArray(loadedMem.Savings) ? loadedMem.Savings : [], Names: Array.isArray(loadedMem.Names) ? loadedMem.Names : [], Icons: loadedMem.Icons || {} };
-    } catch (e) {
-        console.error("Data repair failed.", e);
-        transactions = []; categoryBudgets = {}; 
-    }
-}
-
-function initTheme() { if(localStorage.getItem('suppa_theme') === 'dark') document.body.setAttribute('data-theme', 'dark'); }
-
-function toggleTheme() {
-    const isDark = document.body.getAttribute('data-theme') === 'dark';
-    document.body.setAttribute('data-theme', isDark ? 'light' : 'dark');
-    localStorage.setItem('suppa_theme', isDark ? 'light' : 'dark');
-    updateCharts(); updateInflationChart();
-}
-
-function switchTab(tabId) {
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-    document.getElementById(tabId).classList.add('active');
-    event.currentTarget.classList.add('active');
-    if(tabId === 'analytics') updateAnalytics();
-    if(tabId === 'budget') renderBudgetSetup();
-}
-
-function addToMemory(type, cat, name, icon) {
-    let changed = false;
-    let normalizedType = type;
-    if (type.includes('Savings') || type === 'Starting-Balance') normalizedType = 'Savings';
-
-    if (cat && cat !== 'Uncategorized') {
-        if (!customMem[normalizedType]) customMem[normalizedType] = [];
-        if (!customMem[normalizedType].includes(cat)) { customMem[normalizedType].push(cat); changed = true; }
-        if (!customMem.Icons) customMem.Icons = {};
-        if (icon && customMem.Icons[cat] !== icon) { customMem.Icons[cat] = icon; changed = true; }
-    }
-    if (name && name !== '(General)') {
-        if (!customMem.Names.includes(name)) { customMem.Names.push(name); changed = true; }
-    }
-    if (changed) localStorage.setItem('suppa_custom_mem', JSON.stringify(customMem));
-}
-
-function handleTypeChange(prefix) {
-    toggleCategories(true, prefix+'-type', prefix+'-category', prefix === 'tx' ? 'cat-memory' : 'edit-cat-memory');
-    const type = document.getElementById(prefix+'-type').value;
-    const actionGroup = document.getElementById(prefix+'-savings-action-group');
-    const catLabel = document.getElementById(prefix+'-category-label');
-    
-    if(type === 'Savings') {
-        actionGroup.classList.remove('hidden');
-        if (catLabel) catLabel.innerText = "Account Type";
-    } else {
-        actionGroup.classList.add('hidden');
-        if (catLabel) catLabel.innerText = "Category";
-    }
-    calcKES(prefix);
-}
-
-function toggleCategories(clearInput = true, typeId, inputId, listId) {
-    const type = document.getElementById(typeId).value;
-    const dl = document.getElementById(listId);
-    const input = document.getElementById(inputId);
-    
-    if (clearInput && input) { input.value = ''; autoSelectIcon(inputId.split('-')[0]); }
-    if (dl) dl.innerHTML = '';
-    
-    let baseOpts = categories[type] || [];
-    let customOpts = transactions.filter(t => t.type.includes(type) || (type==='Savings' && t.type==='Starting-Balance')).map(t => t.category);
-    if (customMem[type]) customOpts.push(...customMem[type]);
-    
-    let allOpts = [...new Set([...baseOpts, ...customOpts])];
-    allOpts.forEach(c => dl.innerHTML += `<option value="${c}">${c}</option>`);
-}
-
-function calcKES(prefix) {
-    const actual = Math.abs(parseFloat(document.getElementById(`${prefix}-actual`).value) || 0);
-    const fx = parseFloat(document.getElementById(`${prefix}-fx`).value) || 1;
-    const qty = parseFloat(document.getElementById(`${prefix}-qty`).value) || 1;
-    document.getElementById(`${prefix}-kes`).value = (actual * fx * qty).toFixed(2);
-}
-
-function saveTransaction(e) {
-    e.preventDefault(); saveState();
-
-    const prefix = document.getElementById('tx-id').value ? 'edit-tx' : 'tx';
-    const txIdInput = document.getElementById('tx-id').value;
-    const isUpdate = !!txIdInput;
-
-    const rawName = document.getElementById('tx-name').value.trim();
-    const rawCat = document.getElementById('tx-category').value.trim();
-    const chosenIcon = document.getElementById('tx-category-icon').value;
-    
-    let finalType = document.getElementById('tx-type').value;
-    if (finalType === 'Savings') finalType = document.getElementById('tx-savings-action').value;
-
-    const newTx = {
-        id: isUpdate ? parseInt(txIdInput) : Date.now(),
-        name: rawName || '(General)', type: finalType, category: rawCat || 'Uncategorized',
-        date: document.getElementById('tx-date').value,
-        actual: Math.abs(parseFloat(document.getElementById('tx-actual').value) || 0),
-        qty: parseFloat(document.getElementById('tx-qty').value) || 1, fx: parseFloat(document.getElementById('tx-fx').value) || 1,
-        kes: parseFloat(document.getElementById('tx-kes').value) || 0, notes: document.getElementById('tx-notes').value
-    };
-
-    addToMemory(newTx.type, newTx.category, newTx.name, chosenIcon);
-
-    if (isUpdate) {
-        const idx = transactions.findIndex(t => t.id === newTx.id);
-        if (idx > -1) transactions[idx] = newTx;
-        document.getElementById('tx-id').value = ""; 
-    } else {
-        transactions.push(newTx);
-    }
-
-    saveData(); updateDatalists(); updateUI();
-    
-    const btn = document.getElementById('tx-submit-btn');
-    btn.innerText = isUpdate ? "✓ Updated!" : "✓ Saved!"; btn.style.background = "var(--success)";
-
-    setTimeout(() => { 
-        btn.innerText = "Add to Ledger"; btn.style.background = ""; e.target.reset(); 
-        document.getElementById('tx-date').valueAsDate = new Date(); 
-        document.getElementById('tx-fx').value = 1; document.getElementById('tx-qty').value = 1;
-        handleTypeChange('tx');
-    }, 1500);
-}
-
-window.openEditModal = function(id) {
-    const tx = transactions.find(t => t.id === id);
-    if(!tx) return;
-    
-    document.getElementById('edit-tx-id').value = tx.id;
-    document.getElementById('edit-tx-name').value = tx.name === '(General)' ? '' : tx.name;
-    
-    if (tx.type.includes('Savings') || tx.type === 'Starting-Balance') {
-        document.getElementById('edit-tx-type').value = 'Savings'; handleTypeChange('edit-tx');
-        document.getElementById('edit-tx-savings-action').value = tx.type;
-    } else {
-        document.getElementById('edit-tx-type').value = tx.type; handleTypeChange('edit-tx');
-    }
-
-    document.getElementById('edit-tx-category').value = tx.category; autoSelectIcon('edit-tx');
-    document.getElementById('edit-tx-date').value = tx.date;
-    document.getElementById('edit-tx-actual').value = Math.abs(tx.actual);
-    document.getElementById('edit-tx-qty').value = tx.qty;
-    document.getElementById('edit-tx-fx').value = tx.fx;
-    document.getElementById('edit-tx-kes').value = tx.kes;
-    document.getElementById('edit-tx-notes').value = tx.notes || '';
-    
-    document.getElementById('edit-modal').classList.remove('hidden');
-};
-
-window.editTx = function(id) {
-    const tx = transactions.find(t => t.id === id);
-    if(!tx) return;
-    
-    document.getElementById('tx-id').value = tx.id;
-    document.getElementById('tx-name').value = tx.name === '(General)' ? '' : tx.name;
-    
-    if (tx.type.includes('Savings') || tx.type === 'Starting-Balance') {
-        document.getElementById('tx-type').value = 'Savings'; handleTypeChange('tx');
-        document.getElementById('tx-savings-action').value = tx.type;
-    } else {
-        document.getElementById('tx-type').value = tx.type; handleTypeChange('tx');
-    }
-
-    document.getElementById('tx-category').value = tx.category; autoSelectIcon('tx');
-    document.getElementById('tx-date').value = tx.date;
-    document.getElementById('tx-actual').value = Math.abs(tx.actual);
-    document.getElementById('tx-qty').value = tx.qty;
-    document.getElementById('tx-fx').value = tx.fx;
-    document.getElementById('tx-notes').value = tx.notes || '';
-    
-    calcKES('tx'); closeLedger();
-    
-    document.querySelectorAll('nav button').forEach(b => { if(b.textContent === 'Log Entry') b.click(); });
-    document.getElementById('tx-submit-btn').innerText = "Update Transaction";
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-};
-
-window.closeEditModal = function() { document.getElementById('edit-modal').classList.add('hidden'); };
-
-window.updateTransaction = function(e) {
-    e.preventDefault(); saveState();
-    
-    const id = parseInt(document.getElementById('edit-tx-id').value);
-    const index = transactions.findIndex(t => t.id === id);
-    if(index === -1) return;
-    
-    let finalType = document.getElementById('edit-tx-type').value;
-    if (finalType === 'Savings') finalType = document.getElementById('edit-tx-savings-action').value;
-    const chosenIcon = document.getElementById('edit-tx-category-icon').value;
-
-    const newTx = {
-        id: id, name: document.getElementById('edit-tx-name').value.trim() || '(General)',
-        type: finalType, category: document.getElementById('edit-tx-category').value.trim() || 'Uncategorized',
-        date: document.getElementById('edit-tx-date').value,
-        actual: Math.abs(parseFloat(document.getElementById('edit-tx-actual').value) || 0),
-        qty: parseFloat(document.getElementById('edit-tx-qty').value) || 1, fx: parseFloat(document.getElementById('edit-tx-fx').value) || 1,
-        kes: parseFloat(document.getElementById('edit-tx-kes').value), notes: document.getElementById('edit-tx-notes').value
-    };
-
-    addToMemory(newTx.type, newTx.category, newTx.name, chosenIcon);
-    transactions[index] = newTx;
-    saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
-    closeEditModal();
-};
-
-window.deleteEditTx = function() {
-    if(!confirm("Are you sure you want to completely delete this entry?")) return;
-    saveState();
-    const id = parseInt(document.getElementById('edit-tx-id').value);
-    transactions = transactions.filter(t => t.id !== id);
-    saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
-    closeEditModal();
-};
-
-function updateDatalists() {
-    const txMem = document.getElementById('tx-memory'); txMem.innerHTML = '';
-    let allNames = [...new Set([...transactions.map(t => t.name), ...customMem.Names])];
-    allNames.forEach(n => { if(n!=='(General)') txMem.innerHTML += `<option value="${n}">${n}</option>`; });
-
-    const bCatMem = document.getElementById('budget-cat-memory');
-    const bNameMem = document.getElementById('budget-name-memory');
-    if(bCatMem && bNameMem) {
-        bCatMem.innerHTML = ''; bNameMem.innerHTML = '';
-        let allCats = new Set();
-        Object.keys(categories).forEach(type => { if (type !== 'Income') categories[type].forEach(c => allCats.add(c)); });
-        if (customMem.Expense) customMem.Expense.forEach(c => allCats.add(c));
-        if (customMem.Savings) customMem.Savings.forEach(c => allCats.add(c));
-        transactions.filter(t => t.type !== 'Income').forEach(t => allCats.add(t.category));
-        allNames.forEach(n => { if(n !== '(General)') bNameMem.innerHTML += `<option value="${n}">${n}</option>`; });
-        [...allCats].sort().forEach(c => { bCatMem.innerHTML += `<option value="${c}">${c}</option>`; });
-    }
-}
-
-function getMonthStr(dateObj) { return `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2, '0')}`; }
-
-function getBudget(cat, name, targetMonthStr) {
-    const key = `${cat}::${name}`;
-    const sortedMonths = Object.keys(categoryBudgets).sort().reverse();
-    for (let m of sortedMonths) {
-        if (m <= targetMonthStr && categoryBudgets[m]) {
-            if (categoryBudgets[m][key] !== undefined) return categoryBudgets[m][key];
-        }
-    }
-    return 0; 
-}
-
-window.saveSingleBudget = function(e) {
-    e.preventDefault();
-    const monthStr = document.getElementById('budget-month-picker').value;
-    let cat = document.getElementById('budget-category').value.trim();
-    let name = document.getElementById('budget-name').value.trim();
-    const amount = parseFloat(document.getElementById('budget-amount').value) || 0;
-
-    if (cat && !name) {
-        let match = transactions.slice().reverse().find(t => t.name.toLowerCase() === cat.toLowerCase() && t.type !== 'Income');
-        if (match && match.category) { name = cat; cat = match.category; } else { name = '(General)'; }
-    } else if (!name) { name = '(General)'; }
-    if (!cat) cat = 'Uncategorized';
-
-    let inferredType = 'Expense';
-    if (categories.Savings.includes(cat) || customMem.Savings.includes(cat) || transactions.some(t => t.category === cat && t.type.includes('Savings'))) inferredType = 'Savings';
-    addToMemory(inferredType, cat, name, null);
-
-    if(!categoryBudgets[monthStr]) categoryBudgets[monthStr] = {};
-    categoryBudgets[monthStr][`${cat}::${name}`] = amount;
-    localStorage.setItem('suppa_budgets_v2', JSON.stringify(categoryBudgets));
-    
-    document.getElementById('budget-category').value = ''; document.getElementById('budget-name').value = ''; document.getElementById('budget-amount').value = '';
-    renderBudgetSetup(); updateUI(); updateCharts();
-    
-    const btn = document.getElementById('budget-submit-btn');
-    btn.innerText = "✓ Budget Saved!"; btn.style.background = "var(--success)";
-    setTimeout(() => { btn.innerText = "Add / Update Budget"; btn.style.background = ""; }, 1500);
-};
-
-window.editBudgetForm = function(cat, name, amount) {
-    document.getElementById('budget-category').value = cat;
-    document.getElementById('budget-name').value = name === '(General)' ? '' : name;
-    document.getElementById('budget-amount').value = amount;
-    document.getElementById('budget-amount').focus();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-};
-
-window.deleteBudget = function(cat, name, monthStr) {
-    if(!confirm("Delete this budget allocation?")) return;
-    const key = `${cat}::${name}`;
-    if(categoryBudgets[monthStr] && categoryBudgets[monthStr][key] !== undefined) {
-        categoryBudgets[monthStr][key] = 0; 
-        localStorage.setItem('suppa_budgets_v2', JSON.stringify(categoryBudgets));
-        renderBudgetSetup(); updateUI(); updateCharts();
-    }
-};
-
-window.renderBudgetSetup = function() {
-    try {
-        const monthStr = document.getElementById('budget-month-picker').value;
-        if(!monthStr) return;
-        const tbody = document.getElementById('budget-setup-body'); tbody.innerHTML = '';
-
-        let activeItems = new Set();
-        Object.keys(categoryBudgets).forEach(m => {
-            if(m <= monthStr && categoryBudgets[m]) {
-                Object.keys(categoryBudgets[m]).forEach(k => {
-                    let parts = k.split('::');
-                    if(getBudget(parts[0], parts[1], monthStr) > 0) activeItems.add(k);
-                });
-            }
-        });
-
-        Array.from(activeItems).sort().forEach(key => {
-            const parts = key.split('::');
-            const cat = parts[0]; const name = parts[1];
-            const amt = getBudget(cat, name, monthStr);
-            const isExplicit = categoryBudgets[monthStr] && categoryBudgets[monthStr][key] !== undefined;
-
-            tbody.innerHTML += `
-                <tr>
-                    <td>${getIcon(cat)} ${cat} <br><small style="color:var(--text-muted)">${name === '(General)' ? 'Category Target' : name}</small> ${!isExplicit ? '<br><small style="color:var(--accent)">(Rolled Forward)</small>' : ''}</td>
-                    <td style="font-weight:bold;">${amt.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                    <td>
-                        <button type="button" style="background:var(--accent); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer;" onclick="editBudgetForm('${cat.replace(/'/g,"\\'")}', '${name.replace(/'/g,"\\'")}', ${amt})">Edit</button>
-                        ${isExplicit ? `<button type="button" style="background:var(--danger); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; margin-left:5px;" onclick="deleteBudget('${cat.replace(/'/g,"\\'")}', '${name.replace(/'/g,"\\'")}', '${monthStr}')">Del</button>` : ''}
-                    </td>
-                </tr>
-            `;
-        });
-    } catch(e) { console.error("Error rendering budget setup", e); }
-};
-
-function calculateRollover(upToMonthStr) {
-    let rollover = 0;
-    let pastMonths = new Set([...transactions.filter(t=>t.date).map(t => t.date.substring(0,7))]);
-    pastMonths = Array.from(pastMonths).filter(m => m < upToMonthStr).sort();
-    pastMonths.forEach(m => {
-        let mIn = 0; let mOut = 0;
-        transactions.filter(t => t.date && t.date.startsWith(m)).forEach(t => {
-            if (t.type === 'Income' || t.type === 'Savings-Withdrawal') mIn += t.kes;
-            if (t.type === 'Expense' || t.type === 'Savings-Deposit') mOut += t.kes;
-        });
-        rollover += (mIn - mOut);
-    });
-    return rollover;
-}
-
-window.changeMonth = function(delta) { currentDate.setMonth(currentDate.getMonth() + delta); updateUI(); };
-
-window.updateUI = function() {
-    try {
-        const monthStr = getMonthStr(currentDate);
-        const monthYear = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
-        document.getElementById('current-month-display').innerText = monthYear;
-        document.getElementById('current-month-display-summaries').innerText = monthYear;
-
-        const currentMonthTxs = transactions.filter(t => t.date && t.date.startsWith(monthStr));
-        const rollover = calculateRollover(monthStr);
-
-        let totalIncome = 0; let totalSavingsWithdrawn = 0; 
-        let totalSpent = 0; let totalSaved = 0;
-
-        let incomeTxs = currentMonthTxs.filter(t => t.type === 'Income');
-        const groupedIncome = incomeTxs.reduce((acc, tx) => { acc[tx.category] = (acc[tx.category]||0) + tx.kes; return acc; }, {});
-        totalIncome = Object.values(groupedIncome).reduce((a,b)=>a+b, 0);
-
-        const incomeBody = document.getElementById('income-body'); if(incomeBody) incomeBody.innerHTML = '';
-        if (rollover !== 0 && incomeBody) {
-            incomeBody.innerHTML += `<tr><td>Rollover from Previous Months</td><td class="${rollover >= 0 ? 'positive' : 'negative'}">${rollover > 0 ? '+' : ''}${rollover.toLocaleString(undefined, {minimumFractionDigits: 2})}</td></tr>`;
-        }
-        Object.keys(groupedIncome).forEach(cat => {
-            if(incomeBody) incomeBody.innerHTML += `<tr><td><a class="ledger-link" onclick="openLedger('${cat.replace(/'/g, "\\'")}', '', true)">${getIcon(cat)} ${cat}</a></td><td class="positive">+${groupedIncome[cat].toLocaleString(undefined, {minimumFractionDigits: 2})}</td></tr>`;
-        });
-        const bliEl = document.getElementById('bottom-line-income');
-        if(bliEl) bliEl.innerText = `KES ${totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-
-        const perfBody = document.getElementById('performance-body'); if(perfBody) perfBody.innerHTML = '';
-        const txBody = document.getElementById('transactions-body'); if(txBody) txBody.innerHTML = '';
-        
-        const catFilterEl = document.getElementById('summary-cat-filter'); const catFilter = catFilterEl ? catFilterEl.value : 'ALL';
-        const spentFilterEl = document.getElementById('summary-spent-filter'); const spentFilter = spentFilterEl ? spentFilterEl.value : 'ALL';
-
-        let itemsMap = {}; 
-        Object.keys(categoryBudgets).forEach(bm => {
-            if(bm <= monthStr && categoryBudgets[bm]) Object.keys(categoryBudgets[bm]).forEach(k => {
-                let parts = k.split('::'); let cat = parts[0] || 'Uncategorized'; let name = parts[1] || '(General)';
-                let bAmt = getBudget(cat, name, monthStr);
-                let infType = categories.Savings.includes(cat) || customMem.Savings.includes(cat) || transactions.some(t => t.category === cat && t.type.includes('Savings')) ? 'Savings' : 'Expense';
-                if(bAmt > 0) itemsMap[`${cat}::${name}`] = { cat: cat, name: name, type: infType, actual: 0 };
-            });
-        });
-        
-        currentMonthTxs.filter(t => t.type === 'Expense' || t.type === 'Savings-Deposit').forEach(t => {
-            let k = `${t.category}::${t.name}`;
-            if(!itemsMap[k]) itemsMap[k] = { cat: t.category, name: t.name, type: t.type === 'Savings-Deposit' ? 'Savings' : 'Expense', actual: 0 };
-            itemsMap[k].actual += t.kes;
-        });
-
-        if (catFilterEl) {
-            catFilterEl.innerHTML = '<option value="ALL">All Categories</option>';
-            let distinctCats = [...new Set(Object.values(itemsMap).map(i => i.cat))].sort();
-            distinctCats.forEach(c => catFilterEl.innerHTML += `<option value="${c}">${getIcon(c)} ${c}</option>`);
-            catFilterEl.value = distinctCats.includes(catFilter) ? catFilter : 'ALL';
+        [data-theme="dark"] {
+            --bg-color: #353c36;
+            --surface-color: #353c36;
+            --text-main: #ecfdf5;
+            --text-muted: #a7f3d0;
+            --primary: #10b981;
+            --primary-hover: #34d399;
+            --accent: #fbbf24;
+            --accent-hover: #f59e0b;
+            --border: #14281f;
+            --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.8);
         }
 
-        let tableBudget = 0; let tableSpent = 0;
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-main); transition: background-color 0.4s ease; -webkit-user-select: none; user-select: none; }
         
-        Object.values(itemsMap).sort((a,b) => {
-            const cA = a.cat || ''; const cB = b.cat || '';
-            const nA = a.name || ''; const nB = b.name || '';
-            return cA.localeCompare(cB) || nA.localeCompare(nB);
-        }).forEach(item => {
-            let bAmt = getBudget(item.cat, item.name, monthStr);
-            let aAmt = item.actual;
+        /* Paywall Lock Screen Vault */
+        #lockedScreen { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--bg-color); z-index: 999999; padding: 15px; overflow-y: auto; }
+        .paywall-center-wrapper { min-height: 95vh; display: flex; justify-content: center; align-items: center; }
+        .paywall-card { max-width: 440px; width: 100%; }
 
-            if (catFilter !== 'ALL' && catFilter !== item.cat) return;
-            if (spentFilter === 'ZERO' && aAmt !== 0) return;
-            if (spentFilter === 'NON_ZERO' && aAmt === 0) return;
-            if (spentFilter === 'UNDER_BUDGET' && (bAmt === 0 || aAmt >= bAmt)) return;
-
-            tableBudget += bAmt; tableSpent += aAmt;
-
-            let variance = bAmt - aAmt; let isPositive = variance >= 0;
-            const varPct = bAmt ? ((variance / bAmt) * 100).toFixed(1) : 0;
-
-            const trHtml = `
-                <tr>
-                    <td>${getIcon(item.cat)} ${item.cat}</td>
-                    <td><a class="ledger-link" onclick="openLedger('${item.cat.replace(/'/g, "\\'")}', '${item.name.replace(/'/g, "\\'")}', false)">${item.name === '(General)' ? 'Category Target' : item.name}</a></td>
-                    <td><span style="background:var(--border); padding:2px 8px; border-radius:10px; font-size:0.8em; color:var(--primary);">${item.type}</span></td>
-                    <td>${bAmt.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                    <td>${aAmt.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                    <td class="${isPositive ? 'positive' : 'negative'}">${variance > 0 ? '+':''}${variance.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                    <td class="${isPositive ? 'positive' : 'negative'}">${varPct}%</td>
-                </tr>
-            `;
-            if(perfBody) perfBody.innerHTML += trHtml;
-        });
-
-        let logTxs = currentMonthTxs.filter(t => t.type !== 'Starting-Balance');
-        if(catFilter !== 'ALL') logTxs = logTxs.filter(t => t.category === catFilter);
+        /* Layout */
+        .app-container { max-width: 1200px; margin: 0 auto; padding: 15px; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        h1 { color: var(--primary); font-weight: 800; letter-spacing: -0.5px; text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.25); }
         
-        logTxs.sort((a,b) => new Date(b.date) - new Date(a.date)).forEach(tx => {
-            let isInc = tx.type === 'Income' || tx.type === 'Savings-Withdrawal';
-            let isSav = tx.type.includes('Savings');
-            let typeColor = isInc ? 'var(--success)' : (isSav ? '#3b82f6' : 'var(--primary)');
-            let typeBg = isInc ? 'rgba(16,185,129,0.2)' : (isSav ? 'rgba(59,130,246,0.2)' : 'var(--border)');
-            let displayType = tx.type.replace('Savings-', '');
-
-            if (txBody) {
-                txBody.innerHTML += `
-                    <tr>
-                        <td style="font-size: 0.9em; color:var(--text-muted);">${tx.date}</td>
-                        <td>${getIcon(tx.category)} ${tx.category}</td>
-                        <td><span class="ledger-link" onclick="openEditModal(${tx.id})">${tx.name}</span></td>
-                        <td><span style="background:${typeBg}; padding:2px 8px; border-radius:10px; font-size:0.8em; color:${typeColor};">${displayType}</span></td>
-                        <td class="${isInc ? 'positive' : ''}" style="font-weight: bold;">${isInc ? '+':''}${tx.kes.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                    </tr>
-                `;
-            }
-        });
-
-        let netVar = tableBudget - tableSpent;
-        const perfBudg = document.getElementById('perf-bottom-line-budget');
-        if(perfBudg) perfBudg.innerText = tableBudget.toLocaleString(undefined, {minimumFractionDigits: 2});
+        .controls { display: flex; flex-wrap: wrap; gap: 6px; }
+        .controls button { background: var(--surface-color); border: 1px solid var(--primary); color: var(--primary); padding: 6px 12px; border-radius: 20px; cursor: pointer; transition: 0.3s; font-weight: 600; font-size: 13px; }
+        .controls button:hover { background: var(--primary); color: #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .controls button.negative { border-color: var(--danger); color: var(--danger); }
+        .controls button.negative:hover { background: var(--danger); color: #fff; }
         
-        const perfAct = document.getElementById('perf-bottom-line-actual');
-        if(perfAct) perfAct.innerText = tableSpent.toLocaleString(undefined, {minimumFractionDigits: 2});
+        /* Navigation */
+        nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid var(--border); padding-bottom: 10px; justify-content: space-between;}
+        nav button { flex: 1 1 auto; text-align: center; background: none; border: none; font-size: 15px; font-weight: 600; color: var(--text-muted); cursor: pointer; padding: 8px 16px; border-radius: var(--radius); transition: 0.3s; }
+        nav button:hover { color: var(--accent); background: rgba(245, 158, 11, 0.1); }
+        nav button.active { color: #fff; background: var(--primary); box-shadow: var(--shadow); }
+
+        /* Tabs & Animations */
+        @keyframes slideUpFade { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
+        .tab-content { display: none; background: var(--surface-color); padding: 20px; border-radius: var(--radius); box-shadow: var(--shadow); overflow-x: auto;}
+        .tab-content.active { display: block; animation: slideUpFade 0.4s ease forwards; }
+
+        /* Forms & Inputs */
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .form-group { display: flex; flex-direction: column; }
+        label { font-size: 13px; font-weight: 700; margin-bottom: 5px; color: var(--text-muted); text-transform: uppercase;}
+        input, select { padding: 10px; border: 2px solid var(--border); border-radius: var(--radius); background: var(--bg-color); color: var(--text-main); transition: 0.2s; width: 100%; }
+        input:focus, select:focus { border-color: var(--accent); outline: none; }
         
-        const varStr = `${netVar >= 0 ? '+':''}${netVar.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-        const varClass = netVar >= 0 ? 'positive' : 'negative';
-        const perfVar = document.getElementById('perf-bottom-line-variance');
-        if(perfVar) { perfVar.innerText = varStr; perfVar.className = varClass; }
+        .btn-primary { background: linear-gradient(135deg, var(--primary), var(--primary-hover)); color: #fff; border: none; padding: 10px 16px; border-radius: 20px; cursor: pointer; font-weight: bold; width: 100%; text-transform: uppercase; transition: 0.3s; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
 
-        let rawTotalBudget = 0;
-        Object.values(itemsMap).forEach(item => { rawTotalBudget += getBudget(item.cat, item.name, monthStr); });
+        /* Tables */
+        table { width: 100%; border-collapse: separate; border-spacing: 0; min-width: 700px; margin-top: 10px;}
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); max-width: 250px; word-wrap: break-word;}
+        th { font-weight: 700; color: var(--text-muted); font-size: 12px; text-transform: uppercase; background: rgba(5,150,105,0.05);}
+        tr:hover:not(thead tr) { background-color: rgba(245, 158, 11, 0.05); }
+        .ledger-link { color: var(--accent); cursor: pointer; text-decoration: underline; font-weight: bold; }
+        .positive { color: var(--success); font-weight: bold; }
+        .negative { color: var(--danger); font-weight: bold; }
 
-        currentMonthTxs.forEach(t => {
-            if (t.type === 'Savings-Withdrawal') totalSavingsWithdrawn += t.kes;
-            if (t.type === 'Expense') totalSpent += t.kes;
-            if (t.type === 'Savings-Deposit') totalSaved += t.kes;
-        });
+        /* Budget Setup Table */
+        #budget-setup-table { min-width: 100%; }
+        #budget-setup-table th:first-child { width: 60%; }
+        #budget-setup-table th:last-child { width: 40%; }
+        #budget-setup-table td { padding: 8px 12px; }
+        #budget-setup-table input { padding: 8px; font-size: 14px; }
 
-        let totalAvailable = totalIncome + rollover + totalSavingsWithdrawn;
-        let actualOutgoing = totalSpent + totalSaved;
-        let surplusDeficit = rawTotalBudget - actualOutgoing; 
-        let amountUnassigned = totalAvailable - actualOutgoing; 
+        /* Summary Cards */
+        .summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .card { background: var(--surface-color); padding: 20px; border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); position: relative; overflow: hidden; }
+        .card::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: linear-gradient(90deg, var(--primary), var(--accent)); }
+        .card h3 { color: var(--text-muted); font-size: 12px; margin-bottom: 8px; text-transform: uppercase; }
+        .card .value { font-size: 22px; font-weight: 800; color: var(--text-main); }
+
+        /* Charts */
+        .chart-container { position: relative; height: 350px; width: 100%; margin-top: 20px; }
+        .analytics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+        .hidden { display: none !important; }
+        .flex-between { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
         
-        document.getElementById('top-income').innerText = `KES ${(totalIncome + rollover).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-        document.getElementById('top-rollover-text').innerText = `Includes ${rollover >= 0 ? '+':''}${rollover.toLocaleString(undefined, {minimumFractionDigits: 2})} rollover`;
-        document.getElementById('top-budget').innerText = `KES ${rawTotalBudget.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-        document.getElementById('top-spent').innerText = `KES ${actualOutgoing.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-        
-        document.getElementById('top-surplus').innerText = `KES ${surplusDeficit >= 0 ? '+':''}${surplusDeficit.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-        document.getElementById('top-surplus').className = `value ${surplusDeficit >= 0 ? 'positive' : 'negative'}`;
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 1000000; }
+        .modal-content { background: var(--surface-color); padding: 25px; border-radius: var(--radius); width: 90%; max-width: 800px; max-height: 85vh; overflow-y: auto; box-shadow: var(--shadow); position: relative;}
+        .modal-close { position: absolute; top: 20px; right: 20px; background: var(--danger); color: white; border: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+    </style>
+</head>
+<body>
 
-        const topUnassignedEl = document.getElementById('top-unassigned');
-        if (topUnassignedEl) {
-            topUnassignedEl.innerText = `KES ${amountUnassigned >= 0 ? '+':''}${amountUnassigned.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            topUnassignedEl.className = `value ${amountUnassigned >= 0 ? 'positive' : 'negative'}`;
-        }
-        
-        updatePortfolioView(currentMonthTxs, monthStr);
-    } catch (e) {
-        console.error("UI Update Error:", e);
-    }
-};
-
-window.openLedger = function(cat, name, isIncome = false) {
-    const monthStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2, '0')}`;
-    let txs = transactions.filter(t => t.date && t.date.substring(0,7) === monthStr);
-    
-    if (isIncome) {
-        txs = txs.filter(t => t.type === 'Income' && t.category === cat);
-        document.getElementById('ledger-title').innerText = `Income Ledger: ${getIcon(cat)} ${cat} (${monthStr})`;
-    } else {
-        txs = txs.filter(t => (t.type === 'Expense' || t.type === 'Savings-Deposit') && t.category === cat && t.name === name);
-        document.getElementById('ledger-title').innerText = `Ledger: ${name === '(General)' ? cat : name} (${monthStr})`;
-    }
-    
-    txs.sort((a,b) => new Date(b.date) - new Date(a.date));
-    const tbody = document.getElementById('ledger-body'); tbody.innerHTML = '';
-    
-    if (txs.length === 0) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No records found.</td></tr>`;
-    
-    txs.forEach(tx => {
-        tbody.innerHTML += `
-            <tr>
-                <td>${tx.date}</td>
-                <td>${tx.name}</td>
-                <td style="font-weight:bold;">${tx.kes.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                <td style="font-size:0.9em; color:var(--text-muted);">${tx.notes || '-'}</td>
-                <td><button onclick="editTx(${tx.id})" style="background:var(--accent);color:white;border:none;padding:4px 8px;border-radius:6px;cursor:pointer;margin-bottom:4px;">Edit</button></td>
-            </tr>
-        `;
-    });
-    document.getElementById('ledger-modal').classList.remove('hidden');
-};
-
-window.closeLedger = function() { document.getElementById('ledger-modal').classList.add('hidden'); };
-
-function updatePortfolioView(currentMonthTxs, monthStr) {
-    const tbody = document.getElementById('portfolio-body'); tbody.innerHTML = '';
-    
-    let activePortCats = new Set([...customMem.Savings]);
-    transactions.filter(t => t.type.includes('Savings') || t.type === 'Starting-Balance').forEach(t => activePortCats.add(t.category));
-    
-    let grandStart = 0; let grandInflow = 0; let grandCurrent = 0;
-
-    Array.from(activePortCats).sort().forEach(cat => {
-        let startBal = 0; let mtdInflow = 0; let prevInflows = 0;
-        
-        transactions.filter(t => t.category === cat).forEach(t => {
-            if (t.type === 'Starting-Balance') {
-                startBal += t.kes;
-            } else if (t.date.substring(0,7) < monthStr) {
-                if (t.type === 'Savings-Deposit') prevInflows += t.kes;
-                if (t.type === 'Savings-Withdrawal') prevInflows -= t.kes;
-            } else if (t.date.startsWith(monthStr)) {
-                if (t.type === 'Savings-Deposit') mtdInflow += t.kes;
-                if (t.type === 'Savings-Withdrawal') mtdInflow -= t.kes;
-            }
-        });
-        
-        const currentTotal = startBal + prevInflows + mtdInflow;
-        grandStart += startBal; grandInflow += mtdInflow; grandCurrent += currentTotal;
-        tbody.innerHTML += `
-            <tr>
-                <td><span style="color:var(--accent)">${getIcon(cat)}</span> ${cat}</td>
-                <td>${startBal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                <td class="${mtdInflow >= 0 ? 'positive' : 'negative'}">${mtdInflow > 0 ? '+' : ''}${mtdInflow.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                <td style="font-weight:800; color:var(--primary);">KES ${currentTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                <td style="text-align: center;"><button type="button" style="background:var(--danger); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer;" onclick="deletePortfolioAccount('${cat.replace(/'/g, "\\'")}')">Del</button></td>
-            </tr>`;
-    });
-
-    document.getElementById('port-total-start').innerText = grandStart.toLocaleString(undefined, {minimumFractionDigits: 2});
-    
-    const totInflowsEl = document.getElementById('port-total-inflows');
-    totInflowsEl.innerText = `${grandInflow > 0 ? '+' : ''}${grandInflow.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-    totInflowsEl.className = grandInflow >= 0 ? 'positive' : 'negative';
-
-    document.getElementById('port-total-current').innerText = 'KES ' + grandCurrent.toLocaleString(undefined, {minimumFractionDigits: 2});
-
-    const ledgerBody = document.getElementById('portfolio-ledger-body');
-    if(ledgerBody) {
-        ledgerBody.innerHTML = '';
-        let savTxs = transactions.filter(t => t.type === 'Starting-Balance' || (t.date && t.date.startsWith(monthStr) && t.type.includes('Savings')));
-        
-        if (savTxs.length === 0) {
-            ledgerBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted);">No portfolio movements found.</td></tr>`;
-        } else {
-            savTxs.sort((a,b) => new Date(b.date) - new Date(a.date)).forEach(tx => {
-                let isStart = tx.type === 'Starting-Balance'; let isDep = tx.type === 'Savings-Deposit';
-                let badgeColor = isStart ? 'var(--primary)' : (isDep ? 'var(--success)' : 'var(--danger)');
-                let badgeBg = isStart ? 'var(--border)' : (isDep ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)');
-                let text = isStart ? 'Start Bal' : (isDep ? 'Deposit' : 'Withdrawal');
-                let actionBadge = `<span style="background:${badgeBg}; padding:2px 8px; border-radius:10px; font-size:0.8em; color:${badgeColor};">${text}</span>`;
-                
-                ledgerBody.innerHTML += `
-                    <tr>
-                        <td style="font-size: 0.9em; color:var(--text-muted);">${tx.date}</td>
-                        <td>${getIcon(tx.category)} ${tx.category}</td>
-                        <td><span class="ledger-link" onclick="openEditModal(${tx.id})">${tx.name}</span></td>
-                        <td>${actionBadge}</td>
-                        <td class="${!isStart && isDep ? 'positive' : ''}" style="font-weight: bold;">${!isStart && isDep ? '+':''}${tx.kes.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                    </tr>
-                `;
-            });
-        }
-    }
-}
-
-window.deletePortfolioAccount = function(cat) {
-    if(!confirm(`Are you sure you want to completely delete the account "${cat}"?\n\nThis will erase ALL deposits, withdrawals, and opening balances tied to it.`)) return;
-    if(!confirm(`Final warning: Deleting "${cat}" cannot be undone. Proceed?`)) return;
-
-    saveState();
-    transactions = transactions.filter(t => !(t.category === cat && (t.type === 'Starting-Balance' || t.type.includes('Savings'))));
-    
-    if(customMem.Savings && customMem.Savings.includes(cat)) {
-        customMem.Savings = customMem.Savings.filter(c => c !== cat);
-        localStorage.setItem('suppa_custom_mem', JSON.stringify(customMem));
-    }
-    saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
-};
-
-function populateChartFilters(txs) {
-    const catFilter = document.getElementById('analytics-cat-filter');
-    const nameFilter = document.getElementById('analytics-name-filter');
-    const infNameFilter = document.getElementById('inflation-expense-filter');
-    const currCat = catFilter.value; const currName = nameFilter.value; const currInfName = infNameFilter.value;
-    
-    catFilter.innerHTML = '<option value="ALL">All Categories</option>';
-    nameFilter.innerHTML = '<option value="ALL">All Expenses</option>';
-    infNameFilter.innerHTML = '<option value="ALL">All Expenses Combined</option>';
-    
-    let cats = [...new Set(txs.map(e => e.category))].sort();
-    cats.forEach(c => catFilter.innerHTML += `<option value="${c}">${getIcon(c)} ${c}</option>`);
-    catFilter.value = cats.includes(currCat) ? currCat : 'ALL';
-    
-    let filteredForNames = txs;
-    if(catFilter.value !== 'ALL') filteredForNames = txs.filter(e => e.category === catFilter.value);
-    
-    let names = [...new Set(filteredForNames.map(e => e.name))].sort();
-    names.forEach(n => nameFilter.innerHTML += `<option value="${n}">${n}</option>`);
-    nameFilter.value = names.includes(currName) ? currName : 'ALL';
-
-    let allNames = [...new Set(txs.map(e => e.name))].sort();
-    allNames.forEach(n => infNameFilter.innerHTML += `<option value="${n}">${n}</option>`);
-    infNameFilter.value = allNames.includes(currInfName) ? currInfName : 'ALL';
-}
-
-window.updateAnalytics = function() {
-    const period = document.getElementById('analytics-period').value;
-    const now = new Date();
-    const filteredTxs = transactions.filter(t => {
-        if(!t.date) return false;
-        const d = new Date(t.date);
-        if(period === 'MTD') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-        if(period === 'YTD') return d.getFullYear() === now.getFullYear();
-        if(period === 'QTD') return d.getFullYear() === now.getFullYear() && Math.floor(d.getMonth()/3) === Math.floor(now.getMonth()/3);
-        return true;
-    });
-    
-    populateChartFilters(transactions.filter(t => t.type === 'Expense' || t.type === 'Savings-Deposit')); 
-    updateCharts(filteredTxs); updateInflationChart();
-};
-
-window.updateCharts = function(txList = null) {
-    try {
-        if(!document.getElementById('analytics').classList.contains('active')) return;
-        if(!txList) {
-            const period = document.getElementById('analytics-period').value;
-            const now = new Date();
-            txList = transactions.filter(t => {
-                if(!t.date) return false;
-                const d = new Date(t.date);
-                if(period === 'MTD') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-                if(period === 'YTD') return d.getFullYear() === now.getFullYear();
-                if(period === 'QTD') return d.getFullYear() === now.getFullYear() && Math.floor(d.getMonth()/3) === Math.floor(now.getMonth()/3);
-                return true;
-            });
-        }
-
-        const catFilter = document.getElementById('analytics-cat-filter').value;
-        const nameFilter = document.getElementById('analytics-name-filter').value;
-
-        let expenses = txList.filter(t => t.type === 'Expense' || t.type === 'Savings-Deposit');
-        
-        const income = txList.filter(t => t.type === 'Income').reduce((s,t)=>s+t.kes, 0);
-        const savingsTotal = txList.filter(t => t.type === 'Savings-Deposit').reduce((s,t)=>s+t.kes, 0);
-        const targetPct = income ? ((savingsTotal / income) * 100).toFixed(1) : 0;
-        document.getElementById('stat-target').innerText = `${targetPct}%`;
-        document.getElementById('stat-target').className = targetPct >= 30 ? 'value positive' : 'value negative';
-
-        const thirtyDaysAgo = new Date().setDate(new Date().getDate() - 30);
-        const sixtyDaysAgo = new Date().setDate(new Date().getDate() - 60);
-        const currentExp = transactions.filter(t => t.date && new Date(t.date) >= thirtyDaysAgo && t.type === 'Expense').reduce((s,t)=>s+t.kes,0);
-        const prevExp = transactions.filter(t => t.date && new Date(t.date) >= sixtyDaysAgo && new Date(t.date) < thirtyDaysAgo && t.type === 'Expense').reduce((s,t)=>s+t.kes,0);
-        const inflation = prevExp ? (((currentExp - prevExp) / prevExp) * 100).toFixed(1) : 0;
-        document.getElementById('stat-inflation').innerText = `${inflation > 0 ? '+':''}${inflation}%`;
-        document.getElementById('stat-inflation').className = inflation <= 0 ? 'value positive' : 'value negative';
-
-        let chartExpenses = expenses;
-        if(catFilter !== 'ALL') chartExpenses = chartExpenses.filter(e => e.category === catFilter);
-        if(nameFilter !== 'ALL') chartExpenses = chartExpenses.filter(e => e.name === nameFilter);
-
-        drawCharts(chartExpenses, catFilter, nameFilter);
-    } catch(e) { console.error("Chart Error", e); }
-};
-
-function drawCharts(expenses, catFilter, nameFilter) {
-    const ctxPie = document.getElementById('pieChart').getContext('2d');
-    const ctxBar = document.getElementById('barChart').getContext('2d');
-    const textColor = getComputedStyle(document.body).getPropertyValue('--text-main').trim();
-    const isDark = document.body.getAttribute('data-theme') === 'dark';
-    Chart.defaults.color = textColor; Chart.defaults.borderColor = isDark ? '#14281f' : '#d1fae5';
-
-    const pieData = expenses.filter(t => t.kes > 0).reduce((acc, tx) => {
-        let key = catFilter === 'ALL' ? tx.category : tx.name;
-        if(catFilter === 'ALL') key = `${getIcon(key)} ${key}`;
-        acc[key] = (acc[key] || 0) + tx.kes; return acc;
-    }, {});
-
-    const totalAmount = Object.values(pieData).reduce((a,b) => a+b, 0);
-    const pieLabels = Object.keys(pieData).map(k => {
-        let pct = totalAmount > 0 ? ((pieData[k] / totalAmount) * 100).toFixed(1) : 0;
-        return `${k} (${pct}%)`;
-    });
-
-    if(pieChartInstance) pieChartInstance.destroy();
-    pieChartInstance = new Chart(ctxPie, {
-        type: 'doughnut',
-        data: { labels: pieLabels, datasets: [{ data: Object.values(pieData), backgroundColor: chartColors, borderWidth: 1, borderColor: isDark ? '#0a120e' : '#fff' }] },
-        options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'bottom', labels: { color: textColor, font: {size: 11}, boxWidth: 12 } }, tooltip: { callbacks: { label: function(context) { let val = context.raw || 0; return `KES ${val.toLocaleString()}`; } } } } }
-    });
-
-    const monthlyData = {};
-    expenses.forEach(t => {
-        const m = t.date.substring(0,7);
-        if(!monthlyData[m]) monthlyData[m] = { budget: 0, actual: 0 };
-        monthlyData[m].actual += t.kes;
-    });
-
-    Object.keys(monthlyData).forEach(m => {
-        let mBudget = 0; let items = new Set();
-        Object.keys(categoryBudgets).forEach(bm => {
-            if(bm <= m && categoryBudgets[bm]) Object.keys(categoryBudgets[bm]).forEach(k => items.add(k));
-        });
-        transactions.filter(t => t.date && t.date.startsWith(m) && (t.type === 'Expense' || t.type === 'Savings-Deposit')).forEach(t => items.add(`${t.category}::${t.name}`));
-        
-        items.forEach(k => {
-            let parts = k.split('::'); let c = parts[0]; let n = parts[1];
-            if (catFilter === 'ALL' || catFilter === c) {
-                if (nameFilter === 'ALL' || nameFilter === n) { mBudget += getBudget(c, n, m); }
-            }
-        });
-        monthlyData[m].budget = mBudget;
-    });
-
-    const sortedMonths = Object.keys(monthlyData).sort();
-
-    if(barChartInstance) barChartInstance.destroy();
-    barChartInstance = new Chart(ctxBar, {
-        type: 'bar',
-        data: {
-            labels: sortedMonths,
-            datasets: [
-                { label: 'Budgeted', data: sortedMonths.map(m => monthlyData[m].budget), backgroundColor: '#a7f3d0', borderRadius: 4 },
-                { label: 'Actual Spent', data: sortedMonths.map(m => monthlyData[m].actual), backgroundColor: '#059669', borderRadius: 4 }
-            ]
-        },
-        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { position: 'bottom', labels: { color: textColor, font: {size: 11}, boxWidth: 12 } } } }
-    });
-}
-
-window.updateInflationChart = function() {
-    try {
-        if(!document.getElementById('analytics').classList.contains('active')) return;
-        const interval = document.getElementById('inflation-interval').value;
-        const nameFilter = document.getElementById('inflation-expense-filter').value;
-
-        let data = transactions.filter(t => t.date && t.type === 'Expense');
-        if (nameFilter !== 'ALL') data = data.filter(t => t.name === nameFilter);
-
-        const isDark = document.body.getAttribute('data-theme') === 'dark';
-        const textColor = isDark ? '#a7f3d0' : '#475569';
-        const bucketedData = {};
-
-        const now = new Date();
-        data.forEach(t => {
-            const d = new Date(t.date);
-            const y = d.getFullYear(); const m = d.getMonth();
+<div id="lockedScreen">
+    <div class="paywall-center-wrapper">
+        <div class="paywall-card card">
             
-            if(interval === 'MTD' && d.getDate() > now.getDate()) return;
-            if(interval === 'QTD' && ((m%3) > (now.getMonth()%3) || ((m%3) === (now.getMonth()%3) && d.getDate() > now.getDate()))) return;
-            if(interval === 'YTD' && (m > now.getMonth() || (m === now.getMonth() && d.getDate() > now.getDate()))) return;
-
-            let key = "";
-            if(interval === 'Monthly' || interval === 'MTD') key = `${y}-${String(m+1).padStart(2,'0')}`;
-            else if (interval === 'Quarterly' || interval === 'QTD') key = `${y}-Q${Math.floor(m/3)+1}`;
-            else if (interval === 'Half-Year') key = `${y}-H${Math.floor(m/6)+1}`;
-            else if (interval === 'Yearly' || interval === 'YTD') key = `${y}`;
-            bucketedData[key] = (bucketedData[key] || 0) + t.kes;
-        });
-
-        const sortedKeys = Object.keys(bucketedData).sort();
-        const inflationData = []; const chartLabels = [];
-
-        for(let i = 0; i < sortedKeys.length; i++) {
-            const currentPeriod = sortedKeys[i];
-            const currentVal = bucketedData[currentPeriod];
-            chartLabels.push(currentPeriod);
-            if (i === 0) { inflationData.push(0); } else {
-                const prevVal = bucketedData[sortedKeys[i-1]];
-                if (prevVal === 0) inflationData.push(currentVal > 0 ? 100 : 0);
-                else inflationData.push(parseFloat((((currentVal - prevVal) / prevVal) * 100).toFixed(2)));
-            }
-        }
-
-        const ctxInf = document.getElementById('inflationChart').getContext('2d');
-        if(inflationChartInstance) inflationChartInstance.destroy();
-        
-        inflationChartInstance = new Chart(ctxInf, {
-            type: 'line',
-            data: { labels: chartLabels, datasets: [{ label: 'Inflation / Growth %', data: inflationData, borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.2)', fill: true, tension: 0.3, pointBackgroundColor: '#d97706', pointRadius: 4 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: textColor } } }, scales: { y: { title: { display: true, text: 'Growth Percentage (%)', color: textColor }, grid: { color: isDark ? '#14281f' : '#d1fae5' } }, x: { grid: { color: isDark ? '#14281f' : '#d1fae5' } } } }
-        });
-    } catch(e) { console.error("Inflation Chart Error:", e); }
-};
-
-window.fetchAIInsights = async function() {
-    const btn = document.getElementById('ai-insight-btn');
-    const container = document.getElementById('ai-insight-container');
-    
-    btn.innerText = "Analyzing... 🧠";
-    btn.disabled = true;
-    container.innerHTML = `<div style="text-align: center; color: var(--text-muted);">Fetching your personalized insights... this takes about 5 seconds.</div>`;
-
-    try {
-        const response = await fetch('/.netlify/functions/get-insights', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ transactions: transactions })
-        });
-        
-        const result = await response.json();
-        if(result.success) {
-            let htmlOutput = result.insights.replace(/\n\*/g, '<br>•');
-            htmlOutput = htmlOutput.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-            container.innerHTML = htmlOutput;
-        } else {
-            throw new Error(result.message || "Failed to load");
-        }
-    } catch (error) {
-        console.error("AI Fetch Error:", error);
-        container.innerHTML = `<span style="color:var(--danger); font-weight:bold;">Error fetching insights. Please check your internet connection or verify your GEMINI_API_KEY in Netlify.</span>`;
-    } finally {
-        btn.innerText = "Refresh Advice ✨";
-        btn.disabled = false;
-    }
-};
-
-window.undo = function() { if (historyStack.length === 0) return alert("Nothing to undo!"); redoStack.push(JSON.stringify(transactions)); transactions = JSON.parse(historyStack.pop()); saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart(); };
-window.redo = function() { if (redoStack.length === 0) return alert("Nothing to redo!"); historyStack.push(JSON.stringify(transactions)); transactions = JSON.parse(redoStack.pop()); saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart(); };
-function saveState() { historyStack.push(JSON.stringify(transactions)); redoStack = []; if (historyStack.length > 20) historyStack.shift(); }
-function saveData() { localStorage.setItem('suppa_tx', JSON.stringify(transactions)); }
-
-window.resetData = function() {
-    if(confirm("⚠ DANGER: This will wipe ALL transactions, budgets, and portfolio history. Are you entirely sure?")) {
-        if(confirm("Final confirmation: Type 'YES' to proceed.")) {
-            localStorage.clear(); transactions = []; categoryBudgets = {}; 
-            customMem = { Expense: [], Income: [], Savings: [], Names: [], Icons: {} };
-            updateDatalists(); updateUI();
-        }
-    }
-};
-
-window.exportCSV = function() {
-    if(transactions.length === 0 && customMem.Savings.length === 0) return alert("No transaction data to export!");
-    let csvContent = "ID,Name,Type,Category,Date,Actual_Amount,Quantity,FX_Rate,Total_KES,Notes\n";
-    transactions.forEach(t => { csvContent += `${t.id},"${t.name}",${t.type},"${t.category}",${t.date},${t.actual},${t.qty},${t.fx},${t.kes},"${(t.notes||'').replace(/"/g, '""')}"\n`; });
-    customMem.Savings.forEach((cat, index) => {
-        if (!transactions.some(t => t.category === cat && (t.type === 'Starting-Balance' || t.type.includes('Savings')))) {
-            csvContent += `${Date.now() + 1000 + index},"Initial Balance","Starting-Balance","${cat}","2020-01-01",0,1,1,0,"Auto-migrated empty account"\n`;
-        }
-    });
-    triggerDownload(csvContent, `Suppa_Transactions_Backup_${new Date().toISOString().split('T')[0]}.csv`);
-};
-
-window.exportBudgetCSV = function() {
-    if(Object.keys(categoryBudgets).length === 0) return alert("No budget data to export!");
-    let csvContent = "Month,Category,Expense_Name,Budget_Amount\n";
-    Object.keys(categoryBudgets).sort().forEach(month => {
-        Object.keys(categoryBudgets[month]).forEach(key => {
-            let parts = key.split('::'); let amt = categoryBudgets[month][key];
-            if(amt > 0) csvContent += `${month},"${parts[0]}","${parts[1]}",${amt}\n`;
-        });
-    });
-    triggerDownload(csvContent, `Suppa_Budgets_Backup_${new Date().toISOString().split('T')[0]}.csv`);
-};
-
-function triggerDownload(content, fileName) {
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.setAttribute("download", fileName);
-    document.body.appendChild(link); link.click(); document.body.removeChild(link);
-}
-
-window.exportTableToExcel = function(tableID, filename = ''){
-    var tableSelect = document.getElementById(tableID);
-    var wb = XLSX.utils.table_to_book(tableSelect, {sheet:"Sheet1", raw: true});
-    XLSX.writeFile(wb, filename+".xlsx");
-};
-
-window.importCSV = function(e) {
-    const file = e.target.files[0]; if(!file) return;
-    const reader = new FileReader();
-    reader.onload = function(evt) {
-        const rows = evt.target.result.split('\n'); saveState();
-        rows.forEach((row, i) => {
-            if(i === 0 || !row.trim()) return; 
-            const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(s => s.replace(/(^"|"$)/g, '').trim());
-            if(cols.length >= 10 && cols[0] !== 'ID') {
-                let newId = parseInt(cols[0]);
-                if(!transactions.some(t => t.id === newId)) {
-                    let importedTx = {
-                        id: newId || Date.now() + i, name: cols[1] || '(General)', type: cols[2], category: cols[3], date: cols[4],
-                        actual: parseFloat(cols[5]) || 0, qty: parseFloat(cols[6]) || 1, fx: parseFloat(cols[7]) || 1, kes: parseFloat(cols[8]) || 0, notes: cols[9] || ""
-                    };
-                    transactions.push(importedTx);
-                    addToMemory(importedTx.type, importedTx.category, importedTx.name, null);
-                }
-            }
-        });
-        saveData(); updateDatalists(); updateUI(); alert("Transactions & Portfolio CSV Imported Successfully!"); e.target.value = '';
-    };
-    reader.readAsText(file);
-};
-
-window.importBudgetCSV = function(e) {
-    const file = e.target.files[0]; if(!file) return;
-    const reader = new FileReader();
-    reader.onload = function(evt) {
-        const rows = evt.target.result.split('\n');
-        rows.forEach((row, i) => {
-            if(i === 0 || !row.trim()) return; 
-            const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(s => s.replace(/(^"|"$)/g, '').trim());
-            if(cols.length >= 4 && cols[0].match(/^\d{4}-\d{2}$/)) {
-                if(!categoryBudgets[cols[0]]) categoryBudgets[cols[0]] = {};
-                categoryBudgets[cols[0]][`${cols[1]}::${cols[2]}`] = parseFloat(cols[3]) || 0;
-            }
-        });
-        localStorage.setItem('suppa_budgets_v2', JSON.stringify(categoryBudgets));
-        updateUI(); renderBudgetSetup(); alert("Budgets CSV Imported Successfully!"); e.target.value = '';
-    };
-    reader.readAsText(file);
-};
-
-// ==========================================
-// 4. EVENT LISTENERS (Only runs after page loads)
-// ==========================================
-document.addEventListener('DOMContentLoaded', () => {
-    
-    // Load Data
-    repairAndLoadData();
-    initTheme();
-    initializeApp();
-
-    // Setup initial dates
-    const dateInput = document.getElementById('tx-date');
-    if(dateInput) dateInput.valueAsDate = new Date();
-    
-    const monthPicker = document.getElementById('budget-month-picker');
-    if(monthPicker) monthPicker.value = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2, '0')}`;
-    
-    // Initial Render
-    handleTypeChange('tx');
-    updateDatalists();
-    updateUI();
-
-    // Profile Dropdowns
-    const setupProfileDropdown = (triggerId, dropdownId) => {
-        const trigger = document.getElementById(triggerId);
-        const dropdown = document.getElementById(dropdownId);
-        if (trigger && dropdown) {
-            trigger.addEventListener('click', (e) => {
-                e.stopPropagation(); 
-                dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
-            });
-            document.addEventListener('click', (e) => {
-                if (!trigger.contains(e.target) && !dropdown.contains(e.target)) {
-                    dropdown.style.display = 'none';
-                }
-            });
-        }
-    };
-    setupProfileDropdown('profileTrigger', 'profileDropdown');
-    setupProfileDropdown('appProfileTrigger', 'appProfileDropdown');
-
-    // Pay Button
-    const payButton = document.getElementById('payButton');
-    if (payButton) {
-        payButton.addEventListener('click', async () => {
-            const phoneInput = document.getElementById('phoneInput');
-            const paymentStatus = document.getElementById('paymentStatus');
-            const phone = phoneInput ? phoneInput.value.trim() : '';
-            
-            if (!phone || phone.length < 9) { alert("Please enter a valid M-Pesa phone number."); return; }
-
-            payButton.disabled = true; payButton.textContent = "Processing...";
-            if (paymentStatus) { paymentStatus.textContent = "Contacting M-Pesa... please wait."; paymentStatus.style.color = "blue"; }
-
-            try {
-                const response = await fetch('/.netlify/functions/initiate-tuma', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone: phone, userId: currentUser.id, amount: 1700 })
-                });
-                
-                const result = await response.json();
-
-                if (response.ok && result.success) {
-                    if (paymentStatus) { paymentStatus.textContent = "Prompt sent! Enter your PIN on your phone."; paymentStatus.style.color = "orange"; }
-                    startPollingDatabase(); 
-                } else {
-                    throw new Error(result.message || "Payment failed to initiate.");
-                }
-            } catch (error) {
-                console.error("Payment error:", error);
-                if (paymentStatus) { paymentStatus.textContent = "Error: " + error.message; paymentStatus.style.color = "red"; }
-                payButton.disabled = false; payButton.textContent = "Pay to Unlock";
-            }
-        });
-    }
-
-    // Auto-fill forms
-    const txNameEl = document.getElementById('tx-name');
-    if(txNameEl) {
-        txNameEl.addEventListener('input', function(e) {
-            let val = e.target.value.trim().toLowerCase();
-            if(!val) return;
-            let match = transactions.slice().reverse().find(t => t.name.toLowerCase() === val);
-            if (match) {
-                if(match.type.includes('Savings') || match.type === 'Starting-Balance') {
-                    document.getElementById('tx-type').value = 'Savings';
-                    handleTypeChange('tx');
-                    document.getElementById('tx-savings-action').value = match.type;
-                } else {
-                    document.getElementById('tx-type').value = match.type;
-                    handleTypeChange('tx');
-                }
-                document.getElementById('tx-category').value = match.category;
-                autoSelectIcon('tx');
-            }
-        });
-    }
-
-    const budgetNameEl = document.getElementById('budget-name');
-    if(budgetNameEl) {
-        budgetNameEl.addEventListener('input', function(e) {
-            let val = e.target.value.trim().toLowerCase();
-            if(!val) return;
-            let match = transactions.slice().reverse().find(t => t.name.toLowerCase() === val && t.type !== 'Income' && t.type !== 'Savings-Withdrawal' && t.type !== 'Starting-Balance');
-            if (match) document.getElementById('budget-category').value = match.category;
-        });
-    }
-
-    // M-Pesa Auto-Paste
-    const pasteBox = document.getElementById('mpesa-paste-box');
-    if (pasteBox) {
-        pasteBox.addEventListener('input', function(e) {
-            const sms = e.target.value.trim();
-            if (!sms) return;
-            
-            const amountMatch = sms.match(/Ksh([\d,]+\.\d{2})/);
-            const paidToMatch = sms.match(/paid to (.*?)(?=\. on)/) || sms.match(/paid to (.*?)(?= on)/);
-            const dateMatch = sms.match(/on (\d{1,2}\/\d{1,2}\/\d{2})/);
-            const costMatch = sms.match(/Transaction cost, Ksh([\d,]+\.\d{2})/);
-
-            if (amountMatch) {
-                const amount = parseFloat(amountMatch[1].replace(/,/g, ''));
-                document.getElementById('tx-actual').value = amount;
-                
-                if (paidToMatch) {
-                    const vendor = paidToMatch[1].trim();
-                    document.getElementById('tx-name').value = vendor;
+            <div class="flex-between" style="border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 25px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <img id="userAvatarImg" src="" style="width: 38px; height: 38px; border-radius: 50%; display: none; object-fit: cover; border: 2px solid var(--primary);">
+                    <div id="userAvatarFallback" style="width: 38px; height: 38px; border-radius: 50%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px;">👤</div>
+                    <div style="text-align: left;">
+                        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: bold;">Session</div>
+                        <div id="userNameDisplay" style="font-weight: 800; color: var(--primary); font-size: 14px;">Loading...</div>
+                    </div>
+                </div>
+                <div style="position: relative;">
+                    <button id="profileTrigger" style="background: var(--bg-color); border: 1px solid var(--primary); padding: 6px 10px; border-radius: 8px; color: var(--primary); font-weight: bold; cursor: pointer; font-size: 12px;">⚙️ Account</button>
                     
-                    const vLower = vendor.toLowerCase();
-                    if (vLower.includes('java') || vLower.includes('kfc') || vLower.includes('naivas') || vLower.includes('quickmart')) {
-                        document.getElementById('tx-category').value = 'Food';
-                    } else if (vLower.includes('uber') || vLower.includes('bolt') || vLower.includes('fuel')) {
-                        document.getElementById('tx-category').value = 'Transport';
-                    }
-                    autoSelectIcon('tx');
-                }
+                    <div id="profileDropdown" style="display: none; position: absolute; right: 0; top: 38px; background: var(--surface-color); border: 2px solid var(--border); box-shadow: var(--shadow); padding: 12px; border-radius: var(--radius); width: 160px; z-index: 100; text-align: center;">
+                        <button onclick="window.openProfileModal()" style="width: 100%; padding: 8px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 8px;">Edit Profile</button>
+                        <button id="logoutBtnPaywall" style="width: 100%; padding: 8px; background: var(--danger); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">Sign Out</button>
+                    </div>
+                </div>
+            </div>
 
-                if (dateMatch) {
-                    const parts = dateMatch[1].split('/');
-                    const year = "20" + parts[2];
-                    const month = parts[1].padStart(2, '0');
-                    const day = parts[0].padStart(2, '0');
-                    document.getElementById('tx-date').value = `${year}-${month}-${day}`;
-                }
-                
-                calcKES('tx');
-                setTimeout(() => e.target.value = '', 500);
-                
-                if (costMatch) {
-                    const txCost = parseFloat(costMatch[1].replace(/,/g, ''));
-                    if(txCost > 0 && confirm(`Also log KES ${txCost} as a Transaction Cost?`)) {
-                        transactions.push({
-                            id: Date.now() + 1, name: 'M-Pesa Fee', type: 'Expense', category: 'Transaction Cost',
-                            date: document.getElementById('tx-date').value, actual: txCost, qty: 1, fx: 1, kes: txCost, notes: 'Auto-extracted'
-                        });
-                        saveData(); updateDatalists(); updateUI();
-                    }
-                }
-            }
-        });
-    }
+            <div style="text-align: center; padding: 10px 0;">
+                <span style="font-size: 52px;">🍀</span>
+                <h2 style="color: var(--primary); font-weight: 800; margin: 10px 0;">Suppa Budgetor Pro</h2>
+                <p style="color: var(--text-muted); font-size: 14px; line-height: 1.5; margin-bottom: 25px;">
+                    You are in restricted mode. Unlock full offline data storage, custom multi-currency FX converters, and automated investment ledgers.
+                </p>
 
-    // Service Worker
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(err => console.log('SW Error:', err)); });
-    }
-});
+                <div style="display: flex; flex-direction: column; gap: 12px; max-width: 280px; margin: 0 auto;">
+                    <input type="text" id="phoneInput" placeholder="M-Pesa Phone (07... / 01...)" style="text-align: center; font-weight: 800; letter-spacing: 1px; font-size: 15px;">
+                    <button id="payButton" class="btn-primary" style="margin: 0; padding: 14px;">Pay KES 1,700.00 to Unlock</button>
+                    <div id="paymentStatus" style="font-size: 12px; font-weight: bold; min-height: 36px; margin-top: 5px;"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<div id="appContainer" style="display: none; max-width: 1100px; margin: 0 auto; width: 100%; padding: 10px;">
+
+    <div style="display: flex; justify-content: flex-end; position: relative; margin-bottom: 25px; z-index: 50;">
+        <div id="appProfileTrigger" style="display: flex; align-items: center; gap: 12px; cursor: pointer; background: var(--surface-color); padding: 8px 16px; border-radius: 30px; border: 1px solid var(--border); box-shadow: var(--shadow); transition: 0.2s;">
+            <img id="appUserAvatarImg" src="" alt="User Avatar" style="width: 35px; height: 35px; border-radius: 50%; display: none; object-fit: cover;">
+            <div id="appUserAvatarFallback" style="background: var(--primary); color: white; border-radius: 50%; width: 35px; height: 35px; display: flex; justify-content: center; align-items: center; font-size: 18px;">👤</div>
+            <div style="text-align: right;">
+                <strong id="appUserNameDisplay" style="color: var(--text-main); font-size: 0.95em; display: block;">Loading...</strong>
+                <small style="color: var(--text-muted); font-size: 0.75em;">Premium Account ▾</small>
+            </div>
+        </div>
+
+        <div id="appProfileDropdown" style="display: none; position: absolute; top: 60px; right: 0; background: var(--surface-color); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); width: 220px; z-index: 100;">
+            <ul style="list-style: none; padding: 5px 0; margin: 0;">
+                <li>
+                    <button onclick="window.openProfileModal()" style="width: 100%; text-align: left; padding: 12px 20px; background: none; border: none; color: var(--text-main); cursor: pointer; font-size: 14px; transition: 0.2s;" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='none'">
+                        ✏️ Edit Profile
+                    </button>
+                </li>
+                <hr style="border: 0; border-top: 1px solid var(--border); margin: 0;">
+                <li>
+                    <button id="logoutBtnApp" onclick="window.forceLogout(event)" style="width: 100%; text-align: left; padding: 12px 20px; background: none; border: none; color: var(--danger); cursor: pointer; font-size: 14px; font-weight: bold; transition: 0.2s;" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'" onmouseout="this.style.background='none'">
+                        🚪 Logout
+                    </button>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="app-container">
+        <header>
+            <h1>Suppa Budgetor 🍀</h1>
+            <div class="controls">
+                <button onclick="window.toggleTheme()" title="Toggle Theme">🌓 Theme</button>
+            </div>
+        </header>
+
+        <nav>
+            <button class="active" onclick="window.switchTab('home')">Overview</button>
+            <button onclick="window.switchTab('summaries')">Summaries</button>
+            <button onclick="window.switchTab('budget')">Budget</button>
+            <button onclick="window.switchTab('entry')">Log Entry</button>
+            <button onclick="window.switchTab('analytics')">Analytics</button>
+            <button onclick="window.switchTab('savings')">Portfolio</button>
+            <button onclick="window.switchTab('utilities')">Utilities 🛠️</button>
+            <button onclick="window.switchTab('help')">Help 📞</button>
+            <button onclick="window.switchTab('instructions')">Instructions 💡</button>
+        </nav>
+
+        <div id="home" class="tab-content active">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>Financial Overview</h2>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="window.changeMonth(-1)">⬅</button>
+                    <span id="current-month-display" style="font-weight: 800; font-size: 18px; min-width: 150px; text-align: center; color: var(--primary);"></span>
+                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="window.changeMonth(1)">➡</button>
+                </div>
+            </div>
+            
+            <div class="summary-cards">
+                <div class="card">
+                    <h3>Total Income + Rollover</h3>
+                    <div class="value" id="top-income">KES 0.00</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;" id="top-rollover-text">Includes 0.00 rollover</div>
+                </div>
+                <div class="card">
+                    <h3>Target Budget</h3>
+                    <div class="value" id="top-budget">KES 0.00</div>
+                </div>
+                <div class="card">
+                    <h3>Actual Spent & Saved</h3>
+                    <div class="value" id="top-spent">KES 0.00</div>
+                </div>
+                <div class="card">
+                    <h3>Surplus / Deficit</h3>
+                    <div class="value" id="top-surplus">KES 0.00</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">(Total Budgeted - Actual Spent)</div>
+                </div>
+                <div class="card" style="border-top-color: var(--success);">
+                    <h3>Amount Unassigned</h3>
+                    <div class="value" id="top-unassigned">KES 0.00</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">(Available Cash - Actual Spent & Saved)</div>
+                </div>
+            </div>
+
+            <div class="flex-between" style="margin-top: 25px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
+                <h3 style="color: var(--primary); margin: 0;">Income Summary</h3>
+            </div>
+            <div style="overflow-x: auto;">
+                <table id="income-table">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>Actual Received (KES)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="income-body"></tbody>
+                    <tfoot>
+                        <tr>
+                            <th style="font-size: 14px;">Total Income</th>
+                            <th id="bottom-line-income" style="font-size: 14px; color: var(--primary);">KES 0.00</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+        <div id="summaries" class="tab-content">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>Detailed Summaries</h2>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="window.changeMonth(-1)">⬅</button>
+                    <span id="current-month-display-summaries" style="font-weight: 800; font-size: 18px; min-width: 150px; text-align: center; color: var(--primary);"></span>
+                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="window.changeMonth(1)">➡</button>
+                </div>
+            </div>
+
+            <div class="flex-between" style="margin-top: 25px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
+                <h3 style="color: var(--primary); margin: 0;">Category Performance</h3>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <label style="font-size: 13px; font-weight: 700; color: var(--text-muted);">Category Filter:</label>
+                    <select id="summary-cat-filter" onchange="window.updateUI()" style="padding: 6px; border-radius: 8px; border: 1px solid var(--border); width: auto;">
+                        <option value="ALL">All Categories</option>
+                    </select>
+                    
+                    <label style="font-size: 13px; font-weight: 700; color: var(--text-muted);">Actual Spent:</label>
+                    <select id="summary-spent-filter" onchange="window.updateUI()" style="padding: 6px; border-radius: 8px; border: 1px solid var(--border); width: auto;">
+                        <option value="ALL">All Amounts</option>
+                        <option value="ZERO">Zero Spent Only</option>
+                        <option value="NON_ZERO">Spent > 0 Only</option>
+                        <option value="UNDER_BUDGET">Not Fully Expensed</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex-between" style="margin-top: 10px;">
+                <p style="color: var(--text-muted); font-size: 13px; margin: 0;">Click an <b>Expense Name</b> to view all matching records in the detailed ledger.</p>
+                <button class="btn-primary" onclick="window.exportTableToExcel('performance-table', 'Category_Performance')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download XLSX</button>
+            </div>
+            
+            <div style="overflow-x: auto; margin-top: 10px;">
+                <table id="performance-table">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Target Budget (KES)</th>
+                            <th>Actual Spent (KES)</th>
+                            <th>Variance</th>
+                            <th>Var %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="performance-body"></tbody>
+                    <tfoot>
+                        <tr style="background: rgba(5,150,105,0.1);">
+                            <th colspan="3" style="font-size: 14px;">Filtered Totals</th>
+                            <th id="perf-bottom-line-budget" style="font-size: 14px;">0.00</th>
+                            <th id="perf-bottom-line-actual" style="font-size: 14px;">0.00</th>
+                            <th id="perf-bottom-line-variance" colspan="2" style="font-size: 14px;">0.00</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <div class="flex-between" style="margin-top: 40px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
+                <h3 style="color: var(--primary); margin: 0;">Transactions Log</h3>
+                <button class="btn-primary" onclick="window.exportTableToExcel('transactions-table', 'Monthly_Transactions')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download Log</button>
+            </div>
+            <p style="color: var(--text-muted); font-size: 13px; margin-top: 10px;">Click on an <b>Expense/Income Name</b> to edit the entry.</p>
+            <div style="overflow-x: auto;">
+                <table id="transactions-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Category</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Amount (KES)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactions-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="budget" class="tab-content">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>Set Monthly Target Budgets</h2>
+                <div>
+                    <label style="font-size: 13px; font-weight: 700; color: var(--text-muted); margin-right: 10px;">Viewing Month:</label>
+                    <input type="month" id="budget-month-picker" onchange="window.renderBudgetSetup()" style="width: auto; padding: 6px; border-radius: 8px; border: 1px solid var(--border); display: inline-block;">
+                </div>
+            </div>
+            <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
+                Budgets set here automatically roll forward to future months.
+            </p>
+
+            <form id="budget-form" onsubmit="window.saveSingleBudget(event)" style="margin-top: 15px; padding-bottom: 20px; border-bottom: 2px solid var(--border);">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Category (Required)</label>
+                        <input type="text" id="budget-category" list="budget-cat-memory" required placeholder="Select or type..." autocomplete="off">
+                        <datalist id="budget-cat-memory"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>Item Name (Optional)</label>
+                        <input type="text" id="budget-name" list="budget-name-memory" placeholder="Leave blank for general category budget" autocomplete="off">
+                        <datalist id="budget-name-memory"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>Target Amount (KES)</label>
+                        <input type="number" id="budget-amount" step="0.01" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn-primary" id="budget-submit-btn" style="margin-top: 10px;">Add / Update Budget</button>
+            </form>
+
+            <div class="flex-between" style="margin-top: 25px; margin-bottom: 15px;">
+                <h3 style="color: var(--primary); margin: 0;">Active Budgets for Selected Month</h3>
+            </div>
+            <div style="overflow-x: auto;">
+                <table id="budget-setup-table" style="min-width: 100%;">
+                    <thead>
+                        <tr>
+                            <th style="width: 50%;">Category</th>
+                            <th style="width: 30%;">Target Amount (KES)</th>
+                            <th style="width: 20%;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="budget-setup-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="entry" class="tab-content">
+            <h2>Log / Edit Transaction</h2>
+            <div class="card" style="margin-top: 15px; margin-bottom: 25px; border-left: 4px solid var(--success);">
+                <h3 style="color: var(--success); margin-bottom: 8px;">🤖 Smart M-Pesa Paste</h3>
+                <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">Paste your M-Pesa SMS below to instantly auto-fill the form below!</p>
+                <textarea id="mpesa-paste-box" placeholder="e.g. OHE0000000 Confirmed. Ksh1,500.00 paid to JAVA HOUSE..." style="width: 100%; height: 60px; padding: 10px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px;"></textarea>
+            </div>
+
+            <form id="tx-form" onsubmit="window.saveTransaction(event)" style="margin-top: 15px;">
+                <input type="hidden" id="tx-id"> 
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Transaction Name</label>
+                        <input type="text" id="tx-name" list="tx-memory" required placeholder="e.g. Uber" autocomplete="off">
+                        <datalist id="tx-memory"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>Type</label>
+                        <select id="tx-type" onchange="window.handleTypeChange('tx')">
+                            <option value="Expense">Expense</option>
+                            <option value="Income">Income</option>
+                            <option value="Savings">Savings (Portfolio)</option>
+                        </select>
+                    </div>
+                    <div class="form-group hidden" id="tx-savings-action-group">
+                        <label>Action</label>
+                        <select id="tx-savings-action">
+                            <option value="Savings-Deposit">Deposit (Save Cash)</option>
+                            <option value="Savings-Withdrawal">Withdraw (Use Saved Cash)</option>
+                            <option value="Starting-Balance">Set Starting Balance (Initial Funds)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label id="tx-category-label">Category</label>
+                        <div style="display: flex; gap: 5px;">
+                            <select id="tx-category-icon" style="width: 75px; padding: 10px 5px; font-size: 18px;" title="Select an icon">
+                                <option value="🏷️">🏷️</option><option value="🍔">🍔</option><option value="🚌">🚌</option>
+                                <option value="🛒">🛒</option><option value="🏠">🏠</option><option value="📚">📚</option>
+                                <option value="🍿">🍿</option><option value="🏥">🏥</option><option value="✈️">✈️</option>
+                                <option value="👗">👗</option><option value="🐾">🐾</option><option value="🎁">🎁</option>
+                                <option value="⚡">⚡</option><option value="📱">📱</option><option value="💻">💻</option>
+                                <option value="💰">💰</option><option value="📈">📈</option><option value="🐖">🐖</option>
+                                <option value="👶">👶</option><option value="🛠️">🛠️</option><option value="💼">💼</option>
+                                <option value="🚑">🚑</option><option value="🕊️">🕊️</option>
+                            </select>
+                            <input type="text" id="tx-category" list="cat-memory" required placeholder="Select or type new..." autocomplete="off" style="flex: 1;" onchange="window.autoSelectIcon('tx')">
+                        </div>
+                        <datalist id="cat-memory"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" id="tx-date" required>
+                    </div>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Unit Amount / Foreign FX</label>
+                        <input type="number" id="tx-actual" step="0.01" required oninput="window.calcKES('tx')" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Quantity</label>
+                        <input type="number" id="tx-qty" step="0.01" value="1" oninput="window.calcKES('tx')" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>FX Conversion Rate</label>
+                        <input type="number" id="tx-fx" step="0.01" value="1" oninput="window.calcKES('tx')" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Total Value (KES)</label>
+                        <input type="number" id="tx-kes" step="0.01" readonly style="background: rgba(5,150,105, 0.1); font-weight: bold; color: var(--primary);">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Notes</label>
+                    <input type="text" id="tx-notes" placeholder="Any extra details...">
+                </div>
+                <button type="submit" class="btn-primary" id="tx-submit-btn" style="margin-top: 15px;">Add to Ledger</button>
+            </form>
+        </div>
+
+        <div id="analytics" class="tab-content">
+            <div class="flex-between">
+                <h2>Analytics & Insights</h2>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <select id="analytics-period" onchange="window.updateAnalytics()">
+                        <option value="MTD">Month-to-Date</option>
+                        <option value="QTD">Quarter-to-Date</option>
+                        <option value="YTD">Year-to-Date</option>
+                        <option value="ALL">All Time</option>
+                    </select>
+                    <select id="analytics-cat-filter" onchange="window.updateCharts()">
+                        <option value="ALL">All Categories</option>
+                    </select>
+                    <select id="analytics-name-filter" onchange="window.updateCharts()">
+                        <option value="ALL">All Expenses</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="summary-cards" style="margin-top: 20px;">
+                <div class="card">
+                    <h3>Savings Target (30%)</h3>
+                    <div class="value" id="stat-target">0%</div>
+                </div>
+                <div class="card">
+                    <h3>Life Inflation (MoM Expense Growth)</h3>
+                    <div class="value" id="stat-inflation">0%</div>
+                </div>
+            </div>
+            
+            <div class="card" style="margin-top: 20px; margin-bottom: 20px; border: 2px solid var(--primary); background: rgba(5, 150, 105, 0.03);">
+                <div class="flex-between">
+                    <h3 style="color: var(--primary);">🧠 AI Financial Advisor</h3>
+                    <button id="ai-insight-btn" class="btn-primary" onclick="window.fetchAIInsights()" style="width: auto; padding: 6px 12px; font-size: 12px; margin: 0;">Get AI Advice ✨</button>
+                </div>
+                <div id="ai-insight-container" style="margin-top: 15px; font-size: 14px; line-height: 1.6; color: var(--text-main);">
+                    Click the button to have AI analyze your recent spending patterns and find ways to save money.
+                </div>
+            </div>
+
+            <div class="analytics-grid">
+                <div class="card">
+                    <h3>Expense Distribution</h3>
+                    <div class="chart-container">
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Budget vs Actual (Filtered)</h3>
+                    <div class="chart-container">
+                        <canvas id="barChart"></canvas>
+                    </div>
+                </div>
+                <div class="card" style="grid-column: 1 / -1;">
+                    <div class="flex-between">
+                        <h3>Expense Inflation Tracker (%)</h3>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <select id="inflation-expense-filter" onchange="window.updateInflationChart()">
+                                <option value="ALL">All Expenses</option>
+                            </select>
+                            <select id="inflation-interval" onchange="window.updateInflationChart()">
+                                <option value="Monthly">Monthly</option>
+                                <option value="Quarterly">Quarterly</option>
+                                <option value="Half-Year">Half-Year</option>
+                                <option value="Yearly">Yearly</option>
+                                <option value="MTD">MTD (Historical)</option>
+                                <option value="QTD">QTD (Historical)</option>
+                                <option value="YTD">YTD (Historical)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="chart-container" style="height: 400px;">
+                        <canvas id="inflationChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="savings" class="tab-content">
+            <div class="flex-between">
+                <h2>Savings & Investments Portfolio</h2>
+            </div>
+            
+            <p style="color: var(--text-muted); font-size: 14px; margin-top: 10px; margin-bottom: 20px;">
+                Your portfolio balances. To create a new account or adjust an opening balance, use the <b>Log Entry</b> tab and select Type: Savings > Action: Opening Account Balance.
+            </p>
+
+            <div class="flex-between" style="margin-top: 20px; margin-bottom: 15px;">
+                <h3 style="margin: 0;">Current Portfolio View</h3>
+                <button class="btn-primary" onclick="window.exportTableToExcel('portfolio-table', 'Portfolio_Summary')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download XLSX</button>
+            </div>
+            <div style="overflow-x: auto;">
+                <table id="portfolio-table">
+                    <thead>
+                        <tr>
+                            <th>Account Type</th>
+                            <th>Opening Balance</th>
+                            <th>Net Movements (MTD)</th>
+                            <th>Current Total</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="portfolio-body"></tbody>
+                    <tfoot>
+                        <tr style="background: rgba(5,150,105,0.1);">
+                            <th style="font-size: 14px;">Grand Totals</th>
+                            <th id="port-total-start" style="font-size: 14px;">0.00</th>
+                            <th id="port-total-inflows" style="font-size: 14px;" class="positive">+0.00</th>
+                            <th id="port-total-current" style="font-size: 14px; color: var(--primary);">KES 0.00</th>
+                            <th></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <div class="flex-between" style="margin-top: 40px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
+                <h3 style="color: var(--primary); margin: 0;">Portfolio Ledger (MTD & Opening Balances)</h3>
+                <button class="btn-primary" onclick="window.exportTableToExcel('portfolio-ledger-table', 'Portfolio_Ledger')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download Ledger</button>
+            </div>
+            <div style="overflow-x: auto; margin-top: 10px;">
+                <table id="portfolio-ledger-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Account / Category</th>
+                            <th>Name</th>
+                            <th>Action</th>
+                            <th>Amount (KES)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="portfolio-ledger-body"></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div id="utilities" class="tab-content">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>Utilities & Data Management</h2>
+            </div>
+            <div class="summary-cards" style="grid-template-columns: 1fr 1fr;">
+                <div class="card">
+                    <h3 style="color: var(--primary);">History Actions</h3>
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+                        <button class="btn-primary" onclick="window.undo()" style="margin: 0; padding: 12px;">↩ Undo Last Action</button>
+                        <button class="btn-primary" onclick="window.redo()" style="margin: 0; padding: 12px;">↪ Redo Action</button>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3 style="color: var(--primary);">Transactions & Portfolio</h3>
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+                        <button class="btn-primary" onclick="document.getElementById('import-csv').click()" style="margin: 0; padding: 12px;">📥 Import TX Data</button>
+                        <input type="file" id="import-csv" accept=".csv" style="display: none;" onchange="window.importCSV(event)">
+                        <button class="btn-primary" onclick="window.exportCSV()" style="margin: 0; padding: 12px;">💾 Export TX & Balances</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--primary);">Budgets</h3>
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+                        <button class="btn-primary" onclick="document.getElementById('import-budgets-csv').click()" style="margin: 0; padding: 12px;">📥 Import Budgets</button>
+                        <input type="file" id="import-budgets-csv" accept=".csv" style="display: none;" onchange="window.importBudgetCSV(event)">
+                        <button class="btn-primary" onclick="window.exportBudgetCSV()" style="margin: 0; padding: 12px;">💾 Export Budgets</button>
+                    </div>
+                </div>
+
+                <div class="card" style="border-top-color: var(--danger);">
+                    <h3 style="color: var(--danger);">Danger Zone</h3>
+                    <div style="margin-top: 15px;">
+                        <button class="btn-primary" onclick="window.resetData()" style="width: 100%; background: var(--danger); margin: 0; padding: 12px;">⚠ Factory Reset Data</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="help" class="tab-content">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>Help & Support 📞</h2>
+            </div>
+            <div class="summary-cards" style="grid-template-columns: 1fr;">
+                <div class="card">
+                    <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">Contact Us</h3>
+                    <p style="color: var(--text-main); font-size: 14px; line-height: 1.6; margin-bottom: 10px;">
+                        If you encounter any issues, have feature requests, or need assistance recovering data, please reach out to our dedicated support channel:
+                    </p>
+                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.8;">
+                        <li><b>Developer:</b> Realsur Global</li>
+                        <li><b>Phone Support:</b> <a href="tel:+254701275111" style="color: var(--primary); font-weight: bold; text-decoration: none;">+254 701 275 111</a></li>
+                        <li><b>Email Support:</b> <a href="mailto:realsurglobal@gmail.com" style="color: var(--primary); font-weight: bold; text-decoration: none;">realsurglobal@gmail.com</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div id="instructions" class="tab-content">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>How to Use Suppa Budgetor</h2>
+            </div>
+            <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
+                Welcome to your personal, fully offline financial tracker. Because this app runs entirely inside your device's browser, your data is 100% private.
+            </p>
+
+            <div class="summary-cards" style="grid-template-columns: 1fr;">
+                <div class="card">
+                    <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">1. Setting Budgets</h3>
+                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
+                        <li>Go to the <b>Budget</b> tab to set your monthly targets.</li>
+                        <li>You can set a budget for an entire <b>Category</b> (e.g., Food), or leave the Expense Name blank to act as a general bucket.</li>
+                        <li>Budgets automatically <b>roll forward</b> to future months.</li>
+                    </ul>
+                </div>
+
+                <div class="card" style="border-top-color: #3b82f6;">
+                    <h3 style="color: #3b82f6; font-size: 16px; margin-bottom: 10px;">2. Portfolio & Savings Tracking</h3>
+                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
+                        <li><b>Creating Accounts & Initial Funds:</b> In the <i>Log Entry</i> tab, select Type: <b>Savings (Portfolio)</b>, and Action: <b>Opening Account Balance</b>. Type your account name in the Account Type box. This safely establishes your initial portfolio balance without altering your unassigned cash. You can log additional Opening Balances for the same account to increase its base value.</li>
+                        <li><b>Saving Money (Deposits):</b> In the <i>Log Entry</i> tab, select Action: <b>Deposit</b>. This registers as an expense (reducing your unassigned cash) and adds the money to the chosen Portfolio balance!</li>
+                        <li><b>Spending Savings (Withdrawals):</b> When you spend saved money, do it in two steps to avoid double-counting against your budget:
+                            <ol>
+                                <li>Log a <b>Savings</b> transaction with Action: <b>Withdrawal</b>. This removes the money from your portfolio and injects cash back into your <i>Amount Unassigned</i>.</li>
+                                <li>Log your actual purchase as a standard <b>Expense</b>.</li>
+                            </ol>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">3. Viewing & Editing Data</h3>
+                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
+                        <li>The <b>Summaries</b> tab breaks down your performance with dynamic filters.</li>
+                        <li><b>To Edit or Delete:</b> In the Summaries tab, scroll down to the <i>Transactions Log</i>. Click on any gold <b>Name</b> to quickly open the edit window.</li>
+                    </ul>
+                </div>
+
+                <div class="card" style="border-top-color: var(--danger);">
+                    <h3 style="color: var(--danger); font-size: 16px; margin-bottom: 10px;">4. Backups & Data Safety (Crucial!)</h3>
+                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
+                        <li>This app stores data entirely in your browser's local storage. <b>If you clear your browser history or cache, you will lose everything.</b></li>
+                        <li>Go to the <b>Utilities</b> tab to <b>Export (💾)</b> your data regularly.</li>
+                        <li>Your custom Portfolio accounts and Opening Balances are safely packed inside your main <b>TX (Transactions)</b> backup CSV! You only need to export <b>TX</b> and <b>Budgets</b>.</li>
+                        <li>To restore your data on a new device or browser, simply click the <b>Import (📥)</b> buttons and select your saved CSV files.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div> 
+
+<div id="edit-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <button class="modal-close" onclick="window.closeEditModal()">Close</button>
+        <h2 style="color: var(--primary); margin-bottom: 15px;">Edit Transaction</h2>
+        <form id="edit-tx-form" onsubmit="window.updateTransaction(event)">
+            <input type="hidden" id="edit-tx-id">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Transaction Name</label>
+                    <input type="text" id="edit-tx-name" required autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label>Type</label>
+                    <select id="edit-tx-type" onchange="window.handleTypeChange('edit-tx')">
+                        <option value="Expense">Expense</option>
+                        <option value="Income">Income</option>
+                        <option value="Savings">Savings (Portfolio)</option>
+                    </select>
+                </div>
+                <div class="form-group hidden" id="edit-tx-savings-action-group">
+                    <label>Action</label>
+                    <select id="edit-tx-savings-action">
+                        <option value="Savings-Deposit">Deposit (Save Cash)</option>
+                        <option value="Savings-Withdrawal">Withdraw (Use Saved Cash)</option>
+                        <option value="Starting-Balance">Set Starting Balance (Initial Funds)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label id="edit-tx-category-label">Category</label>
+                    <div style="display: flex; gap: 5px;">
+                        <select id="edit-tx-category-icon" style="width: 75px; padding: 10px 5px; font-size: 18px;" title="Select an icon">
+                            <option value="🏷️">🏷️</option><option value="🍔">🍔</option><option value="🚌">🚌</option>
+                            <option value="🛒">🛒</option><option value="🏠">🏠</option><option value="📚">📚</option>
+                            <option value="🍿">🍿</option><option value="🏥">🏥</option><option value="✈️">✈️</option>
+                            <option value="👗">👗</option><option value="🐾">🐾</option><option value="🎁">🎁</option>
+                            <option value="⚡">⚡</option><option value="📱">📱</option><option value="💻">💻</option>
+                            <option value="💰">💰</option><option value="📈">📈</option><option value="🐖">🐖</option>
+                            <option value="👶">👶</option><option value="🛠️">🛠️</option><option value="💼">💼</option>
+                            <option value="🚑">🚑</option><option value="🕊️">🕊️</option>
+                        </select>
+                        <input type="text" id="edit-tx-category" list="edit-cat-memory" required autocomplete="off" style="flex: 1;" onchange="window.autoSelectIcon('edit-tx')">
+                    </div>
+                    <datalist id="edit-cat-memory"></datalist>
+                </div>
+                <div class="form-group">
+                    <label>Date</label>
+                    <input type="date" id="edit-tx-date" required>
+                </div>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Unit Amount</label>
+                    <input type="number" id="edit-tx-actual" step="0.01" required oninput="window.calcKES('edit-tx')" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Quantity</label>
+                    <input type="number" id="edit-tx-qty" step="0.01" required oninput="window.calcKES('edit-tx')" min="0">
+                </div>
+                <div class="form-group">
+                    <label>FX</label>
+                    <input type="number" id="edit-tx-fx" step="0.01" required oninput="window.calcKES('edit-tx')" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Total Value (KES)</label>
+                    <input type="number" id="edit-tx-kes" step="0.01" readonly style="background: rgba(5,150,105,0.1); font-weight:bold;">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Notes</label>
+                <input type="text" id="edit-tx-notes">
+            </div>
+            <div class="flex-between">
+                <button type="submit" class="btn-primary" style="width: auto;">Save Changes</button>
+                <button type="button" class="btn-primary" style="width: auto; background: var(--danger);" onclick="window.deleteEditTx()">Delete Entry</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="ledger-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <button class="modal-close" onclick="window.closeLedger()">Close</button>
+        <h2 id="ledger-title" style="color: var(--primary); margin-bottom: 15px;">Detailed Ledger</h2>
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Name</th>
+                        <th>Amount (KES)</th>
+                        <th>Notes</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="ledger-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="profile-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 400px; text-align: left;">
+        <button class="modal-close" onclick="window.closeProfileModal()">Close</button>
+        <h2 style="color: var(--primary); margin-bottom: 15px;">Edit Profile</h2>
+        <form id="profile-form" onsubmit="window.saveProfile(event)">
+            <div class="form-grid" style="display: block;">
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label>Display Name</label>
+                    <input type="text" id="profile-name-input" placeholder="e.g. John Doe" required autocomplete="off">
+                </div>
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label>Avatar Photo URL (Optional)</label>
+                    <input type="url" id="profile-avatar-input" placeholder="https://example.com/my-photo.jpg" autocomplete="off">
+                    <small style="color: var(--text-muted); font-size: 11px; margin-top: 6px;">Paste a link to an image. Leave blank to use the default avatar.</small>
+                </div>
+            </div>
+            <button type="submit" class="btn-primary" id="save-profile-btn">Save Profile</button>
+        </form>
+    </div>
+</div>
+
+<script src="app.source.js"></script>
+
+</body>
+</html>
