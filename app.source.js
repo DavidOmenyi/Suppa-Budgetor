@@ -12,15 +12,49 @@ const supabaseClient = supabaseLib.createClient(supabaseUrl, supabaseKey);
 let currentUser = null;
 let pollingInterval = null;
 
-// Helper function to update both Paywall and App profile headers
+// ==========================================
+// 2. GLOBAL STATE & CONFIGURATION
+// ==========================================
+let transactions = [];
+let categoryBudgets = {}; 
+let customMem = { Expense: [], Income: [], Savings: [], Names: [], Icons: {} };
+let historyStack = []; 
+let redoStack = []; 
+let currentDate = new Date();
+
+const categories = {
+    Expense: ['Transport', 'Food', 'Transaction Cost', 'Entertainment', 'Education', 'Childcare', 'Homecare', 'Groceries', 'Self-care', 'Work disbursements', 'Charity', 'Contingency sums'],
+    Income: ['Salary', 'Business', 'Dividends', 'Interest', 'Other'],
+    Savings: ['Sinking Funds', 'Investment', 'Emergency funds', 'Savings']
+};
+
+const defaultIcons = {
+    'Transport': '🚌', 'Food': '🍔', 'Transaction Cost': '💸', 'Entertainment': '🍿',
+    'Education': '📚', 'Childcare': '👶', 'Homecare': '🏠', 'Groceries': '🛒',
+    'Self-care': '💆', 'Work disbursements': '💼', 'Charity': '🕊️', 'Contingency sums': '🆘',
+    'Salary': '💵', 'Business': '🏪', 'Dividends': '📈', 'Interest': '🏦', 'Other': '📦',
+    'Sinking Funds': '⚓', 'Investment': '💎', 'Emergency funds': '🚑', 'Savings': '🐖'
+};
+
+const chartColors = [
+    '#059669', '#f59e0b', '#3b82f6', '#ec4899', '#8b5cf6', 
+    '#14b8a6', '#ef4444', '#84cc16', '#6366f1', '#10b981', 
+    '#f97316', '#06b6d4', '#d946ef', '#a855f7', '#22c55e', 
+    '#eab308', '#0ea5e9', '#f43f5e', '#4f46e5', '#8dc63f',
+    '#1d4ed8', '#be123c', '#4338ca', '#047857', '#b45309'
+];
+
+// ==========================================
+// 3. GLOBAL FUNCTIONS (Accessible by HTML)
+// ==========================================
+
+// --- Auth & Profile Functions ---
 function updateProfileUI(displayName, avatarUrl) {
-    // 1. Update Display Names
     ['userNameDisplay', 'appUserNameDisplay'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.textContent = displayName;
     });
     
-    // 2. Update Avatar Images & Fallbacks
     const avatarPairs = [
         { img: 'userAvatarImg', fallback: 'userAvatarFallback' },
         { img: 'appUserAvatarImg', fallback: 'appUserAvatarFallback' }
@@ -42,21 +76,14 @@ function updateProfileUI(displayName, avatarUrl) {
     });
 }
 
-// ==========================================
-// 2. AUTH & PAYWALL FUNCTIONS
-// ==========================================
 async function initializeApp() {
     const { data: { user } } = await supabaseClient.auth.getUser();
-    
     if (!user) {
         window.location.href = 'login.html';
         return;
     }
     
     currentUser = user;
-    console.log("Logged in as:", currentUser.email);
-    
-    // Load user metadata (Google Profile Name and Photo)
     const metadata = currentUser.user_metadata || {};
     const displayName = metadata.display_name || metadata.full_name || currentUser.email.split('@')[0];
     const avatarUrl = metadata.avatar_url || metadata.picture || '';
@@ -82,24 +109,20 @@ async function checkPremiumStatus() {
 function unlockApp() {
     const lockedScreen = document.getElementById('lockedScreen');
     const appContainer = document.getElementById('appContainer');
-    
     if (lockedScreen) lockedScreen.style.display = 'none';
     if (appContainer) appContainer.style.display = 'block';
-    
     if (pollingInterval) clearInterval(pollingInterval);
 }
 
 function lockApp() {
     const lockedScreen = document.getElementById('lockedScreen');
     const appContainer = document.getElementById('appContainer');
-    
     if (lockedScreen) lockedScreen.style.display = 'block';
     if (appContainer) appContainer.style.display = 'none';
 }
 
 function startPollingDatabase() {
     pollingInterval = setInterval(async () => {
-        console.log("Checking for payment success...");
         const { data, error } = await supabaseClient
             .from('profiles')
             .select('is_premium')
@@ -107,7 +130,6 @@ function startPollingDatabase() {
             .single();
 
         if (data && data.is_premium === true) {
-            console.log("🎉 Payment confirmed! Unlocking app...");
             unlockApp();
         }
     }, 3000); 
@@ -115,33 +137,25 @@ function startPollingDatabase() {
     setTimeout(() => {
         if (pollingInterval) {
             clearInterval(pollingInterval);
-            const lockedScreen = document.getElementById('lockedScreen');
             const paymentStatus = document.getElementById('paymentStatus');
             const payButton = document.getElementById('payButton');
-            
-            if (lockedScreen && lockedScreen.style.display !== 'none') {
-                if (paymentStatus) {
-                    paymentStatus.textContent = "Payment timed out. Please try again.";
-                    paymentStatus.style.color = "red";
-                }
-                if (payButton) {
-                    payButton.disabled = false;
-                    payButton.textContent = "Pay to Unlock";
-                }
+            if (paymentStatus) {
+                paymentStatus.textContent = "Payment timed out. Please try again.";
+                paymentStatus.style.color = "red";
+            }
+            if (payButton) {
+                payButton.disabled = false;
+                payButton.textContent = "Pay to Unlock";
             }
         }
     }, 120000); 
 }
 
-// ------------------------------------------
-// PROFILE EDITING FUNCTIONS
-// ------------------------------------------
 window.openProfileModal = function() {
     const metadata = currentUser.user_metadata || {};
     document.getElementById('profile-name-input').value = metadata.display_name || metadata.full_name || currentUser.email.split('@')[0];
     document.getElementById('profile-avatar-input').value = metadata.avatar_url || metadata.picture || '';
     
-    // Close dropdowns
     const d1 = document.getElementById('profileDropdown');
     const d2 = document.getElementById('appProfileDropdown');
     if(d1) d1.style.display = 'none';
@@ -173,7 +187,6 @@ window.saveProfile = async function(e) {
         updateProfileUI(newName || currentUser.email.split('@')[0], newAvatar);
         window.closeProfileModal();
     } catch (err) {
-        console.error("Error updating profile:", err);
         alert("Failed to update profile: " + err.message);
     } finally {
         btn.textContent = "Save Profile";
@@ -183,7 +196,6 @@ window.saveProfile = async function(e) {
 
 window.forceLogout = async function(e) {
     if (e && e.preventDefault) e.preventDefault();
-    console.log("Logout triggered! Attempting to sign out...");
     if (e && e.target) {
         e.target.innerText = "Logging out...";
         e.target.style.opacity = "0.6";
@@ -191,50 +203,53 @@ window.forceLogout = async function(e) {
     try {
         await supabaseClient.auth.signOut();
     } catch (err) {
-        console.error("SignOut error safely caught:", err);
+        console.error("SignOut error:", err);
     }
     window.location.href = 'login.html';
 };
 
 async function performLogout(e) { window.forceLogout(e); }
 
-// ==========================================
-// 3. CORE BUDGET STATE MANAGEMENT
-// ==========================================
-let transactions = [];
-let categoryBudgets = {}; 
-let customMem = { Expense: [], Income: [], Savings: [], Names: [], Icons: {} };
+// --- AI Insights Function ---
+window.fetchAIInsights = async function() {
+    const btn = document.getElementById('ai-insight-btn');
+    const container = document.getElementById('ai-insight-container');
+    
+    btn.innerText = "Analyzing... 🧠";
+    btn.disabled = true;
+    container.innerHTML = `<div style="text-align: center; color: var(--text-muted);">Fetching your personalized insights... this takes about 5 seconds.</div>`;
 
-let historyStack = []; let redoStack = []; let currentDate = new Date();
-
-const categories = {
-    Expense: ['Transport', 'Food', 'Transaction Cost', 'Entertainment', 'Education', 'Childcare', 'Homecare', 'Groceries', 'Self-care', 'Work disbursements', 'Charity', 'Contingency sums'],
-    Income: ['Salary', 'Business', 'Dividends', 'Interest', 'Other'],
-    Savings: ['Sinking Funds', 'Investment', 'Emergency funds', 'Savings']
+    try {
+        const response = await fetch('/.netlify/functions/get-insights', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ transactions: transactions })
+        });
+        
+        const result = await response.json();
+        if(result.success) {
+            let htmlOutput = result.insights.replace(/\n\*/g, '<br>•');
+            htmlOutput = htmlOutput.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            container.innerHTML = htmlOutput;
+        } else {
+            throw new Error(result.message || "Failed to load");
+        }
+    } catch (error) {
+        console.error("AI Fetch Error:", error);
+        container.innerHTML = `<span style="color:var(--danger); font-weight:bold;">Error fetching insights. Please check your internet connection or try again later.</span>`;
+    } finally {
+        btn.innerText = "Refresh Advice ✨";
+        btn.disabled = false;
+    }
 };
 
-const defaultIcons = {
-    'Transport': '🚌', 'Food': '🍔', 'Transaction Cost': '💸', 'Entertainment': '🍿',
-    'Education': '📚', 'Childcare': '👶', 'Homecare': '🏠', 'Groceries': '🛒',
-    'Self-care': '💆', 'Work disbursements': '💼', 'Charity': '🕊️', 'Contingency sums': '🆘',
-    'Salary': '💵', 'Business': '🏪', 'Dividends': '📈', 'Interest': '🏦', 'Other': '📦',
-    'Sinking Funds': '⚓', 'Investment': '💎', 'Emergency funds': '🚑', 'Savings': '🐖'
-};
-
-const chartColors = [
-    '#059669', '#f59e0b', '#3b82f6', '#ec4899', '#8b5cf6', 
-    '#14b8a6', '#ef4444', '#84cc16', '#6366f1', '#10b981', 
-    '#f97316', '#06b6d4', '#d946ef', '#a855f7', '#22c55e', 
-    '#eab308', '#0ea5e9', '#f43f5e', '#4f46e5', '#8dc63f',
-    '#1d4ed8', '#be123c', '#4338ca', '#047857', '#b45309'
-];
-
+// --- Core Budget Functions ---
 function getIcon(cat) { return defaultIcons[cat] || (customMem.Icons && customMem.Icons[cat]) || '🏷️'; }
 
 function autoSelectIcon(prefix) {
     const cat = document.getElementById(`${prefix}-category`).value.trim();
     const iconDropdown = document.getElementById(`${prefix}-category-icon`);
-    if(cat) {
+    if(cat && iconDropdown) {
         const icon = getIcon(cat);
         let optionExists = Array.from(iconDropdown.options).some(opt => opt.value === icon);
         if(!optionExists) iconDropdown.innerHTML += `<option value="${icon}">${icon}</option>`;
@@ -242,194 +257,6 @@ function autoSelectIcon(prefix) {
     }
 }
 
-// ==========================================
-// 4. ATTACH EVERYTHING ON PAGE LOAD
-// ==========================================
-document.addEventListener('DOMContentLoaded', () => {
-    
-    // 1. Initialize offline budget data & Theme
-    repairAndLoadData();
-    initTheme();
-    
-    // 2. Initialize Supabase Auth Session
-    initializeApp();
-
-    // 3. UI Setup
-    document.getElementById('tx-date').valueAsDate = new Date();
-    const now = new Date();
-    document.getElementById('budget-month-picker').value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}`;
-    
-    handleTypeChange('tx');
-    updateDatalists();
-    updateUI();
-        // ==========================================
-    // M-PESA SMART PASTE LOGIC
-    // ==========================================
-    const pasteBox = document.getElementById('mpesa-paste-box');
-    if (pasteBox) {
-        pasteBox.addEventListener('input', function(e) {
-            const sms = e.target.value.trim();
-            if (!sms) return;
-            
-            const amountMatch = sms.match(/Ksh([\d,]+\.\d{2})/);
-            const paidToMatch = sms.match(/paid to (.*?)(?=\. on)/) || sms.match(/paid to (.*?)(?= on)/);
-            const dateMatch = sms.match(/on (\d{1,2}\/\d{1,2}\/\d{2})/);
-            const costMatch = sms.match(/Transaction cost, Ksh([\d,]+\.\d{2})/);
-
-            if (amountMatch) {
-                // Fill Amount
-                const amount = parseFloat(amountMatch[1].replace(/,/g, ''));
-                document.getElementById('tx-actual').value = amount;
-                
-                // Fill Name & Guess Category
-                if (paidToMatch) {
-                    const vendor = paidToMatch[1].trim();
-                    document.getElementById('tx-name').value = vendor;
-                    
-                    const vLower = vendor.toLowerCase();
-                    if (vLower.includes('java') || vLower.includes('kfc') || vLower.includes('naivas') || vLower.includes('quickmart')) {
-                        document.getElementById('tx-category').value = 'Food';
-                    } else if (vLower.includes('uber') || vLower.includes('bolt') || vLower.includes('fuel')) {
-                        document.getElementById('tx-category').value = 'Transport';
-                    }
-                    autoSelectIcon('tx');
-                }
-
-                // Fill Date
-                if (dateMatch) {
-                    const parts = dateMatch[1].split('/');
-                    const year = "20" + parts[2];
-                    const month = parts[1].padStart(2, '0');
-                    const day = parts[0].padStart(2, '0');
-                    document.getElementById('tx-date').value = `${year}-${month}-${day}`;
-                }
-                
-                calcKES('tx');
-                
-                // Clear the box after extracting
-                setTimeout(() => e.target.value = '', 500);
-                
-                // Ask to log transaction cost
-                if (costMatch) {
-                    const txCost = parseFloat(costMatch[1].replace(/,/g, ''));
-                    if(txCost > 0 && confirm(`Also log KES ${txCost} as a Transaction Cost?`)) {
-                        transactions.push({
-                            id: Date.now() + 1,
-                            name: 'M-Pesa Fee', type: 'Expense', category: 'Transaction Cost',
-                            date: document.getElementById('tx-date').value,
-                            actual: txCost, qty: 1, fx: 1, kes: txCost, notes: 'Auto-extracted'
-                        });
-                        saveData(); updateDatalists(); updateUI();
-                    }
-                }
-            }
-        });
-    }
-
-
-    // Helper to setup Dropdowns for both Paywall and Main App
-    function setupProfileDropdown(triggerId, dropdownId) {
-        const trigger = document.getElementById(triggerId);
-        const dropdown = document.getElementById(dropdownId);
-        if (trigger && dropdown) {
-            trigger.addEventListener('click', (e) => {
-                e.stopPropagation(); 
-                dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
-            });
-            document.addEventListener('click', (e) => {
-                if (!trigger.contains(e.target) && !dropdown.contains(e.target)) {
-                    dropdown.style.display = 'none';
-                }
-            });
-        }
-    }
-
-    // Attach to Paywall profile UI
-    setupProfileDropdown('profileTrigger', 'profileDropdown');
-    // Attach to Main App profile UI
-    setupProfileDropdown('appProfileTrigger', 'appProfileDropdown');
-
-    // Paywall Button Attachments
-    const payButton = document.getElementById('payButton');
-    const phoneInput = document.getElementById('phoneInput');
-    const paymentStatus = document.getElementById('paymentStatus');
-
-    if (payButton) {
-        payButton.addEventListener('click', async () => {
-            const phone = phoneInput ? phoneInput.value.trim() : '';
-            if (!phone || phone.length < 9) { alert("Please enter a valid M-Pesa phone number."); return; }
-
-            payButton.disabled = true; payButton.textContent = "Processing...";
-            if (paymentStatus) { paymentStatus.textContent = "Contacting M-Pesa... please wait."; paymentStatus.style.color = "blue"; }
-
-            try {
-                const response = await fetch('/.netlify/functions/initiate-tuma', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone: phone, userId: currentUser.id, amount: 1 })
-                });
-                
-                if (!response.ok) throw new Error(`Gateway Error: ${response.status}`);
-                const result = await response.json();
-
-                if (result.success) {
-                    if (paymentStatus) { paymentStatus.textContent = "Prompt sent! Enter your PIN on your phone."; paymentStatus.style.color = "orange"; }
-                    startPollingDatabase(); 
-                } else {
-                    throw new Error(result.message || "Payment failed to initiate.");
-                }
-            } catch (error) {
-                console.error("Payment error:", error);
-                if (paymentStatus) { paymentStatus.textContent = "Error: " + error.message; paymentStatus.style.color = "red"; }
-                payButton.disabled = false; payButton.textContent = "Pay to Unlock";
-            }
-        });
-    }
-
-    const possibleLogoutIds = ['logoutBtnPaywall', 'logoutBtnApp'];
-    possibleLogoutIds.forEach(id => {
-        const btn = document.getElementById(id);
-        if (btn) btn.addEventListener('click', performLogout);
-    });
-
-    // Budget Auto-fills
-    document.getElementById('tx-name').addEventListener('input', function(e) {
-        let val = e.target.value.trim().toLowerCase();
-        if(!val) return;
-        let match = transactions.slice().reverse().find(t => t.name.toLowerCase() === val);
-        if (match) {
-            if(match.type.includes('Savings') || match.type === 'Starting-Balance') {
-                document.getElementById('tx-type').value = 'Savings';
-                handleTypeChange('tx');
-                document.getElementById('tx-savings-action').value = match.type;
-            } else {
-                document.getElementById('tx-type').value = match.type;
-                handleTypeChange('tx');
-            }
-            document.getElementById('tx-category').value = match.category;
-            autoSelectIcon('tx');
-        }
-    });
-
-    document.getElementById('budget-name').addEventListener('input', function(e) {
-        let val = e.target.value.trim().toLowerCase();
-        if(!val) return;
-        let match = transactions.slice().reverse().find(t => t.name.toLowerCase() === val && t.type !== 'Income' && t.type !== 'Savings-Withdrawal' && t.type !== 'Starting-Balance');
-        if (match) document.getElementById('budget-category').value = match.category;
-    });
-
-    // Register Service Worker
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js')
-                .catch(err => console.log('Service Worker registration failed:', err));
-        });
-    }
-});
-
-// ==========================================
-// 5. BUDGET FUNCTIONS
-// ==========================================
 function repairAndLoadData() {
     try {
         const loadedTx = JSON.parse(localStorage.getItem('suppa_tx')) || [];
@@ -474,6 +301,7 @@ function repairAndLoadData() {
 }
 
 function initTheme() { if(localStorage.getItem('suppa_theme') === 'dark') document.body.setAttribute('data-theme', 'dark'); }
+
 function toggleTheme() {
     const isDark = document.body.getAttribute('data-theme') === 'dark';
     document.body.setAttribute('data-theme', isDark ? 'light' : 'dark');
@@ -599,6 +427,35 @@ function saveTransaction(e) {
     }, 1500);
 }
 
+// --- CRITICAL: Edit Modal Global Functions ---
+function openEditModal(id) {
+    const tx = transactions.find(t => t.id === id);
+    if(!tx) return;
+    
+    document.getElementById('edit-tx-id').value = tx.id;
+    document.getElementById('edit-tx-name').value = tx.name === '(General)' ? '' : tx.name;
+    
+    if (tx.type.includes('Savings') || tx.type === 'Starting-Balance') {
+        document.getElementById('edit-tx-type').value = 'Savings';
+        handleTypeChange('edit-tx');
+        document.getElementById('edit-tx-savings-action').value = tx.type;
+    } else {
+        document.getElementById('edit-tx-type').value = tx.type;
+        handleTypeChange('edit-tx');
+    }
+
+    document.getElementById('edit-tx-category').value = tx.category;
+    autoSelectIcon('edit-tx');
+    document.getElementById('edit-tx-date').value = tx.date;
+    document.getElementById('edit-tx-actual').value = Math.abs(tx.actual);
+    document.getElementById('edit-tx-qty').value = tx.qty;
+    document.getElementById('edit-tx-fx').value = tx.fx;
+    document.getElementById('edit-tx-kes').value = tx.kes;
+    document.getElementById('edit-tx-notes').value = tx.notes || '';
+    
+    document.getElementById('edit-modal').classList.remove('hidden');
+}
+
 function editTx(id) {
     const tx = transactions.find(t => t.id === id);
     if(!tx) return;
@@ -628,34 +485,6 @@ function editTx(id) {
     document.querySelectorAll('nav button').forEach(b => { if(b.textContent === 'Log Entry') b.click(); });
     document.getElementById('tx-submit-btn').innerText = "Update Transaction";
     window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-function openEditModal(id) {
-    const tx = transactions.find(t => t.id === id);
-    if(!tx) return;
-    
-    document.getElementById('edit-tx-id').value = tx.id;
-    document.getElementById('edit-tx-name').value = tx.name === '(General)' ? '' : tx.name;
-    
-    if (tx.type.includes('Savings') || tx.type === 'Starting-Balance') {
-        document.getElementById('edit-tx-type').value = 'Savings';
-        handleTypeChange('edit-tx');
-        document.getElementById('edit-tx-savings-action').value = tx.type;
-    } else {
-        document.getElementById('edit-tx-type').value = tx.type;
-        handleTypeChange('edit-tx');
-    }
-
-    document.getElementById('edit-tx-category').value = tx.category;
-    autoSelectIcon('edit-tx');
-    document.getElementById('edit-tx-date').value = tx.date;
-    document.getElementById('edit-tx-actual').value = Math.abs(tx.actual);
-    document.getElementById('edit-tx-qty').value = tx.qty;
-    document.getElementById('edit-tx-fx').value = tx.fx;
-    document.getElementById('edit-tx-kes').value = tx.kes;
-    document.getElementById('edit-tx-notes').value = tx.notes || '';
-    
-    document.getElementById('edit-modal').classList.remove('hidden');
 }
 
 function closeEditModal() { document.getElementById('edit-modal').classList.add('hidden'); }
@@ -956,9 +785,6 @@ function updateUI() {
         const perfVar = document.getElementById('perf-bottom-line-variance');
         if(perfVar) { perfVar.innerText = varStr; perfVar.className = varClass; }
 
-        const incEl = document.getElementById('perf-bottom-line-income');
-        if (incEl) incEl.innerText = `KES ${totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-
         let rawTotalBudget = 0;
         Object.values(itemsMap).forEach(item => { rawTotalBudget += getBudget(item.cat, item.name, monthStr); });
 
@@ -1111,9 +937,6 @@ function deletePortfolioAccount(cat) {
     }
     saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
 }
-
-// --- Analytics ---
-let pieChartInstance = null; let barChartInstance = null; let inflationChartInstance = null;
 
 function populateChartFilters(txs) {
     const catFilter = document.getElementById('analytics-cat-filter');
@@ -1320,7 +1143,6 @@ function updateInflationChart() {
     } catch(e) { console.error("Inflation Chart Error:", e); }
 }
 
-// --- Data Safety ---
 function saveState() { historyStack.push(JSON.stringify(transactions)); redoStack = []; if (historyStack.length > 20) historyStack.shift(); }
 function undo() { if (historyStack.length === 0) return alert("Nothing to undo!"); redoStack.push(JSON.stringify(transactions)); transactions = JSON.parse(historyStack.pop()); saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart(); }
 function redo() { if (redoStack.length === 0) return alert("Nothing to redo!"); historyStack.push(JSON.stringify(transactions)); transactions = JSON.parse(redoStack.pop()); saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart(); }
@@ -1421,40 +1243,192 @@ function importBudgetCSV(e) {
         e.target.value = '';
     };
     reader.readAsText(file);
-        // ==========================================
-    // AI INSIGHTS LOGIC
-    // ==========================================
-    window.fetchAIInsights = async function() {
-        const btn = document.getElementById('ai-insight-btn');
-        const container = document.getElementById('ai-insight-container');
-        
-        btn.innerText = "Analyzing... 🧠";
-        btn.disabled = true;
-        container.innerHTML = `<div style="text-align: center; color: var(--text-muted);">Fetching your personalized insights... this takes about 5 seconds.</div>`;
-
-        try {
-            const response = await fetch('/.netlify/functions/get-insights', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ transactions: transactions })
-            });
-            
-            const result = await response.json();
-            if(result.success) {
-                // Convert markdown bullet points to HTML formatting
-                let htmlOutput = result.insights.replace(/\n\*/g, '<br>•');
-                htmlOutput = htmlOutput.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-                container.innerHTML = htmlOutput;
-            } else {
-                throw new Error(result.message || "Failed to load");
-            }
-        } catch (error) {
-            console.error("AI Fetch Error:", error);
-            container.innerHTML = `<span style="color:var(--danger); font-weight:bold;">Error fetching insights. Please check your internet connection or try again later.</span>`;
-        } finally {
-            btn.innerText = "Refresh Advice ✨";
-            btn.disabled = false;
-        }
-    };
-
 }
+
+// ==========================================
+// 4. ATTACH EVENT LISTENERS (Runs after HTML loads)
+// ==========================================
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // 1. Initialize offline budget data & Theme
+    repairAndLoadData();
+    initTheme();
+    
+    // 2. Initialize Supabase Auth Session
+    initializeApp();
+
+    // 3. UI Setup
+    document.getElementById('tx-date').valueAsDate = new Date();
+    document.getElementById('budget-month-picker').value = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2, '0')}`;
+    
+    handleTypeChange('tx');
+    updateDatalists();
+    updateUI();
+
+    // 4. Profile Dropdown Hooks
+    const profileTrigger = document.getElementById('profileTrigger');
+    const profileDropdown = document.getElementById('profileDropdown');
+    if (profileTrigger && profileDropdown) {
+        profileTrigger.addEventListener('click', (e) => {
+            e.stopPropagation(); 
+            profileDropdown.style.display = profileDropdown.style.display === 'none' ? 'block' : 'none';
+        });
+        document.addEventListener('click', (e) => {
+            if (!profileTrigger.contains(e.target) && !profileDropdown.contains(e.target)) {
+                profileDropdown.style.display = 'none';
+            }
+        });
+    }
+
+    const appProfileTrigger = document.getElementById('appProfileTrigger');
+    const appProfileDropdown = document.getElementById('appProfileDropdown');
+    if (appProfileTrigger && appProfileDropdown) {
+        appProfileTrigger.addEventListener('click', (e) => {
+            e.stopPropagation(); 
+            appProfileDropdown.style.display = appProfileDropdown.style.display === 'none' ? 'block' : 'none';
+        });
+        document.addEventListener('click', (e) => {
+            if (!appProfileTrigger.contains(e.target) && !appProfileDropdown.contains(e.target)) {
+                appProfileDropdown.style.display = 'none';
+            }
+        });
+    }
+
+    // 5. Paywall Button Hook
+    const payButton = document.getElementById('payButton');
+    if (payButton) {
+        payButton.addEventListener('click', async () => {
+            const phoneInput = document.getElementById('phoneInput');
+            const paymentStatus = document.getElementById('paymentStatus');
+            const phone = phoneInput ? phoneInput.value.trim() : '';
+            
+            if (!phone || phone.length < 9) { alert("Please enter a valid M-Pesa phone number."); return; }
+
+            payButton.disabled = true; payButton.textContent = "Processing...";
+            if (paymentStatus) { paymentStatus.textContent = "Contacting M-Pesa... please wait."; paymentStatus.style.color = "blue"; }
+
+            try {
+                const response = await fetch('/.netlify/functions/initiate-tuma', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone: phone, userId: currentUser.id, amount: 1700 })
+                });
+                
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    if (paymentStatus) { paymentStatus.textContent = "Prompt sent! Enter your PIN on your phone."; paymentStatus.style.color = "orange"; }
+                    startPollingDatabase(); 
+                } else {
+                    throw new Error(result.message || "Payment failed to initiate.");
+                }
+            } catch (error) {
+                console.error("Payment error:", error);
+                if (paymentStatus) { paymentStatus.textContent = "Error: " + error.message; paymentStatus.style.color = "red"; }
+                payButton.disabled = false; payButton.textContent = "Pay to Unlock";
+            }
+        });
+    }
+
+    // 6. Logout Buttons Hook
+    ['logoutBtnPaywall', 'logoutBtnApp'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.addEventListener('click', performLogout);
+    });
+
+    // 7. Input Auto-fill Hooks
+    const txNameEl = document.getElementById('tx-name');
+    if(txNameEl) {
+        txNameEl.addEventListener('input', function(e) {
+            let val = e.target.value.trim().toLowerCase();
+            if(!val) return;
+            let match = transactions.slice().reverse().find(t => t.name.toLowerCase() === val);
+            if (match) {
+                if(match.type.includes('Savings') || match.type === 'Starting-Balance') {
+                    document.getElementById('tx-type').value = 'Savings';
+                    handleTypeChange('tx');
+                    document.getElementById('tx-savings-action').value = match.type;
+                } else {
+                    document.getElementById('tx-type').value = match.type;
+                    handleTypeChange('tx');
+                }
+                document.getElementById('tx-category').value = match.category;
+                autoSelectIcon('tx');
+            }
+        });
+    }
+
+    const budgetNameEl = document.getElementById('budget-name');
+    if(budgetNameEl) {
+        budgetNameEl.addEventListener('input', function(e) {
+            let val = e.target.value.trim().toLowerCase();
+            if(!val) return;
+            let match = transactions.slice().reverse().find(t => t.name.toLowerCase() === val && t.type !== 'Income' && t.type !== 'Savings-Withdrawal' && t.type !== 'Starting-Balance');
+            if (match) document.getElementById('budget-category').value = match.category;
+        });
+    }
+
+    // 8. M-PESA Smart Paste Hook
+    const pasteBox = document.getElementById('mpesa-paste-box');
+    if (pasteBox) {
+        pasteBox.addEventListener('input', function(e) {
+            const sms = e.target.value.trim();
+            if (!sms) return;
+            
+            const amountMatch = sms.match(/Ksh([\d,]+\.\d{2})/);
+            const paidToMatch = sms.match(/paid to (.*?)(?=\. on)/) || sms.match(/paid to (.*?)(?= on)/);
+            const dateMatch = sms.match(/on (\d{1,2}\/\d{1,2}\/\d{2})/);
+            const costMatch = sms.match(/Transaction cost, Ksh([\d,]+\.\d{2})/);
+
+            if (amountMatch) {
+                const amount = parseFloat(amountMatch[1].replace(/,/g, ''));
+                document.getElementById('tx-actual').value = amount;
+                
+                if (paidToMatch) {
+                    const vendor = paidToMatch[1].trim();
+                    document.getElementById('tx-name').value = vendor;
+                    
+                    const vLower = vendor.toLowerCase();
+                    if (vLower.includes('java') || vLower.includes('kfc') || vLower.includes('naivas') || vLower.includes('quickmart')) {
+                        document.getElementById('tx-category').value = 'Food';
+                    } else if (vLower.includes('uber') || vLower.includes('bolt') || vLower.includes('fuel')) {
+                        document.getElementById('tx-category').value = 'Transport';
+                    }
+                    autoSelectIcon('tx');
+                }
+
+                if (dateMatch) {
+                    const parts = dateMatch[1].split('/');
+                    const year = "20" + parts[2];
+                    const month = parts[1].padStart(2, '0');
+                    const day = parts[0].padStart(2, '0');
+                    document.getElementById('tx-date').value = `${year}-${month}-${day}`;
+                }
+                
+                calcKES('tx');
+                setTimeout(() => e.target.value = '', 500);
+                
+                if (costMatch) {
+                    const txCost = parseFloat(costMatch[1].replace(/,/g, ''));
+                    if(txCost > 0 && confirm(`Also log KES ${txCost} as a Transaction Cost?`)) {
+                        transactions.push({
+                            id: Date.now() + 1,
+                            name: 'M-Pesa Fee', type: 'Expense', category: 'Transaction Cost',
+                            date: document.getElementById('tx-date').value,
+                            actual: txCost, qty: 1, fx: 1, kes: txCost, notes: 'Auto-extracted'
+                        });
+                        saveData(); updateDatalists(); updateUI();
+                    }
+                }
+            }
+        });
+    }
+
+    // 9. Service Worker
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js')
+                .catch(err => console.log('Service Worker registration failed:', err));
+        });
+    }
+});
