@@ -47,7 +47,7 @@ exports.handler = async (event, context) => {
                 'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({
-                amount: amount || 1.00,
+                amount: amount || 1500.00,
                 phone: phone,
                 callback_url: process.env.MY_NETLIFY_WEBHOOK_URL, // Added process.env here
                 description: "Suppa Budgetor Premium Upgrade"
