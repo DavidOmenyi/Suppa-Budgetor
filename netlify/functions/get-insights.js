@@ -25,12 +25,12 @@ exports.handler = async (event, context) => {
 
         // 2. Instruct the AI on how to analyze the data
         const prompt = `You are an expert financial advisor specializing in Kenyan budgets. Analyze the following recent expenses. 
-        Provide 3 short, highly specific, and actionable bullet points to help the user identify spending leaks and save money. Do not write a long intro or conclusion, just give the 3 insights formatted clearly. 
+        Provide 3 short, highly specific, and actionable bullet points to help the user identify spending leaks and save money. Do not write a long intro or conclusion, just give the 3 insights.
         
         Expenses:\n${recentExpenses}`;
 
         // 3. Call the Google Gemini API (Ensure GEMINI_API_KEY is in your Netlify Environment Variables)
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, { ... });
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
