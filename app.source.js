@@ -5,7 +5,6 @@
 const supabaseUrl = 'https://ffzkpuiujxdqwjvmhrmx.supabase.co'; 
 const supabaseKey = 'sb_publishable_yNJ1bJEdGV4Vpw_itRG1mA_XOBP8efu'; 
 
-// Fallback in case window.supabase isn't ready instantly
 const supabaseLib = window.supabase || supabase;
 const supabaseClient = supabaseLib.createClient(supabaseUrl, supabaseKey);
 
@@ -44,11 +43,15 @@ const chartColors = [
     '#1d4ed8', '#be123c', '#4338ca', '#047857', '#b45309'
 ];
 
+let pieChartInstance = null; 
+let barChartInstance = null; 
+let inflationChartInstance = null;
+
 // ==========================================
 // 3. GLOBAL FUNCTIONS (Accessible by HTML)
 // ==========================================
 
-// --- Auth & Profile Functions ---
+// --- Auth & Profile ---
 function updateProfileUI(displayName, avatarUrl) {
     ['userNameDisplay', 'appUserNameDisplay'].forEach(id => {
         const el = document.getElementById(id);
@@ -99,11 +102,8 @@ async function checkPremiumStatus() {
         .eq('id', currentUser.id)
         .single();
         
-    if (data && data.is_premium === true) {
-        unlockApp();
-    } else {
-        lockApp();
-    }
+    if (data && data.is_premium === true) unlockApp();
+    else lockApp();
 }
 
 function unlockApp() {
@@ -123,15 +123,8 @@ function lockApp() {
 
 function startPollingDatabase() {
     pollingInterval = setInterval(async () => {
-        const { data, error } = await supabaseClient
-            .from('profiles')
-            .select('is_premium')
-            .eq('id', currentUser.id)
-            .single();
-
-        if (data && data.is_premium === true) {
-            unlockApp();
-        }
+        const { data } = await supabaseClient.from('profiles').select('is_premium').eq('id', currentUser.id).single();
+        if (data && data.is_premium === true) unlockApp();
     }, 3000); 
 
     setTimeout(() => {
@@ -139,14 +132,8 @@ function startPollingDatabase() {
             clearInterval(pollingInterval);
             const paymentStatus = document.getElementById('paymentStatus');
             const payButton = document.getElementById('payButton');
-            if (paymentStatus) {
-                paymentStatus.textContent = "Payment timed out. Please try again.";
-                paymentStatus.style.color = "red";
-            }
-            if (payButton) {
-                payButton.disabled = false;
-                payButton.textContent = "Pay to Unlock";
-            }
+            if (paymentStatus) { paymentStatus.textContent = "Payment timed out. Please try again."; paymentStatus.style.color = "red"; }
+            if (payButton) { payButton.disabled = false; payButton.textContent = "Pay to Unlock"; }
         }
     }, 120000); 
 }
@@ -164,23 +151,18 @@ window.openProfileModal = function() {
     document.getElementById('profile-modal').classList.remove('hidden');
 };
 
-window.closeProfileModal = function() {
-    document.getElementById('profile-modal').classList.add('hidden');
-};
+window.closeProfileModal = function() { document.getElementById('profile-modal').classList.add('hidden'); };
 
 window.saveProfile = async function(e) {
     e.preventDefault();
     const btn = document.getElementById('save-profile-btn');
-    btn.textContent = "Saving...";
-    btn.disabled = true;
+    btn.textContent = "Saving..."; btn.disabled = true;
 
     const newName = document.getElementById('profile-name-input').value.trim();
     const newAvatar = document.getElementById('profile-avatar-input').value.trim();
 
     try {
-        const { data, error } = await supabaseClient.auth.updateUser({
-            data: { display_name: newName, avatar_url: newAvatar }
-        });
+        const { data, error } = await supabaseClient.auth.updateUser({ data: { display_name: newName, avatar_url: newAvatar } });
         if (error) throw error;
         
         currentUser = data.user; 
@@ -189,59 +171,18 @@ window.saveProfile = async function(e) {
     } catch (err) {
         alert("Failed to update profile: " + err.message);
     } finally {
-        btn.textContent = "Save Profile";
-        btn.disabled = false;
+        btn.textContent = "Save Profile"; btn.disabled = false;
     }
 };
 
 window.forceLogout = async function(e) {
     if (e && e.preventDefault) e.preventDefault();
-    if (e && e.target) {
-        e.target.innerText = "Logging out...";
-        e.target.style.opacity = "0.6";
-    }
-    try {
-        await supabaseClient.auth.signOut();
-    } catch (err) {
-        console.error("SignOut error:", err);
-    }
+    if (e && e.target) { e.target.innerText = "Logging out..."; e.target.style.opacity = "0.6"; }
+    try { await supabaseClient.auth.signOut(); } catch (err) { console.error("SignOut error:", err); }
     window.location.href = 'login.html';
 };
 
 async function performLogout(e) { window.forceLogout(e); }
-
-// --- AI Insights Function ---
-window.fetchAIInsights = async function() {
-    const btn = document.getElementById('ai-insight-btn');
-    const container = document.getElementById('ai-insight-container');
-    
-    btn.innerText = "Analyzing... 🧠";
-    btn.disabled = true;
-    container.innerHTML = `<div style="text-align: center; color: var(--text-muted);">Fetching your personalized insights... this takes about 5 seconds.</div>`;
-
-    try {
-        const response = await fetch('/.netlify/functions/get-insights', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ transactions: transactions })
-        });
-        
-        const result = await response.json();
-        if(result.success) {
-            let htmlOutput = result.insights.replace(/\n\*/g, '<br>•');
-            htmlOutput = htmlOutput.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-            container.innerHTML = htmlOutput;
-        } else {
-            throw new Error(result.message || "Failed to load");
-        }
-    } catch (error) {
-        console.error("AI Fetch Error:", error);
-        container.innerHTML = `<span style="color:var(--danger); font-weight:bold;">Error fetching insights. Please check your internet connection or try again later.</span>`;
-    } finally {
-        btn.innerText = "Refresh Advice ✨";
-        btn.disabled = false;
-    }
-};
 
 // --- Core Budget Functions ---
 function getIcon(cat) { return defaultIcons[cat] || (customMem.Icons && customMem.Icons[cat]) || '🏷️'; }
@@ -375,8 +316,7 @@ function calcKES(prefix) {
 }
 
 function saveTransaction(e) {
-    e.preventDefault();
-    saveState();
+    e.preventDefault(); saveState();
 
     const prefix = document.getElementById('tx-id').value ? 'edit-tx' : 'tx';
     const txIdInput = document.getElementById('tx-id').value;
@@ -391,15 +331,11 @@ function saveTransaction(e) {
 
     const newTx = {
         id: isUpdate ? parseInt(txIdInput) : Date.now(),
-        name: rawName || '(General)',
-        type: finalType,
-        category: rawCat || 'Uncategorized',
+        name: rawName || '(General)', type: finalType, category: rawCat || 'Uncategorized',
         date: document.getElementById('tx-date').value,
         actual: Math.abs(parseFloat(document.getElementById('tx-actual').value) || 0),
-        qty: parseFloat(document.getElementById('tx-qty').value) || 1,
-        fx: parseFloat(document.getElementById('tx-fx').value) || 1,
-        kes: parseFloat(document.getElementById('tx-kes').value) || 0,
-        notes: document.getElementById('tx-notes').value
+        qty: parseFloat(document.getElementById('tx-qty').value) || 1, fx: parseFloat(document.getElementById('tx-fx').value) || 1,
+        kes: parseFloat(document.getElementById('tx-kes').value) || 0, notes: document.getElementById('tx-notes').value
     };
 
     addToMemory(newTx.type, newTx.category, newTx.name, chosenIcon);
@@ -415,20 +351,17 @@ function saveTransaction(e) {
     saveData(); updateDatalists(); updateUI();
     
     const btn = document.getElementById('tx-submit-btn');
-    const originalText = isUpdate ? "✓ Updated!" : "✓ Saved!";
-    btn.innerText = originalText; btn.style.background = "var(--success)";
+    btn.innerText = isUpdate ? "✓ Updated!" : "✓ Saved!"; btn.style.background = "var(--success)";
 
     setTimeout(() => { 
-        btn.innerText = "Add to Ledger"; btn.style.background = ""; 
-        e.target.reset(); 
+        btn.innerText = "Add to Ledger"; btn.style.background = ""; e.target.reset(); 
         document.getElementById('tx-date').valueAsDate = new Date(); 
         document.getElementById('tx-fx').value = 1; document.getElementById('tx-qty').value = 1;
         handleTypeChange('tx');
     }, 1500);
 }
 
-// --- CRITICAL: Edit Modal Global Functions ---
-function openEditModal(id) {
+window.openEditModal = function(id) {
     const tx = transactions.find(t => t.id === id);
     if(!tx) return;
     
@@ -436,16 +369,13 @@ function openEditModal(id) {
     document.getElementById('edit-tx-name').value = tx.name === '(General)' ? '' : tx.name;
     
     if (tx.type.includes('Savings') || tx.type === 'Starting-Balance') {
-        document.getElementById('edit-tx-type').value = 'Savings';
-        handleTypeChange('edit-tx');
+        document.getElementById('edit-tx-type').value = 'Savings'; handleTypeChange('edit-tx');
         document.getElementById('edit-tx-savings-action').value = tx.type;
     } else {
-        document.getElementById('edit-tx-type').value = tx.type;
-        handleTypeChange('edit-tx');
+        document.getElementById('edit-tx-type').value = tx.type; handleTypeChange('edit-tx');
     }
 
-    document.getElementById('edit-tx-category').value = tx.category;
-    autoSelectIcon('edit-tx');
+    document.getElementById('edit-tx-category').value = tx.category; autoSelectIcon('edit-tx');
     document.getElementById('edit-tx-date').value = tx.date;
     document.getElementById('edit-tx-actual').value = Math.abs(tx.actual);
     document.getElementById('edit-tx-qty').value = tx.qty;
@@ -454,9 +384,9 @@ function openEditModal(id) {
     document.getElementById('edit-tx-notes').value = tx.notes || '';
     
     document.getElementById('edit-modal').classList.remove('hidden');
-}
+};
 
-function editTx(id) {
+window.editTx = function(id) {
     const tx = transactions.find(t => t.id === id);
     if(!tx) return;
     
@@ -464,16 +394,13 @@ function editTx(id) {
     document.getElementById('tx-name').value = tx.name === '(General)' ? '' : tx.name;
     
     if (tx.type.includes('Savings') || tx.type === 'Starting-Balance') {
-        document.getElementById('tx-type').value = 'Savings';
-        handleTypeChange('tx');
+        document.getElementById('tx-type').value = 'Savings'; handleTypeChange('tx');
         document.getElementById('tx-savings-action').value = tx.type;
     } else {
-        document.getElementById('tx-type').value = tx.type;
-        handleTypeChange('tx');
+        document.getElementById('tx-type').value = tx.type; handleTypeChange('tx');
     }
 
-    document.getElementById('tx-category').value = tx.category;
-    autoSelectIcon('tx');
+    document.getElementById('tx-category').value = tx.category; autoSelectIcon('tx');
     document.getElementById('tx-date').value = tx.date;
     document.getElementById('tx-actual').value = Math.abs(tx.actual);
     document.getElementById('tx-qty').value = tx.qty;
@@ -485,11 +412,11 @@ function editTx(id) {
     document.querySelectorAll('nav button').forEach(b => { if(b.textContent === 'Log Entry') b.click(); });
     document.getElementById('tx-submit-btn').innerText = "Update Transaction";
     window.scrollTo({ top: 0, behavior: 'smooth' });
-}
+};
 
-function closeEditModal() { document.getElementById('edit-modal').classList.add('hidden'); }
+window.closeEditModal = function() { document.getElementById('edit-modal').classList.add('hidden'); };
 
-function updateTransaction(e) {
+window.updateTransaction = function(e) {
     e.preventDefault(); saveState();
     
     const id = parseInt(document.getElementById('edit-tx-id').value);
@@ -501,32 +428,28 @@ function updateTransaction(e) {
     const chosenIcon = document.getElementById('edit-tx-category-icon').value;
 
     const newTx = {
-        id: id,
-        name: document.getElementById('edit-tx-name').value.trim() || '(General)',
-        type: finalType,
-        category: document.getElementById('edit-tx-category').value.trim() || 'Uncategorized',
+        id: id, name: document.getElementById('edit-tx-name').value.trim() || '(General)',
+        type: finalType, category: document.getElementById('edit-tx-category').value.trim() || 'Uncategorized',
         date: document.getElementById('edit-tx-date').value,
         actual: Math.abs(parseFloat(document.getElementById('edit-tx-actual').value) || 0),
-        qty: parseFloat(document.getElementById('edit-tx-qty').value) || 1,
-        fx: parseFloat(document.getElementById('edit-tx-fx').value) || 1,
-        kes: parseFloat(document.getElementById('edit-tx-kes').value),
-        notes: document.getElementById('edit-tx-notes').value
+        qty: parseFloat(document.getElementById('edit-tx-qty').value) || 1, fx: parseFloat(document.getElementById('edit-tx-fx').value) || 1,
+        kes: parseFloat(document.getElementById('edit-tx-kes').value), notes: document.getElementById('edit-tx-notes').value
     };
 
     addToMemory(newTx.type, newTx.category, newTx.name, chosenIcon);
     transactions[index] = newTx;
     saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
     closeEditModal();
-}
+};
 
-function deleteEditTx() {
+window.deleteEditTx = function() {
     if(!confirm("Are you sure you want to completely delete this entry?")) return;
     saveState();
     const id = parseInt(document.getElementById('edit-tx-id').value);
     transactions = transactions.filter(t => t.id !== id);
     saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
     closeEditModal();
-}
+};
 
 function updateDatalists() {
     const txMem = document.getElementById('tx-memory'); txMem.innerHTML = '';
@@ -560,7 +483,7 @@ function getBudget(cat, name, targetMonthStr) {
     return 0; 
 }
 
-function saveSingleBudget(e) {
+window.saveSingleBudget = function(e) {
     e.preventDefault();
     const monthStr = document.getElementById('budget-month-picker').value;
     let cat = document.getElementById('budget-category').value.trim();
@@ -587,17 +510,17 @@ function saveSingleBudget(e) {
     const btn = document.getElementById('budget-submit-btn');
     btn.innerText = "✓ Budget Saved!"; btn.style.background = "var(--success)";
     setTimeout(() => { btn.innerText = "Add / Update Budget"; btn.style.background = ""; }, 1500);
-}
+};
 
-function editBudgetForm(cat, name, amount) {
+window.editBudgetForm = function(cat, name, amount) {
     document.getElementById('budget-category').value = cat;
     document.getElementById('budget-name').value = name === '(General)' ? '' : name;
     document.getElementById('budget-amount').value = amount;
     document.getElementById('budget-amount').focus();
     window.scrollTo({ top: 0, behavior: 'smooth' });
-}
+};
 
-function deleteBudget(cat, name, monthStr) {
+window.deleteBudget = function(cat, name, monthStr) {
     if(!confirm("Delete this budget allocation?")) return;
     const key = `${cat}::${name}`;
     if(categoryBudgets[monthStr] && categoryBudgets[monthStr][key] !== undefined) {
@@ -605,9 +528,9 @@ function deleteBudget(cat, name, monthStr) {
         localStorage.setItem('suppa_budgets_v2', JSON.stringify(categoryBudgets));
         renderBudgetSetup(); updateUI(); updateCharts();
     }
-}
+};
 
-function renderBudgetSetup() {
+window.renderBudgetSetup = function() {
     try {
         const monthStr = document.getElementById('budget-month-picker').value;
         if(!monthStr) return;
@@ -641,7 +564,7 @@ function renderBudgetSetup() {
             `;
         });
     } catch(e) { console.error("Error rendering budget setup", e); }
-}
+};
 
 function calculateRollover(upToMonthStr) {
     let rollover = 0;
@@ -658,9 +581,9 @@ function calculateRollover(upToMonthStr) {
     return rollover;
 }
 
-function changeMonth(delta) { currentDate.setMonth(currentDate.getMonth() + delta); updateUI(); }
+window.changeMonth = function(delta) { currentDate.setMonth(currentDate.getMonth() + delta); updateUI(); };
 
-function updateUI() {
+window.updateUI = function() {
     try {
         const monthStr = getMonthStr(currentDate);
         const monthYear = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
@@ -817,9 +740,9 @@ function updateUI() {
     } catch (e) {
         console.error("UI Update Error:", e);
     }
-}
+};
 
-function openLedger(cat, name, isIncome = false) {
+window.openLedger = function(cat, name, isIncome = false) {
     const monthStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2, '0')}`;
     let txs = transactions.filter(t => t.date && t.date.substring(0,7) === monthStr);
     
@@ -848,9 +771,9 @@ function openLedger(cat, name, isIncome = false) {
         `;
     });
     document.getElementById('ledger-modal').classList.remove('hidden');
-}
+};
 
-function closeLedger() { document.getElementById('ledger-modal').classList.add('hidden'); }
+window.closeLedger = function() { document.getElementById('ledger-modal').classList.add('hidden'); };
 
 function updatePortfolioView(currentMonthTxs, monthStr) {
     const tbody = document.getElementById('portfolio-body'); tbody.innerHTML = '';
@@ -924,7 +847,7 @@ function updatePortfolioView(currentMonthTxs, monthStr) {
     }
 }
 
-function deletePortfolioAccount(cat) {
+window.deletePortfolioAccount = function(cat) {
     if(!confirm(`Are you sure you want to completely delete the account "${cat}"?\n\nThis will erase ALL deposits, withdrawals, and opening balances tied to it.`)) return;
     if(!confirm(`Final warning: Deleting "${cat}" cannot be undone. Proceed?`)) return;
 
@@ -936,7 +859,7 @@ function deletePortfolioAccount(cat) {
         localStorage.setItem('suppa_custom_mem', JSON.stringify(customMem));
     }
     saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart();
-}
+};
 
 function populateChartFilters(txs) {
     const catFilter = document.getElementById('analytics-cat-filter');
@@ -964,7 +887,7 @@ function populateChartFilters(txs) {
     infNameFilter.value = allNames.includes(currInfName) ? currInfName : 'ALL';
 }
 
-function updateAnalytics() {
+window.updateAnalytics = function() {
     const period = document.getElementById('analytics-period').value;
     const now = new Date();
     const filteredTxs = transactions.filter(t => {
@@ -978,9 +901,9 @@ function updateAnalytics() {
     
     populateChartFilters(transactions.filter(t => t.type === 'Expense' || t.type === 'Savings-Deposit')); 
     updateCharts(filteredTxs); updateInflationChart();
-}
+};
 
-function updateCharts(txList = null) {
+window.updateCharts = function(txList = null) {
     try {
         if(!document.getElementById('analytics').classList.contains('active')) return;
         if(!txList) {
@@ -1021,7 +944,7 @@ function updateCharts(txList = null) {
 
         drawCharts(chartExpenses, catFilter, nameFilter);
     } catch(e) { console.error("Chart Error", e); }
-}
+};
 
 function drawCharts(expenses, catFilter, nameFilter) {
     const ctxPie = document.getElementById('pieChart').getContext('2d');
@@ -1088,7 +1011,7 @@ function drawCharts(expenses, catFilter, nameFilter) {
     });
 }
 
-function updateInflationChart() {
+window.updateInflationChart = function() {
     try {
         if(!document.getElementById('analytics').classList.contains('active')) return;
         const interval = document.getElementById('inflation-interval').value;
@@ -1141,14 +1064,46 @@ function updateInflationChart() {
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: textColor } } }, scales: { y: { title: { display: true, text: 'Growth Percentage (%)', color: textColor }, grid: { color: isDark ? '#14281f' : '#d1fae5' } }, x: { grid: { color: isDark ? '#14281f' : '#d1fae5' } } } }
         });
     } catch(e) { console.error("Inflation Chart Error:", e); }
-}
+};
 
+window.fetchAIInsights = async function() {
+    const btn = document.getElementById('ai-insight-btn');
+    const container = document.getElementById('ai-insight-container');
+    
+    btn.innerText = "Analyzing... 🧠";
+    btn.disabled = true;
+    container.innerHTML = `<div style="text-align: center; color: var(--text-muted);">Fetching your personalized insights... this takes about 5 seconds.</div>`;
+
+    try {
+        const response = await fetch('/.netlify/functions/get-insights', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ transactions: transactions })
+        });
+        
+        const result = await response.json();
+        if(result.success) {
+            let htmlOutput = result.insights.replace(/\n\*/g, '<br>•');
+            htmlOutput = htmlOutput.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            container.innerHTML = htmlOutput;
+        } else {
+            throw new Error(result.message || "Failed to load");
+        }
+    } catch (error) {
+        console.error("AI Fetch Error:", error);
+        container.innerHTML = `<span style="color:var(--danger); font-weight:bold;">Error fetching insights. Please check your internet connection or verify your GEMINI_API_KEY in Netlify.</span>`;
+    } finally {
+        btn.innerText = "Refresh Advice ✨";
+        btn.disabled = false;
+    }
+};
+
+window.undo = function() { if (historyStack.length === 0) return alert("Nothing to undo!"); redoStack.push(JSON.stringify(transactions)); transactions = JSON.parse(historyStack.pop()); saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart(); };
+window.redo = function() { if (redoStack.length === 0) return alert("Nothing to redo!"); historyStack.push(JSON.stringify(transactions)); transactions = JSON.parse(redoStack.pop()); saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart(); };
 function saveState() { historyStack.push(JSON.stringify(transactions)); redoStack = []; if (historyStack.length > 20) historyStack.shift(); }
-function undo() { if (historyStack.length === 0) return alert("Nothing to undo!"); redoStack.push(JSON.stringify(transactions)); transactions = JSON.parse(historyStack.pop()); saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart(); }
-function redo() { if (redoStack.length === 0) return alert("Nothing to redo!"); historyStack.push(JSON.stringify(transactions)); transactions = JSON.parse(redoStack.pop()); saveData(); updateDatalists(); updateUI(); updateCharts(); updateInflationChart(); }
 function saveData() { localStorage.setItem('suppa_tx', JSON.stringify(transactions)); }
 
-function resetData() {
+window.resetData = function() {
     if(confirm("⚠ DANGER: This will wipe ALL transactions, budgets, and portfolio history. Are you entirely sure?")) {
         if(confirm("Final confirmation: Type 'YES' to proceed.")) {
             localStorage.clear(); transactions = []; categoryBudgets = {}; 
@@ -1156,9 +1111,9 @@ function resetData() {
             updateDatalists(); updateUI();
         }
     }
-}
+};
 
-function exportCSV() {
+window.exportCSV = function() {
     if(transactions.length === 0 && customMem.Savings.length === 0) return alert("No transaction data to export!");
     let csvContent = "ID,Name,Type,Category,Date,Actual_Amount,Quantity,FX_Rate,Total_KES,Notes\n";
     transactions.forEach(t => { csvContent += `${t.id},"${t.name}",${t.type},"${t.category}",${t.date},${t.actual},${t.qty},${t.fx},${t.kes},"${(t.notes||'').replace(/"/g, '""')}"\n`; });
@@ -1168,9 +1123,9 @@ function exportCSV() {
         }
     });
     triggerDownload(csvContent, `Suppa_Transactions_Backup_${new Date().toISOString().split('T')[0]}.csv`);
-}
+};
 
-function exportBudgetCSV() {
+window.exportBudgetCSV = function() {
     if(Object.keys(categoryBudgets).length === 0) return alert("No budget data to export!");
     let csvContent = "Month,Category,Expense_Name,Budget_Amount\n";
     Object.keys(categoryBudgets).sort().forEach(month => {
@@ -1180,24 +1135,21 @@ function exportBudgetCSV() {
         });
     });
     triggerDownload(csvContent, `Suppa_Budgets_Backup_${new Date().toISOString().split('T')[0]}.csv`);
-}
+};
 
 function triggerDownload(content, fileName) {
     const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute("download", fileName);
-    document.body.appendChild(link);
-    link.click(); document.body.removeChild(link);
+    const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.setAttribute("download", fileName);
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
 }
 
-function exportTableToExcel(tableID, filename = ''){
+window.exportTableToExcel = function(tableID, filename = ''){
     var tableSelect = document.getElementById(tableID);
     var wb = XLSX.utils.table_to_book(tableSelect, {sheet:"Sheet1", raw: true});
     XLSX.writeFile(wb, filename+".xlsx");
-}
+};
 
-function importCSV(e) {
+window.importCSV = function(e) {
     const file = e.target.files[0]; if(!file) return;
     const reader = new FileReader();
     reader.onload = function(evt) {
@@ -1220,81 +1172,69 @@ function importCSV(e) {
         saveData(); updateDatalists(); updateUI(); alert("Transactions & Portfolio CSV Imported Successfully!"); e.target.value = '';
     };
     reader.readAsText(file);
-}
+};
 
-function importBudgetCSV(e) {
-    const file = e.target.files[0];
-    if(!file) return;
+window.importBudgetCSV = function(e) {
+    const file = e.target.files[0]; if(!file) return;
     const reader = new FileReader();
     reader.onload = function(evt) {
         const rows = evt.target.result.split('\n');
         rows.forEach((row, i) => {
             if(i === 0 || !row.trim()) return; 
             const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(s => s.replace(/(^"|"$)/g, '').trim());
-            
             if(cols.length >= 4 && cols[0].match(/^\d{4}-\d{2}$/)) {
                 if(!categoryBudgets[cols[0]]) categoryBudgets[cols[0]] = {};
                 categoryBudgets[cols[0]][`${cols[1]}::${cols[2]}`] = parseFloat(cols[3]) || 0;
             }
         });
         localStorage.setItem('suppa_budgets_v2', JSON.stringify(categoryBudgets));
-        updateUI(); renderBudgetSetup();
-        alert("Budgets CSV Imported Successfully!");
-        e.target.value = '';
+        updateUI(); renderBudgetSetup(); alert("Budgets CSV Imported Successfully!"); e.target.value = '';
     };
     reader.readAsText(file);
-}
+};
 
 // ==========================================
-// 4. ATTACH EVENT LISTENERS (Runs after HTML loads)
+// 4. EVENT LISTENERS (Only runs after page loads)
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
     
-    // 1. Initialize offline budget data & Theme
+    // Load Data
     repairAndLoadData();
     initTheme();
-    
-    // 2. Initialize Supabase Auth Session
     initializeApp();
 
-    // 3. UI Setup
-    document.getElementById('tx-date').valueAsDate = new Date();
-    document.getElementById('budget-month-picker').value = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2, '0')}`;
+    // Setup initial dates
+    const dateInput = document.getElementById('tx-date');
+    if(dateInput) dateInput.valueAsDate = new Date();
     
+    const monthPicker = document.getElementById('budget-month-picker');
+    if(monthPicker) monthPicker.value = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2, '0')}`;
+    
+    // Initial Render
     handleTypeChange('tx');
     updateDatalists();
     updateUI();
 
-    // 4. Profile Dropdown Hooks
-    const profileTrigger = document.getElementById('profileTrigger');
-    const profileDropdown = document.getElementById('profileDropdown');
-    if (profileTrigger && profileDropdown) {
-        profileTrigger.addEventListener('click', (e) => {
-            e.stopPropagation(); 
-            profileDropdown.style.display = profileDropdown.style.display === 'none' ? 'block' : 'none';
-        });
-        document.addEventListener('click', (e) => {
-            if (!profileTrigger.contains(e.target) && !profileDropdown.contains(e.target)) {
-                profileDropdown.style.display = 'none';
-            }
-        });
-    }
+    // Profile Dropdowns
+    const setupProfileDropdown = (triggerId, dropdownId) => {
+        const trigger = document.getElementById(triggerId);
+        const dropdown = document.getElementById(dropdownId);
+        if (trigger && dropdown) {
+            trigger.addEventListener('click', (e) => {
+                e.stopPropagation(); 
+                dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+            });
+            document.addEventListener('click', (e) => {
+                if (!trigger.contains(e.target) && !dropdown.contains(e.target)) {
+                    dropdown.style.display = 'none';
+                }
+            });
+        }
+    };
+    setupProfileDropdown('profileTrigger', 'profileDropdown');
+    setupProfileDropdown('appProfileTrigger', 'appProfileDropdown');
 
-    const appProfileTrigger = document.getElementById('appProfileTrigger');
-    const appProfileDropdown = document.getElementById('appProfileDropdown');
-    if (appProfileTrigger && appProfileDropdown) {
-        appProfileTrigger.addEventListener('click', (e) => {
-            e.stopPropagation(); 
-            appProfileDropdown.style.display = appProfileDropdown.style.display === 'none' ? 'block' : 'none';
-        });
-        document.addEventListener('click', (e) => {
-            if (!appProfileTrigger.contains(e.target) && !appProfileDropdown.contains(e.target)) {
-                appProfileDropdown.style.display = 'none';
-            }
-        });
-    }
-
-    // 5. Paywall Button Hook
+    // Pay Button
     const payButton = document.getElementById('payButton');
     if (payButton) {
         payButton.addEventListener('click', async () => {
@@ -1330,13 +1270,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 6. Logout Buttons Hook
-    ['logoutBtnPaywall', 'logoutBtnApp'].forEach(id => {
-        const btn = document.getElementById(id);
-        if (btn) btn.addEventListener('click', performLogout);
-    });
-
-    // 7. Input Auto-fill Hooks
+    // Auto-fill forms
     const txNameEl = document.getElementById('tx-name');
     if(txNameEl) {
         txNameEl.addEventListener('input', function(e) {
@@ -1368,7 +1302,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 8. M-PESA Smart Paste Hook
+    // M-Pesa Auto-Paste
     const pasteBox = document.getElementById('mpesa-paste-box');
     if (pasteBox) {
         pasteBox.addEventListener('input', function(e) {
@@ -1412,10 +1346,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const txCost = parseFloat(costMatch[1].replace(/,/g, ''));
                     if(txCost > 0 && confirm(`Also log KES ${txCost} as a Transaction Cost?`)) {
                         transactions.push({
-                            id: Date.now() + 1,
-                            name: 'M-Pesa Fee', type: 'Expense', category: 'Transaction Cost',
-                            date: document.getElementById('tx-date').value,
-                            actual: txCost, qty: 1, fx: 1, kes: txCost, notes: 'Auto-extracted'
+                            id: Date.now() + 1, name: 'M-Pesa Fee', type: 'Expense', category: 'Transaction Cost',
+                            date: document.getElementById('tx-date').value, actual: txCost, qty: 1, fx: 1, kes: txCost, notes: 'Auto-extracted'
                         });
                         saveData(); updateDatalists(); updateUI();
                     }
@@ -1424,11 +1356,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 9. Service Worker
+    // Service Worker
     if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js')
-                .catch(err => console.log('Service Worker registration failed:', err));
-        });
+        window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(err => console.log('SW Error:', err)); });
     }
 });
