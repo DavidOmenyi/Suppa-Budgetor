@@ -427,7 +427,21 @@ window.deleteEditTx = function() {
 };
 
 // ==========================================
-// LEDGER MODAL FUNCTIONS (WITH ACTION BUTTONS)
+// FAST DELETE FUNCTION FOR DIRECT TABLE CLICKS
+// ==========================================
+window.deleteTxFast = function(id) {
+    if(!confirm("Are you sure you want to completely delete this transaction?")) return;
+    window.saveState();
+    transactions = transactions.filter(t => t.id !== id);
+    window.saveData(); 
+    window.updateDatalists(); 
+    window.updateUI(); 
+    window.updateCharts(); 
+    window.updateInflationChart();
+};
+
+// ==========================================
+// LEDGER MODAL FUNCTIONS
 // ==========================================
 window.openLedger = function(cat, name, isIncome = false) {
     const monthStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2, '0')}`;
@@ -456,7 +470,7 @@ window.openLedger = function(cat, name, isIncome = false) {
                     <td style="font-weight:bold;">${tx.kes.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                     <td style="font-size:0.9em; color:var(--text-muted);">${tx.notes || '-'}</td>
                     <td>
-                        <button onclick="window.editTxFromLedger(${tx.id})" style="background:var(--accent); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; margin-bottom:4px; font-size:12px;">Edit</button>
+                        <button onclick="window.editTxFromLedger(${tx.id})" style="background:var(--accent); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; margin-right:4px; font-size:12px;">Edit</button>
                         <button onclick="window.deleteTxFromLedger(${tx.id})" style="background:var(--danger); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-size:12px;">Del</button>
                     </td>
                 </tr>
@@ -474,14 +488,7 @@ window.editTxFromLedger = function(id) {
 };
 
 window.deleteTxFromLedger = function(id) {
-    if(!confirm("Are you sure you want to completely delete this transaction?")) return;
-    window.saveState();
-    transactions = transactions.filter(t => t.id !== id);
-    window.saveData(); 
-    window.updateDatalists(); 
-    window.updateUI(); 
-    window.updateCharts(); 
-    window.updateInflationChart();
+    window.deleteTxFast(id);
     window.closeLedger();
 };
 
@@ -707,6 +714,9 @@ window.updateUI = function() {
             if(perfBody) perfBody.innerHTML += trHtml;
         });
 
+        // -------------------------------------------------------------
+        // HERE ARE THE NEW ACTION BUTTONS FOR THE SUMMARIES TRANSACTIONS LOG
+        // -------------------------------------------------------------
         let logTxs = currentMonthTxs.filter(t => t.type !== 'Starting-Balance');
         if(catFilter !== 'ALL') logTxs = logTxs.filter(t => t.category === catFilter);
         
@@ -725,6 +735,10 @@ window.updateUI = function() {
                         <td><span class="ledger-link" onclick="window.openEditModal(${tx.id})">${tx.name}</span></td>
                         <td><span style="background:${typeBg}; padding:2px 8px; border-radius:10px; font-size:0.8em; color:${typeColor};">${displayType}</span></td>
                         <td class="${isInc ? 'positive' : ''}" style="font-weight: bold;">${isInc ? '+':''}${tx.kes.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                        <td>
+                            <button onclick="window.openEditModal(${tx.id})" style="background:var(--accent); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; margin-right:4px; font-size:12px;">Edit</button>
+                            <button onclick="window.deleteTxFast(${tx.id})" style="background:var(--danger); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-size:12px;">Del</button>
+                        </td>
                     </tr>
                 `;
             }
@@ -1065,38 +1079,6 @@ window.updateInflationChart = function() {
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: textColor } } }, scales: { y: { title: { display: true, text: 'Growth Percentage (%)', color: textColor }, grid: { color: isDark ? '#14281f' : '#d1fae5' } }, x: { grid: { color: isDark ? '#14281f' : '#d1fae5' } } } }
         });
     } catch(e) { console.error("Inflation Chart Error:", e); }
-};
-
-window.fetchAIInsights = async function() {
-    const btn = document.getElementById('ai-insight-btn');
-    const container = document.getElementById('ai-insight-container');
-    
-    btn.innerText = "Analyzing... 🧠";
-    btn.disabled = true;
-    container.innerHTML = `<div style="text-align: center; color: var(--text-muted);">Fetching your personalized insights... this takes about 5 seconds.</div>`;
-
-    try {
-        const response = await fetch('/.netlify/functions/get-insights', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ transactions: transactions })
-        });
-        
-        const result = await response.json();
-        if(result.success) {
-            let htmlOutput = result.insights.replace(/\n\*/g, '<br>•');
-            htmlOutput = htmlOutput.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-            container.innerHTML = htmlOutput;
-        } else {
-            throw new Error(result.message || "Failed to load");
-        }
-    } catch (error) {
-        console.error("AI Fetch Error:", error);
-        container.innerHTML = `<span style="color:var(--danger); font-weight:bold;">Error fetching insights. Please check your internet connection or verify your GEMINI_API_KEY in Netlify.</span>`;
-    } finally {
-        btn.innerText = "Refresh Advice ✨";
-        btn.disabled = false;
-    }
 };
 
 window.undo = function() { if (historyStack.length === 0) return alert("Nothing to undo!"); redoStack.push(JSON.stringify(transactions)); transactions = JSON.parse(historyStack.pop()); window.saveData(); window.updateDatalists(); window.updateUI(); window.updateCharts(); window.updateInflationChart(); };
