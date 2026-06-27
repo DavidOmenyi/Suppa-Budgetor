@@ -326,24 +326,37 @@
 
             <div class="flex-between" style="margin-top: 40px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
                 <h3 style="color: var(--primary); margin: 0;">Transactions Log</h3>
-                <button class="btn-primary" onclick="window.exportTableToExcel('transactions-table', 'Monthly_Transactions')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download Log</button>
+                <button class="btn-primary" onclick="window.toggleTransactionsLog()" style="width: auto; padding: 6px 12px; margin: 0; font-size: 13px;">👁️ View Detailed List</button>
             </div>
-            <p style="color: var(--text-muted); font-size: 13px; margin-top: 10px;">Click on an <b>Expense/Income Name</b> to edit the entry.</p>
-            <div style="overflow-x: auto;">
-                <table id="transactions-table">
-    <thead>
-        <tr>
-            <th>Date</th>
-            <th>Category</th>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Amount (KES)</th>
-            <th>Actions</th> </tr>
-    </thead>
-    <tbody id="transactions-body"></tbody>
-</table>
+
+            <div id="detailed-transactions-section" class="hidden" style="margin-top: 15px; border: 1px solid var(--border); border-radius: var(--radius); padding: 15px; background: rgba(5,150,105,0.02);">
+                <div class="flex-between" style="margin-bottom: 10px;">
+                    <p style="color: var(--text-muted); font-size: 13px; margin: 0; font-weight:bold;">Page <span id="tx-page-indicator">1</span></p>
+                    <button class="btn-primary" onclick="window.exportFilteredTransactions()" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download All (XLSX)</button>
+                </div>
+                
+                <div style="overflow-x: auto;">
+                    <table id="transactions-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Category</th>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Amount (KES)</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transactions-body"></tbody>
+                    </table>
+                </div>
+
+                <div class="flex-between" style="margin-top: 15px; justify-content:center; gap: 20px;">
+                    <button class="btn-primary" id="tx-prev-btn" onclick="window.changeTxPage(-1)" style="width: auto; padding: 6px 15px; margin: 0;">&laquo; Previous</button>
+                    <button class="btn-primary" id="tx-next-btn" onclick="window.changeTxPage(1)" style="width: auto; padding: 6px 15px; margin: 0;">Next &raquo;</button>
+                </div>
             </div>
-        </div>
+            </div>
 
         <div id="budget" class="tab-content">
             <div class="flex-between" style="margin-bottom: 15px;">
@@ -834,7 +847,7 @@
     </div>
 </div>
 
-<script src="app.source.js"></script>
+<script src="app.js"></script>
 
 </body>
 </html>
