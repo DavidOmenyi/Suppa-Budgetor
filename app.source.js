@@ -1,4 +1,16 @@
 // ==========================================
+// 1. SUPABASE AUTH & CONFIGURATION
+// ==========================================
+
+const supabaseUrl = 'https://ffzkpuiujxdqwjvmhrmx.supabase.co'; 
+const supabaseKey = 'sb_publishable_yNJ1bJEdGV4Vpw_itRG1mA_XOBP8efu'; 
+
+const supabaseLib = window.supabase || supabase;
+const supabaseClient = supabaseLib.createClient(supabaseUrl, supabaseKey);
+
+let currentUser = null;
+let pollingInterval = null;
+// ==========================================
 // 2. GLOBAL STATE & MEMORY
 // ==========================================
 let transactions = [];
