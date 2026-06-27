@@ -1,17 +1,4 @@
 // ==========================================
-// 1. SUPABASE AUTH & CONFIGURATION
-// ==========================================
-
-const supabaseUrl = 'https://ffzkpuiujxdqwjvmhrmx.supabase.co'; 
-const supabaseKey = 'sb_publishable_yNJ1bJEdGV4Vpw_itRG1mA_XOBP8efu'; 
-
-const supabaseLib = window.supabase || supabase;
-const supabaseClient = supabaseLib.createClient(supabaseUrl, supabaseKey);
-
-let currentUser = null;
-let pollingInterval = null;
-
-// ==========================================
 // 2. GLOBAL STATE & MEMORY
 // ==========================================
 let transactions = [];
@@ -20,6 +7,11 @@ let customMem = { Expense: [], Income: [], Savings: [], Names: [], Icons: {} };
 let historyStack = []; 
 let redoStack = []; 
 let currentDate = new Date();
+
+// Pagination State for Transactions Log
+let txCurrentPage = 1;
+const txItemsPerPage = 10;
+let currentFilteredTxs = [];
 
 const categories = {
     Expense: ['Transport', 'Food', 'Transaction Cost', 'Entertainment', 'Education', 'Childcare', 'Homecare', 'Groceries', 'Self-care', 'Work disbursements', 'Charity', 'Contingency sums'],
@@ -78,73 +70,23 @@ window.updateProfileUI = function(displayName, avatarUrl) {
     });
 };
 
-window.initializeApp = async function() {
-    const { data: { user } } = await supabaseClient.auth.getUser();
-    if (!user) {
-        window.location.href = 'login.html';
-        return;
-    }
-    
-    currentUser = user;
-    const metadata = currentUser.user_metadata || {};
-    const displayName = metadata.display_name || metadata.full_name || currentUser.email.split('@')[0];
-    const avatarUrl = metadata.avatar_url || metadata.picture || '';
-    
-    window.updateProfileUI(displayName, avatarUrl);
-    window.checkPremiumStatus();
-};
-
-window.checkPremiumStatus = async function() {
-    const { data, error } = await supabaseClient
-        .from('profiles')
-        .select('is_premium')
-        .eq('id', currentUser.id)
-        .single();
-        
-    if (data && data.is_premium === true) window.unlockApp();
-    else window.lockApp();
+window.initializeApp = function() {
+    let localName = localStorage.getItem('suppa_local_name') || "Local User";
+    let localAvatar = localStorage.getItem('suppa_local_avatar') || "";
+    window.updateProfileUI(localName, localAvatar);
+    window.unlockApp();
 };
 
 window.unlockApp = function() {
-    const lockedScreen = document.getElementById('lockedScreen');
     const appContainer = document.getElementById('appContainer');
-    if (lockedScreen) lockedScreen.style.display = 'none';
     if (appContainer) appContainer.style.display = 'block';
-    if (pollingInterval) clearInterval(pollingInterval);
-};
-
-window.lockApp = function() {
-    const lockedScreen = document.getElementById('lockedScreen');
-    const appContainer = document.getElementById('appContainer');
-    if (lockedScreen) lockedScreen.style.display = 'block';
-    if (appContainer) appContainer.style.display = 'none';
-};
-
-window.startPollingDatabase = function() {
-    pollingInterval = setInterval(async () => {
-        const { data } = await supabaseClient.from('profiles').select('is_premium').eq('id', currentUser.id).single();
-        if (data && data.is_premium === true) window.unlockApp();
-    }, 3000); 
-
-    setTimeout(() => {
-        if (pollingInterval) {
-            clearInterval(pollingInterval);
-            const paymentStatus = document.getElementById('paymentStatus');
-            const payButton = document.getElementById('payButton');
-            if (paymentStatus) { paymentStatus.textContent = "Payment timed out. Please try again."; paymentStatus.style.color = "red"; }
-            if (payButton) { payButton.disabled = false; payButton.textContent = "Pay to Unlock"; }
-        }
-    }, 120000); 
 };
 
 window.openProfileModal = function() {
-    const metadata = currentUser.user_metadata || {};
-    document.getElementById('profile-name-input').value = metadata.display_name || metadata.full_name || currentUser.email.split('@')[0];
-    document.getElementById('profile-avatar-input').value = metadata.avatar_url || metadata.picture || '';
+    document.getElementById('profile-name-input').value = localStorage.getItem('suppa_local_name') || "Local User";
+    document.getElementById('profile-avatar-input').value = localStorage.getItem('suppa_local_avatar') || "";
     
-    const d1 = document.getElementById('profileDropdown');
     const d2 = document.getElementById('appProfileDropdown');
-    if(d1) d1.style.display = 'none';
     if(d2) d2.style.display = 'none';
     
     document.getElementById('profile-modal').classList.remove('hidden');
@@ -152,46 +94,31 @@ window.openProfileModal = function() {
 
 window.closeProfileModal = function() { document.getElementById('profile-modal').classList.add('hidden'); };
 
-window.saveProfile = async function(e) {
+window.saveProfile = function(e) {
     e.preventDefault();
-    const btn = document.getElementById('save-profile-btn');
-    btn.textContent = "Saving..."; btn.disabled = true;
-
     const newName = document.getElementById('profile-name-input').value.trim();
     const newAvatar = document.getElementById('profile-avatar-input').value.trim();
 
-    try {
-        const { data, error } = await supabaseClient.auth.updateUser({ data: { display_name: newName, avatar_url: newAvatar } });
-        if (error) throw error;
+    localStorage.setItem('suppa_local_name', newName);
+    localStorage.setItem('suppa_local_avatar', newAvatar);
         
-        currentUser = data.user; 
-        window.updateProfileUI(newName || currentUser.email.split('@')[0], newAvatar);
-        window.closeProfileModal();
-    } catch (err) {
-        alert("Failed to update profile: " + err.message);
-    } finally {
-        btn.textContent = "Save Profile"; btn.disabled = false;
-    }
-};
-
-window.forceLogout = async function(e) {
-    if (e && e.preventDefault) e.preventDefault();
-    if (e && e.target) { e.target.innerText = "Logging out..."; e.target.style.opacity = "0.6"; }
-    try { await supabaseClient.auth.signOut(); } catch (err) { console.error("SignOut error:", err); }
-    window.location.href = 'login.html';
+    window.updateProfileUI(newName || "Local User", newAvatar);
+    window.closeProfileModal();
 };
 
 window.getIcon = function(cat) { return defaultIcons[cat] || (customMem.Icons && customMem.Icons[cat]) || '🏷️'; };
 
 window.autoSelectIcon = function(prefix) {
-    const cat = document.getElementById(`${prefix}-category`).value.trim();
-    const iconDropdown = document.getElementById(`${prefix}-category-icon`);
-    if(cat && iconDropdown) {
-        const icon = window.getIcon(cat);
-        let optionExists = Array.from(iconDropdown.options).some(opt => opt.value === icon);
-        if(!optionExists) iconDropdown.innerHTML += `<option value="${icon}">${icon}</option>`;
-        iconDropdown.value = icon;
+    const categoryInput = document.getElementById(prefix + '-category');
+    
+    // Add this null check
+    if (!categoryInput) {
+        console.warn(`Element ${prefix}-category not found.`);
+        return; 
     }
+
+    const category = categoryInput.value;
+    // ... rest of your code
 };
 
 window.repairAndLoadData = function() {
@@ -209,18 +136,6 @@ window.repairAndLoadData = function() {
                 kes: Math.abs(parseFloat(t.kes) || 0), notes: String(t.notes || '').trim()
             };
         });
-
-        let legacyBals = JSON.parse(localStorage.getItem('suppa_bal'));
-        if (legacyBals && Object.keys(legacyBals).length > 0) {
-            let migrated = false;
-            Object.keys(legacyBals).forEach(cat => {
-                if (parseFloat(legacyBals[cat]) > 0) {
-                    transactions.push({ id: Date.now() + Math.random(), name: 'Initial Balance Migration', type: 'Starting-Balance', category: cat, date: '2020-01-01', actual: parseFloat(legacyBals[cat]), qty: 1, fx: 1, kes: parseFloat(legacyBals[cat]), notes: 'Auto-migrated' });
-                    migrated = true;
-                }
-            });
-            if(migrated) { localStorage.setItem('suppa_tx', JSON.stringify(transactions)); localStorage.removeItem('suppa_bal'); }
-        }
 
         const loadedBudgets = JSON.parse(localStorage.getItem('suppa_budgets_v2')) || {};
         if (typeof loadedBudgets === 'object' && !Array.isArray(loadedBudgets)) {
@@ -333,7 +248,7 @@ window.saveTransaction = function(e) {
     if (finalType === 'Savings') finalType = document.getElementById('tx-savings-action').value;
 
     const newTx = {
-        id: isUpdate ? parseInt(txIdInput) : Date.now(),
+        id: isUpdate ? txIdInput : Date.now(),
         name: rawName || '(General)', type: finalType, category: rawCat || 'Uncategorized',
         date: document.getElementById('tx-date').value,
         actual: Math.abs(parseFloat(document.getElementById('tx-actual').value) || 0),
@@ -344,8 +259,11 @@ window.saveTransaction = function(e) {
     window.addToMemory(newTx.type, newTx.category, newTx.name, chosenIcon);
 
     if (isUpdate) {
-        const idx = transactions.findIndex(t => t.id === newTx.id);
-        if (idx > -1) transactions[idx] = newTx;
+        const idx = transactions.findIndex(t => String(t.id) === String(newTx.id));
+        if (idx > -1) {
+            newTx.id = transactions[idx].id; // Retain original ID format
+            transactions[idx] = newTx;
+        }
         document.getElementById('tx-id').value = ""; 
     } else {
         transactions.push(newTx);
@@ -365,7 +283,7 @@ window.saveTransaction = function(e) {
 };
 
 window.openEditModal = function(id) {
-    const tx = transactions.find(t => t.id === id);
+    const tx = transactions.find(t => String(t.id) === String(id));
     if(!tx) return;
     
     document.getElementById('edit-tx-id').value = tx.id;
@@ -394,16 +312,20 @@ window.closeEditModal = function() { document.getElementById('edit-modal').class
 window.updateTransaction = function(e) {
     e.preventDefault(); window.saveState();
     
-    const id = parseInt(document.getElementById('edit-tx-id').value);
-    const index = transactions.findIndex(t => t.id === id);
-    if(index === -1) return;
+    const idVal = document.getElementById('edit-tx-id').value;
+    const index = transactions.findIndex(t => String(t.id) === String(idVal));
+    if(index === -1) {
+        console.error("Could not find transaction to update:", idVal);
+        return;
+    }
     
     let finalType = document.getElementById('edit-tx-type').value;
     if (finalType === 'Savings') finalType = document.getElementById('edit-tx-savings-action').value;
     const chosenIcon = document.getElementById('edit-tx-category-icon').value;
 
     const newTx = {
-        id: id, name: document.getElementById('edit-tx-name').value.trim() || '(General)',
+        id: transactions[index].id, // Safely keep exact original ID format 
+        name: document.getElementById('edit-tx-name').value.trim() || '(General)',
         type: finalType, category: document.getElementById('edit-tx-category').value.trim() || 'Uncategorized',
         date: document.getElementById('edit-tx-date').value,
         actual: Math.abs(parseFloat(document.getElementById('edit-tx-actual').value) || 0),
@@ -417,47 +339,90 @@ window.updateTransaction = function(e) {
     window.closeEditModal();
 };
 
-window.deleteEditTx = function() {
-    if(!confirm("Are you sure you want to completely delete this entry?")) return;
-    window.saveState();
-    const id = parseInt(document.getElementById('edit-tx-id').value);
-    transactions = transactions.filter(t => t.id !== id);
-    window.saveData(); window.updateDatalists(); window.updateUI(); window.updateCharts(); window.updateInflationChart();
-    window.closeEditModal();
-};
-
-// ==========================================
-// FAST DELETE FUNCTION FOR DIRECT TABLE CLICKS
-// ==========================================
 window.deleteTxFast = function(id) {
     if(!confirm("Are you sure you want to completely delete this transaction?")) return;
     window.saveState();
-    transactions = transactions.filter(t => t.id !== id);
-    window.saveData(); 
-    window.updateDatalists(); 
-    window.updateUI(); 
-    window.updateCharts(); 
-    window.updateInflationChart();
+    transactions = transactions.filter(t => String(t.id) !== String(id));
+    window.saveData(); window.updateDatalists(); window.updateUI(); window.updateCharts(); window.updateInflationChart();
 };
 
-// ==========================================
-// LEDGER MODAL FUNCTIONS
-// ==========================================
+// Pagination 
+window.toggleTransactionsLog = function() {
+    const section = document.getElementById('detailed-transactions-section');
+    if(section.classList.contains('hidden')) { section.classList.remove('hidden'); window.renderTransactionsLog(); } 
+    else { section.classList.add('hidden'); }
+};
+
+window.changeTxPage = function(delta) { txCurrentPage += delta; window.renderTransactionsLog(); };
+
+window.renderTransactionsLog = function() {
+    const tbody = document.getElementById('transactions-body');
+    const prevBtn = document.getElementById('tx-prev-btn');
+    const nextBtn = document.getElementById('tx-next-btn');
+    const indicator = document.getElementById('tx-page-indicator');
+    
+    if(!tbody) return;
+    tbody.innerHTML = '';
+
+    const totalPages = Math.ceil(currentFilteredTxs.length / txItemsPerPage) || 1;
+    if(txCurrentPage > totalPages) txCurrentPage = totalPages;
+    if(txCurrentPage < 1) txCurrentPage = 1;
+
+    if (indicator) indicator.innerText = `${txCurrentPage} of ${totalPages}`;
+    if (prevBtn) { prevBtn.disabled = txCurrentPage === 1; prevBtn.style.opacity = txCurrentPage === 1 ? '0.5' : '1'; }
+    if (nextBtn) { nextBtn.disabled = txCurrentPage === totalPages; nextBtn.style.opacity = txCurrentPage === totalPages ? '0.5' : '1'; }
+
+    const startIdx = (txCurrentPage - 1) * txItemsPerPage;
+    const pageItems = currentFilteredTxs.slice(startIdx, startIdx + txItemsPerPage);
+
+    if(pageItems.length === 0) { tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">No transactions match your current filters.</td></tr>`; return; }
+
+    pageItems.forEach(tx => {
+        let isInc = tx.type === 'Income' || tx.type === 'Savings-Withdrawal';
+        let isSav = tx.type.includes('Savings');
+        let typeColor = isInc ? 'var(--success)' : (isSav ? '#3b82f6' : 'var(--primary)');
+        let typeBg = isInc ? 'rgba(16,185,129,0.2)' : (isSav ? 'rgba(59,130,246,0.2)' : 'var(--border)');
+        let displayType = tx.type.replace('Savings-', '');
+
+        tbody.innerHTML += `
+            <tr>
+                <td style="font-size: 0.9em; color:var(--text-muted);">${tx.date}</td>
+                <td>${window.getIcon(tx.category)} ${tx.category}</td>
+                <td><span class="ledger-link" onclick="window.openEditModal('${tx.id}')">${tx.name}</span></td>
+                <td><span style="background:${typeBg}; padding:2px 8px; border-radius:10px; font-size:0.8em; color:${typeColor};">${displayType}</span></td>
+                <td class="${isInc ? 'positive' : ''}" style="font-weight: bold;">${isInc ? '+':''}${tx.kes.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                <td>
+                    <button onclick="window.openEditModal('${tx.id}')" style="background:var(--accent); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; margin-right:4px; font-size:12px;">Edit</button>
+                    <button onclick="window.deleteTxFast('${tx.id}')" style="background:var(--danger); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-size:12px;">Del</button>
+                </td>
+            </tr>`;
+    });
+};
+
+window.exportFilteredTransactions = function() {
+    if (currentFilteredTxs.length === 0) return alert("No transactions available to export!");
+    const wsData = [["Date", "Category", "Name", "Type", "Amount (KES)", "Notes"]];
+    currentFilteredTxs.forEach(t => { wsData.push([t.date, t.category, t.name, t.type, t.kes, t.notes || '']); });
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Transactions");
+    XLSX.writeFile(wb, `Filtered_Transactions_${new Date().toISOString().split('T')[0]}.xlsx`);
+};
+
 window.openLedger = function(cat, name, isIncome = false) {
     const monthStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2, '0')}`;
     let txs = transactions.filter(t => t.date && t.date.substring(0,7) === monthStr);
     
     if (isIncome) {
         txs = txs.filter(t => t.type === 'Income' && t.category === cat);
-        document.getElementById('ledger-title').innerText = `Income Ledger: ${cat} (${monthStr})`;
+        document.getElementById('ledger-title').innerText = `Income Ledger: ${window.getIcon(cat)} ${cat} (${monthStr})`;
     } else {
         txs = txs.filter(t => (t.type === 'Expense' || t.type === 'Savings-Deposit') && t.category === cat && t.name === name);
         document.getElementById('ledger-title').innerText = `Ledger: ${name === '(General)' ? cat : name} (${monthStr})`;
     }
     
     txs.sort((a,b) => new Date(b.date) - new Date(a.date));
-    const tbody = document.getElementById('ledger-body'); 
-    tbody.innerHTML = '';
+    const tbody = document.getElementById('ledger-body'); tbody.innerHTML = '';
     
     if (txs.length === 0) {
         tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No records found.</td></tr>`;
@@ -470,11 +435,10 @@ window.openLedger = function(cat, name, isIncome = false) {
                     <td style="font-weight:bold;">${tx.kes.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                     <td style="font-size:0.9em; color:var(--text-muted);">${tx.notes || '-'}</td>
                     <td>
-                        <button onclick="window.editTxFromLedger(${tx.id})" style="background:var(--accent); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; margin-right:4px; font-size:12px;">Edit</button>
-                        <button onclick="window.deleteTxFromLedger(${tx.id})" style="background:var(--danger); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-size:12px;">Del</button>
+                        <button onclick="window.editTxFromLedger('${tx.id}')" style="background:var(--accent); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; margin-right:4px; font-size:12px;">Edit</button>
+                        <button onclick="window.deleteTxFromLedger('${tx.id}')" style="background:var(--danger); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-size:12px;">Del</button>
                     </td>
-                </tr>
-            `;
+                </tr>`;
         });
     }
     document.getElementById('ledger-modal').classList.remove('hidden');
@@ -482,13 +446,13 @@ window.openLedger = function(cat, name, isIncome = false) {
 
 window.closeLedger = function() { document.getElementById('ledger-modal').classList.add('hidden'); };
 
-window.editTxFromLedger = function(id) {
-    window.closeLedger();
-    window.openEditModal(id);
-};
+window.editTxFromLedger = function(id) { window.closeLedger(); window.openEditModal(id); };
 
 window.deleteTxFromLedger = function(id) {
-    window.deleteTxFast(id);
+    if(!confirm("Are you sure you want to completely delete this transaction?")) return;
+    window.saveState();
+    transactions = transactions.filter(t => String(t.id) !== String(id));
+    window.saveData(); window.updateDatalists(); window.updateUI(); window.updateCharts(); window.updateInflationChart();
     window.closeLedger();
 };
 
@@ -652,7 +616,6 @@ window.updateUI = function() {
         if(bliEl) bliEl.innerText = `KES ${totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
 
         const perfBody = document.getElementById('performance-body'); if(perfBody) perfBody.innerHTML = '';
-        const txBody = document.getElementById('transactions-body'); if(txBody) txBody.innerHTML = '';
         
         const catFilterEl = document.getElementById('summary-cat-filter'); const catFilter = catFilterEl ? catFilterEl.value : 'ALL';
         const spentFilterEl = document.getElementById('summary-spent-filter'); const spentFilter = spentFilterEl ? spentFilterEl.value : 'ALL';
@@ -714,36 +677,6 @@ window.updateUI = function() {
             if(perfBody) perfBody.innerHTML += trHtml;
         });
 
-        // -------------------------------------------------------------
-        // HERE ARE THE NEW ACTION BUTTONS FOR THE SUMMARIES TRANSACTIONS LOG
-        // -------------------------------------------------------------
-        let logTxs = currentMonthTxs.filter(t => t.type !== 'Starting-Balance');
-        if(catFilter !== 'ALL') logTxs = logTxs.filter(t => t.category === catFilter);
-        
-        logTxs.sort((a,b) => new Date(b.date) - new Date(a.date)).forEach(tx => {
-            let isInc = tx.type === 'Income' || tx.type === 'Savings-Withdrawal';
-            let isSav = tx.type.includes('Savings');
-            let typeColor = isInc ? 'var(--success)' : (isSav ? '#3b82f6' : 'var(--primary)');
-            let typeBg = isInc ? 'rgba(16,185,129,0.2)' : (isSav ? 'rgba(59,130,246,0.2)' : 'var(--border)');
-            let displayType = tx.type.replace('Savings-', '');
-
-            if (txBody) {
-                txBody.innerHTML += `
-                    <tr>
-                        <td style="font-size: 0.9em; color:var(--text-muted);">${tx.date}</td>
-                        <td>${window.getIcon(tx.category)} ${tx.category}</td>
-                        <td><span class="ledger-link" onclick="window.openEditModal(${tx.id})">${tx.name}</span></td>
-                        <td><span style="background:${typeBg}; padding:2px 8px; border-radius:10px; font-size:0.8em; color:${typeColor};">${displayType}</span></td>
-                        <td class="${isInc ? 'positive' : ''}" style="font-weight: bold;">${isInc ? '+':''}${tx.kes.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                        <td>
-                            <button onclick="window.openEditModal(${tx.id})" style="background:var(--accent); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; margin-right:4px; font-size:12px;">Edit</button>
-                            <button onclick="window.deleteTxFast(${tx.id})" style="background:var(--danger); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-size:12px;">Del</button>
-                        </td>
-                    </tr>
-                `;
-            }
-        });
-
         let netVar = tableBudget - tableSpent;
         const perfBudg = document.getElementById('perf-bottom-line-budget');
         if(perfBudg) perfBudg.innerText = tableBudget.toLocaleString(undefined, {minimumFractionDigits: 2});
@@ -785,6 +718,15 @@ window.updateUI = function() {
         }
         
         window.updatePortfolioView(currentMonthTxs, monthStr);
+
+        let logTxs = currentMonthTxs.filter(t => t.type !== 'Starting-Balance');
+        if(catFilter !== 'ALL') logTxs = logTxs.filter(t => t.category === catFilter);
+        logTxs.sort((a,b) => new Date(b.date) - new Date(a.date));
+        currentFilteredTxs = logTxs;
+        
+        txCurrentPage = 1;
+        window.renderTransactionsLog();
+
     } catch (e) {
         console.error("UI Update Error:", e);
     }
@@ -852,7 +794,7 @@ window.updatePortfolioView = function(currentMonthTxs, monthStr) {
                     <tr>
                         <td style="font-size: 0.9em; color:var(--text-muted);">${tx.date}</td>
                         <td>${window.getIcon(tx.category)} ${tx.category}</td>
-                        <td><span class="ledger-link" onclick="window.openEditModal(${tx.id})">${tx.name}</span></td>
+                        <td><span class="ledger-link" onclick="window.openEditModal('${tx.id}')">${tx.name}</span></td>
                         <td>${actionBadge}</td>
                         <td class="${!isStart && isDep ? 'positive' : ''}" style="font-weight: bold;">${!isStart && isDep ? '+':''}${tx.kes.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
                     </tr>
@@ -1141,8 +1083,8 @@ window.importCSV = function(e) {
             if(i === 0 || !row.trim()) return; 
             const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(s => s.replace(/(^"|"$)/g, '').trim());
             if(cols.length >= 10 && cols[0] !== 'ID') {
-                let newId = parseInt(cols[0]);
-                if(!transactions.some(t => t.id === newId)) {
+                let newId = cols[0];
+                if(!transactions.some(t => String(t.id) === String(newId))) {
                     let importedTx = {
                         id: newId || Date.now() + i, name: cols[1] || '(General)', type: cols[2], category: cols[3], date: cols[4],
                         actual: parseFloat(cols[5]) || 0, qty: parseFloat(cols[6]) || 1, fx: parseFloat(cols[7]) || 1, kes: parseFloat(cols[8]) || 0, notes: cols[9] || ""
@@ -1177,28 +1119,24 @@ window.importBudgetCSV = function(e) {
 };
 
 // ==========================================
-// 4. EVENT LISTENERS (Only runs after page loads)
+// 4. EVENT LISTENERS
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
     
-    // Load Data
     window.repairAndLoadData();
     window.initTheme();
-    window.initializeApp();
+    window.initializeApp(); 
 
-    // Setup initial dates
     const dateInput = document.getElementById('tx-date');
     if(dateInput) dateInput.valueAsDate = new Date();
     
     const monthPicker = document.getElementById('budget-month-picker');
     if(monthPicker) monthPicker.value = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2, '0')}`;
     
-    // Initial Render
     window.handleTypeChange('tx');
     window.updateDatalists();
     window.updateUI();
 
-    // Profile Dropdowns
     const setupProfileDropdown = (triggerId, dropdownId) => {
         const trigger = document.getElementById(triggerId);
         const dropdown = document.getElementById(dropdownId);
@@ -1217,43 +1155,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setupProfileDropdown('profileTrigger', 'profileDropdown');
     setupProfileDropdown('appProfileTrigger', 'appProfileDropdown');
 
-    // Pay Button
-    const payButton = document.getElementById('payButton');
-    if (payButton) {
-        payButton.addEventListener('click', async () => {
-            const phoneInput = document.getElementById('phoneInput');
-            const paymentStatus = document.getElementById('paymentStatus');
-            const phone = phoneInput ? phoneInput.value.trim() : '';
-            
-            if (!phone || phone.length < 9) { alert("Please enter a valid M-Pesa phone number."); return; }
-
-            payButton.disabled = true; payButton.textContent = "Processing...";
-            if (paymentStatus) { paymentStatus.textContent = "Contacting M-Pesa... please wait."; paymentStatus.style.color = "blue"; }
-
-            try {
-                const response = await fetch('/.netlify/functions/initiate-tuma', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone: phone, userId: currentUser.id, amount: 1700 })
-                });
-                
-                const result = await response.json();
-
-                if (response.ok && result.success) {
-                    if (paymentStatus) { paymentStatus.textContent = "Prompt sent! Enter your PIN on your phone."; paymentStatus.style.color = "orange"; }
-                    window.startPollingDatabase(); 
-                } else {
-                    throw new Error(result.message || "Payment failed to initiate.");
-                }
-            } catch (error) {
-                console.error("Payment error:", error);
-                if (paymentStatus) { paymentStatus.textContent = "Error: " + error.message; paymentStatus.style.color = "red"; }
-                payButton.disabled = false; payButton.textContent = "Pay to Unlock";
-            }
-        });
-    }
-
-    // Auto-fill forms
     const txNameEl = document.getElementById('tx-name');
     if(txNameEl) {
         txNameEl.addEventListener('input', function(e) {
@@ -1285,7 +1186,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // M-Pesa Auto-Paste
     const pasteBox = document.getElementById('mpesa-paste-box');
     if (pasteBox) {
         pasteBox.addEventListener('input', function(e) {
@@ -1339,7 +1239,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Service Worker
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(err => console.log('SW Error:', err)); });
     }
