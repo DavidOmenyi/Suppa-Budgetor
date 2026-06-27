@@ -10,6 +10,7 @@ const supabaseClient = supabaseLib.createClient(supabaseUrl, supabaseKey);
 
 let currentUser = null;
 let pollingInterval = null;
+
 // ==========================================
 // 2. GLOBAL STATE & MEMORY
 // ==========================================
@@ -82,31 +83,11 @@ window.updateProfileUI = function(displayName, avatarUrl) {
     });
 };
 
-window.initializeApp = async function() {
-    const { data: { user } } = await supabaseClient.auth.getUser();
-    if (!user) {
-        window.location.href = 'login.html';
-        return;
-    }
-    
-    currentUser = user;
-    const metadata = currentUser.user_metadata || {};
-    const displayName = metadata.display_name || metadata.full_name || currentUser.email.split('@')[0];
-    const avatarUrl = metadata.avatar_url || metadata.picture || '';
-    
-    window.updateProfileUI(displayName, avatarUrl);
-    window.checkPremiumStatus();
-};
-
-window.checkPremiumStatus = async function() {
-    const { data, error } = await supabaseClient
-        .from('profiles')
-        .select('is_premium')
-        .eq('id', currentUser.id)
-        .single();
-        
-    if (data && data.is_premium === true) window.unlockApp();
-    else window.lockApp();
+window.initializeApp = function() {
+    let localName = localStorage.getItem('suppa_local_name') || "Local User";
+    let localAvatar = localStorage.getItem('suppa_local_avatar') || "";
+    window.updateProfileUI(localName, localAvatar);
+    window.unlockApp();
 };
 
 window.unlockApp = function() {
@@ -126,6 +107,7 @@ window.lockApp = function() {
 
 window.startPollingDatabase = function() {
     pollingInterval = setInterval(async () => {
+        if (!currentUser) return;
         const { data } = await supabaseClient.from('profiles').select('is_premium').eq('id', currentUser.id).single();
         if (data && data.is_premium === true) window.unlockApp();
     }, 3000); 
@@ -142,9 +124,8 @@ window.startPollingDatabase = function() {
 };
 
 window.openProfileModal = function() {
-    const metadata = currentUser.user_metadata || {};
-    document.getElementById('profile-name-input').value = metadata.display_name || metadata.full_name || currentUser.email.split('@')[0];
-    document.getElementById('profile-avatar-input').value = metadata.avatar_url || metadata.picture || '';
+    document.getElementById('profile-name-input').value = localStorage.getItem('suppa_local_name') || "Local User";
+    document.getElementById('profile-avatar-input').value = localStorage.getItem('suppa_local_avatar') || "";
     
     const d1 = document.getElementById('profileDropdown');
     const d2 = document.getElementById('appProfileDropdown');
@@ -156,26 +137,21 @@ window.openProfileModal = function() {
 
 window.closeProfileModal = function() { document.getElementById('profile-modal').classList.add('hidden'); };
 
-window.saveProfile = async function(e) {
+window.saveProfile = function(e) {
     e.preventDefault();
     const btn = document.getElementById('save-profile-btn');
-    btn.textContent = "Saving..."; btn.disabled = true;
+    if(btn) { btn.textContent = "Saving..."; btn.disabled = true; }
 
     const newName = document.getElementById('profile-name-input').value.trim();
     const newAvatar = document.getElementById('profile-avatar-input').value.trim();
 
-    try {
-        const { data, error } = await supabaseClient.auth.updateUser({ data: { display_name: newName, avatar_url: newAvatar } });
-        if (error) throw error;
+    localStorage.setItem('suppa_local_name', newName);
+    localStorage.setItem('suppa_local_avatar', newAvatar);
         
-        currentUser = data.user; 
-        window.updateProfileUI(newName || currentUser.email.split('@')[0], newAvatar);
-        window.closeProfileModal();
-    } catch (err) {
-        alert("Failed to update profile: " + err.message);
-    } finally {
-        btn.textContent = "Save Profile"; btn.disabled = false;
-    }
+    window.updateProfileUI(newName || "Local User", newAvatar);
+    window.closeProfileModal();
+    
+    if(btn) { btn.textContent = "Save Profile"; btn.disabled = false; }
 };
 
 window.forceLogout = async function(e) {
@@ -188,8 +164,11 @@ window.forceLogout = async function(e) {
 window.getIcon = function(cat) { return defaultIcons[cat] || (customMem.Icons && customMem.Icons[cat]) || '🏷️'; };
 
 window.autoSelectIcon = function(prefix) {
-    const cat = document.getElementById(`${prefix}-category`).value.trim();
-    const iconDropdown = document.getElementById(`${prefix}-category-icon`);
+    const categoryInput = document.getElementById(prefix + '-category');
+    if (!categoryInput) return;
+    
+    const cat = categoryInput.value.trim();
+    const iconDropdown = document.getElementById(prefix + '-category-icon');
     if(cat && iconDropdown) {
         const icon = window.getIcon(cat);
         let optionExists = Array.from(iconDropdown.options).some(opt => opt.value === icon);
@@ -213,6 +192,18 @@ window.repairAndLoadData = function() {
                 kes: Math.abs(parseFloat(t.kes) || 0), notes: String(t.notes || '').trim()
             };
         });
+
+        let legacyBals = JSON.parse(localStorage.getItem('suppa_bal'));
+        if (legacyBals && Object.keys(legacyBals).length > 0) {
+            let migrated = false;
+            Object.keys(legacyBals).forEach(cat => {
+                if (parseFloat(legacyBals[cat]) > 0) {
+                    transactions.push({ id: Date.now() + Math.random(), name: 'Initial Balance Migration', type: 'Starting-Balance', category: cat, date: '2020-01-01', actual: parseFloat(legacyBals[cat]), qty: 1, fx: 1, kes: parseFloat(legacyBals[cat]), notes: 'Auto-migrated' });
+                    migrated = true;
+                }
+            });
+            if(migrated) { localStorage.setItem('suppa_tx', JSON.stringify(transactions)); localStorage.removeItem('suppa_bal'); }
+        }
 
         const loadedBudgets = JSON.parse(localStorage.getItem('suppa_budgets_v2')) || {};
         if (typeof loadedBudgets === 'object' && !Array.isArray(loadedBudgets)) {
@@ -241,7 +232,9 @@ window.toggleTheme = function() {
 window.switchTab = function(tabId) {
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-    document.getElementById(tabId).classList.add('active');
+    
+    const targetTab = document.getElementById(tabId);
+    if(targetTab) targetTab.classList.add('active');
     
     const navButtons = document.querySelectorAll('nav button');
     navButtons.forEach(btn => {
@@ -272,9 +265,12 @@ window.addToMemory = function(type, cat, name, icon) {
 };
 
 window.toggleCategories = function(clearInput = true, typeId, inputId, listId) {
-    const type = document.getElementById(typeId).value;
+    const typeEl = document.getElementById(typeId);
     const dl = document.getElementById(listId);
     const input = document.getElementById(inputId);
+    
+    if (!typeEl) return; // Prevent crashes
+    const type = typeEl.value;
     
     if (clearInput && input) { input.value = ''; window.autoSelectIcon(inputId.split('-')[0]); }
     if (dl) dl.innerHTML = '';
@@ -284,37 +280,51 @@ window.toggleCategories = function(clearInput = true, typeId, inputId, listId) {
     if (customMem[type]) customOpts.push(...customMem[type]);
     
     let allOpts = [...new Set([...baseOpts, ...customOpts])];
-    allOpts.forEach(c => dl.innerHTML += `<option value="${c}">${c}</option>`);
+    if (dl) {
+        allOpts.forEach(c => dl.innerHTML += `<option value="${c}">${c}</option>`);
+    }
 };
 
 window.handleTypeChange = function(prefix) {
     window.toggleCategories(true, prefix+'-type', prefix+'-category', prefix === 'tx' ? 'cat-memory' : 'edit-cat-memory');
-    const type = document.getElementById(prefix+'-type').value;
+    
+    const typeEl = document.getElementById(prefix+'-type');
+    if(!typeEl) return; // Prevent crashes
+    const type = typeEl.value;
+    
     const actionGroup = document.getElementById(prefix+'-savings-action-group');
     const catLabel = document.getElementById(prefix+'-category-label');
     
     if(type === 'Savings') {
-        actionGroup.classList.remove('hidden');
+        if (actionGroup) actionGroup.classList.remove('hidden');
         if (catLabel) catLabel.innerText = "Account Type";
     } else {
-        actionGroup.classList.add('hidden');
+        if (actionGroup) actionGroup.classList.add('hidden');
         if (catLabel) catLabel.innerText = "Category";
     }
     window.calcKES(prefix);
 };
 
 window.calcKES = function(prefix) {
-    const actual = Math.abs(parseFloat(document.getElementById(`${prefix}-actual`).value) || 0);
-    const fx = parseFloat(document.getElementById(`${prefix}-fx`).value) || 1;
-    const qty = parseFloat(document.getElementById(`${prefix}-qty`).value) || 1;
-    document.getElementById(`${prefix}-kes`).value = (actual * fx * qty).toFixed(2);
+    const actualEl = document.getElementById(`${prefix}-actual`);
+    const fxEl = document.getElementById(`${prefix}-fx`);
+    const qtyEl = document.getElementById(`${prefix}-qty`);
+    const kesEl = document.getElementById(`${prefix}-kes`);
+    
+    if (!actualEl || !kesEl) return;
+
+    const actual = Math.abs(parseFloat(actualEl.value) || 0);
+    const fx = parseFloat(fxEl ? fxEl.value : 1) || 1;
+    const qty = parseFloat(qtyEl ? qtyEl.value : 1) || 1;
+    
+    kesEl.value = (actual * fx * qty).toFixed(2);
 };
 
 window.saveTransaction = function(e) {
     e.preventDefault(); window.saveState();
 
-    const prefix = document.getElementById('tx-id').value ? 'edit-tx' : 'tx';
-    const txIdInput = document.getElementById('tx-id').value;
+    const prefix = document.getElementById('tx-id') && document.getElementById('tx-id').value ? 'edit-tx' : 'tx';
+    const txIdInput = document.getElementById('tx-id') ? document.getElementById('tx-id').value : '';
     const isUpdate = !!txIdInput;
 
     const rawName = document.getElementById('tx-name').value.trim();
@@ -338,10 +348,10 @@ window.saveTransaction = function(e) {
     if (isUpdate) {
         const idx = transactions.findIndex(t => String(t.id) === String(newTx.id));
         if (idx > -1) {
-            newTx.id = transactions[idx].id; // Retain original ID format
+            newTx.id = transactions[idx].id; 
             transactions[idx] = newTx;
         }
-        document.getElementById('tx-id').value = ""; 
+        if(document.getElementById('tx-id')) document.getElementById('tx-id').value = ""; 
     } else {
         transactions.push(newTx);
     }
@@ -349,65 +359,101 @@ window.saveTransaction = function(e) {
     window.saveData(); window.updateDatalists(); window.updateUI();
     
     const btn = document.getElementById('tx-submit-btn');
-    btn.innerText = isUpdate ? "✓ Updated!" : "✓ Saved!"; btn.style.background = "var(--success)";
-
-    setTimeout(() => { 
-        btn.innerText = "Add to Ledger"; btn.style.background = ""; e.target.reset(); 
-        document.getElementById('tx-date').valueAsDate = new Date(); 
-        document.getElementById('tx-fx').value = 1; document.getElementById('tx-qty').value = 1;
-        window.handleTypeChange('tx');
-    }, 1500);
+    if(btn) {
+        btn.innerText = isUpdate ? "✓ Updated!" : "✓ Saved!"; btn.style.background = "var(--success)";
+        setTimeout(() => { 
+            btn.innerText = "Add to Ledger"; btn.style.background = ""; e.target.reset(); 
+            const dInput = document.getElementById('tx-date'); if(dInput) dInput.valueAsDate = new Date(); 
+            const fxInput = document.getElementById('tx-fx'); if(fxInput) fxInput.value = 1; 
+            const qtyInput = document.getElementById('tx-qty'); if(qtyInput) qtyInput.value = 1;
+            window.handleTypeChange('tx');
+        }, 1500);
+    }
 };
 
 window.openEditModal = function(id) {
     const tx = transactions.find(t => String(t.id) === String(id));
     if(!tx) return;
     
-    document.getElementById('edit-tx-id').value = tx.id;
-    document.getElementById('edit-tx-name').value = tx.name === '(General)' ? '' : tx.name;
-    
-    if (tx.type.includes('Savings') || tx.type === 'Starting-Balance') {
-        document.getElementById('edit-tx-type').value = 'Savings'; window.handleTypeChange('edit-tx');
-        document.getElementById('edit-tx-savings-action').value = tx.type;
-    } else {
-        document.getElementById('edit-tx-type').value = tx.type; window.handleTypeChange('edit-tx');
+    const modal = document.getElementById('edit-modal');
+    if (!modal) {
+        alert("System Error: Edit Modal HTML is missing from index.html.");
+        return;
     }
 
-    document.getElementById('edit-tx-category').value = tx.category; window.autoSelectIcon('edit-tx');
-    document.getElementById('edit-tx-date').value = tx.date;
-    document.getElementById('edit-tx-actual').value = Math.abs(tx.actual);
-    document.getElementById('edit-tx-qty').value = tx.qty;
-    document.getElementById('edit-tx-fx').value = tx.fx;
-    document.getElementById('edit-tx-kes').value = tx.kes;
-    document.getElementById('edit-tx-notes').value = tx.notes || '';
+    const idEl = document.getElementById('edit-tx-id');
+    const nameEl = document.getElementById('edit-tx-name');
+    const typeEl = document.getElementById('edit-tx-type');
+    const actionEl = document.getElementById('edit-tx-savings-action');
+    const catEl = document.getElementById('edit-tx-category');
+    const dateEl = document.getElementById('edit-tx-date');
+    const actualEl = document.getElementById('edit-tx-actual');
+    const qtyEl = document.getElementById('edit-tx-qty');
+    const fxEl = document.getElementById('edit-tx-fx');
+    const kesEl = document.getElementById('edit-tx-kes');
+    const notesEl = document.getElementById('edit-tx-notes');
+
+    if(idEl) idEl.value = tx.id;
+    if(nameEl) nameEl.value = tx.name === '(General)' ? '' : tx.name;
     
-    document.getElementById('edit-modal').classList.remove('hidden');
+    if (typeEl) {
+        if (tx.type.includes('Savings') || tx.type === 'Starting-Balance') {
+            typeEl.value = 'Savings';
+            window.handleTypeChange('edit-tx');
+            if (actionEl) actionEl.value = tx.type;
+        } else {
+            typeEl.value = tx.type;
+            window.handleTypeChange('edit-tx');
+        }
+    }
+
+    if(catEl) catEl.value = tx.category;
+    window.autoSelectIcon('edit-tx');
+    if(dateEl) dateEl.value = tx.date;
+    if(actualEl) actualEl.value = Math.abs(tx.actual);
+    if(qtyEl) qtyEl.value = tx.qty;
+    if(fxEl) fxEl.value = tx.fx;
+    if(kesEl) kesEl.value = tx.kes;
+    if(notesEl) notesEl.value = tx.notes || '';
+    
+    modal.classList.remove('hidden');
 };
 
-window.closeEditModal = function() { document.getElementById('edit-modal').classList.add('hidden'); };
+window.closeEditModal = function() { 
+    const m = document.getElementById('edit-modal');
+    if (m) m.classList.add('hidden'); 
+};
 
 window.updateTransaction = function(e) {
     e.preventDefault(); window.saveState();
     
-    const idVal = document.getElementById('edit-tx-id').value;
+    const idEl = document.getElementById('edit-tx-id');
+    if(!idEl) return;
+
+    const idVal = idEl.value;
     const index = transactions.findIndex(t => String(t.id) === String(idVal));
-    if(index === -1) {
-        console.error("Could not find transaction to update:", idVal);
-        return;
-    }
+    if(index === -1) return;
     
-    let finalType = document.getElementById('edit-tx-type').value;
-    if (finalType === 'Savings') finalType = document.getElementById('edit-tx-savings-action').value;
-    const chosenIcon = document.getElementById('edit-tx-category-icon').value;
+    const typeEl = document.getElementById('edit-tx-type');
+    const actionEl = document.getElementById('edit-tx-savings-action');
+    
+    let finalType = typeEl ? typeEl.value : 'Expense';
+    if (finalType === 'Savings' && actionEl) finalType = actionEl.value;
+    
+    const iconEl = document.getElementById('edit-tx-category-icon');
+    const chosenIcon = iconEl ? iconEl.value : '🏷️';
 
     const newTx = {
-        id: transactions[index].id, // Safely keep exact original ID format 
-        name: document.getElementById('edit-tx-name').value.trim() || '(General)',
-        type: finalType, category: document.getElementById('edit-tx-category').value.trim() || 'Uncategorized',
-        date: document.getElementById('edit-tx-date').value,
-        actual: Math.abs(parseFloat(document.getElementById('edit-tx-actual').value) || 0),
-        qty: parseFloat(document.getElementById('edit-tx-qty').value) || 1, fx: parseFloat(document.getElementById('edit-tx-fx').value) || 1,
-        kes: parseFloat(document.getElementById('edit-tx-kes').value), notes: document.getElementById('edit-tx-notes').value
+        id: transactions[index].id, 
+        name: document.getElementById('edit-tx-name') ? document.getElementById('edit-tx-name').value.trim() || '(General)' : '(General)',
+        type: finalType, 
+        category: document.getElementById('edit-tx-category') ? document.getElementById('edit-tx-category').value.trim() || 'Uncategorized' : 'Uncategorized',
+        date: document.getElementById('edit-tx-date') ? document.getElementById('edit-tx-date').value : '',
+        actual: Math.abs(parseFloat(document.getElementById('edit-tx-actual') ? document.getElementById('edit-tx-actual').value : 0) || 0),
+        qty: parseFloat(document.getElementById('edit-tx-qty') ? document.getElementById('edit-tx-qty').value : 1) || 1, 
+        fx: parseFloat(document.getElementById('edit-tx-fx') ? document.getElementById('edit-tx-fx').value : 1) || 1,
+        kes: parseFloat(document.getElementById('edit-tx-kes') ? document.getElementById('edit-tx-kes').value : 0) || 0, 
+        notes: document.getElementById('edit-tx-notes') ? document.getElementById('edit-tx-notes').value : ''
     };
 
     window.addToMemory(newTx.type, newTx.category, newTx.name, chosenIcon);
@@ -416,16 +462,34 @@ window.updateTransaction = function(e) {
     window.closeEditModal();
 };
 
+window.deleteEditTx = function() {
+    if(!confirm("Are you sure you want to completely delete this entry?")) return;
+    window.saveState();
+    const idEl = document.getElementById('edit-tx-id');
+    if(!idEl) return;
+    const idVal = idEl.value;
+    transactions = transactions.filter(t => String(t.id) !== String(idVal));
+    window.saveData(); window.updateDatalists(); window.updateUI(); window.updateCharts(); window.updateInflationChart();
+    window.closeEditModal();
+};
+
 window.deleteTxFast = function(id) {
     if(!confirm("Are you sure you want to completely delete this transaction?")) return;
     window.saveState();
     transactions = transactions.filter(t => String(t.id) !== String(id));
-    window.saveData(); window.updateDatalists(); window.updateUI(); window.updateCharts(); window.updateInflationChart();
+    window.saveData(); 
+    window.updateDatalists(); 
+    window.updateUI(); 
+    window.updateCharts(); 
+    window.updateInflationChart();
 };
 
-// Pagination 
+// ==========================================
+// PAGINATED TRANSACTIONS LOG LOGIC
+// ==========================================
 window.toggleTransactionsLog = function() {
     const section = document.getElementById('detailed-transactions-section');
+    if(!section) return;
     if(section.classList.contains('hidden')) { section.classList.remove('hidden'); window.renderTransactionsLog(); } 
     else { section.classList.add('hidden'); }
 };
@@ -492,14 +556,18 @@ window.openLedger = function(cat, name, isIncome = false) {
     
     if (isIncome) {
         txs = txs.filter(t => t.type === 'Income' && t.category === cat);
-        document.getElementById('ledger-title').innerText = `Income Ledger: ${window.getIcon(cat)} ${cat} (${monthStr})`;
+        const titleEl = document.getElementById('ledger-title');
+        if(titleEl) titleEl.innerText = `Income Ledger: ${window.getIcon(cat)} ${cat} (${monthStr})`;
     } else {
         txs = txs.filter(t => (t.type === 'Expense' || t.type === 'Savings-Deposit') && t.category === cat && t.name === name);
-        document.getElementById('ledger-title').innerText = `Ledger: ${name === '(General)' ? cat : name} (${monthStr})`;
+        const titleEl = document.getElementById('ledger-title');
+        if(titleEl) titleEl.innerText = `Ledger: ${name === '(General)' ? cat : name} (${monthStr})`;
     }
     
     txs.sort((a,b) => new Date(b.date) - new Date(a.date));
-    const tbody = document.getElementById('ledger-body'); tbody.innerHTML = '';
+    const tbody = document.getElementById('ledger-body'); 
+    if(!tbody) return;
+    tbody.innerHTML = '';
     
     if (txs.length === 0) {
         tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No records found.</td></tr>`;
@@ -518,10 +586,14 @@ window.openLedger = function(cat, name, isIncome = false) {
                 </tr>`;
         });
     }
-    document.getElementById('ledger-modal').classList.remove('hidden');
+    const modal = document.getElementById('ledger-modal');
+    if(modal) modal.classList.remove('hidden');
 };
 
-window.closeLedger = function() { document.getElementById('ledger-modal').classList.add('hidden'); };
+window.closeLedger = function() { 
+    const modal = document.getElementById('ledger-modal');
+    if(modal) modal.classList.add('hidden'); 
+};
 
 window.editTxFromLedger = function(id) { window.closeLedger(); window.openEditModal(id); };
 
@@ -534,9 +606,12 @@ window.deleteTxFromLedger = function(id) {
 };
 
 window.updateDatalists = function() {
-    const txMem = document.getElementById('tx-memory'); txMem.innerHTML = '';
-    let allNames = [...new Set([...transactions.map(t => t.name), ...customMem.Names])];
-    allNames.forEach(n => { if(n!=='(General)') txMem.innerHTML += `<option value="${n}">${n}</option>`; });
+    const txMem = document.getElementById('tx-memory'); 
+    if(txMem) {
+        txMem.innerHTML = '';
+        let allNames = [...new Set([...transactions.map(t => t.name), ...customMem.Names])];
+        allNames.forEach(n => { if(n!=='(General)') txMem.innerHTML += `<option value="${n}">${n}</option>`; });
+    }
 
     const bCatMem = document.getElementById('budget-cat-memory');
     const bNameMem = document.getElementById('budget-name-memory');
@@ -547,6 +622,8 @@ window.updateDatalists = function() {
         if (customMem.Expense) customMem.Expense.forEach(c => allCats.add(c));
         if (customMem.Savings) customMem.Savings.forEach(c => allCats.add(c));
         transactions.filter(t => t.type !== 'Income').forEach(t => allCats.add(t.category));
+        
+        let allNames = [...new Set([...transactions.map(t => t.name), ...customMem.Names])];
         allNames.forEach(n => { if(n !== '(General)') bNameMem.innerHTML += `<option value="${n}">${n}</option>`; });
         [...allCats].sort().forEach(c => { bCatMem.innerHTML += `<option value="${c}">${c}</option>`; });
     }
@@ -567,10 +644,14 @@ window.getBudget = function(cat, name, targetMonthStr) {
 
 window.saveSingleBudget = function(e) {
     e.preventDefault();
-    const monthStr = document.getElementById('budget-month-picker').value;
-    let cat = document.getElementById('budget-category').value.trim();
-    let name = document.getElementById('budget-name').value.trim();
-    const amount = parseFloat(document.getElementById('budget-amount').value) || 0;
+    const monthPicker = document.getElementById('budget-month-picker');
+    if(!monthPicker) return;
+    const monthStr = monthPicker.value;
+    
+    let cat = document.getElementById('budget-category') ? document.getElementById('budget-category').value.trim() : '';
+    let name = document.getElementById('budget-name') ? document.getElementById('budget-name').value.trim() : '';
+    const amountEl = document.getElementById('budget-amount');
+    const amount = amountEl ? parseFloat(amountEl.value) || 0 : 0;
 
     if (cat && !name) {
         let match = transactions.slice().reverse().find(t => t.name.toLowerCase() === cat.toLowerCase() && t.type !== 'Income');
@@ -586,19 +667,24 @@ window.saveSingleBudget = function(e) {
     categoryBudgets[monthStr][`${cat}::${name}`] = amount;
     localStorage.setItem('suppa_budgets_v2', JSON.stringify(categoryBudgets));
     
-    document.getElementById('budget-category').value = ''; document.getElementById('budget-name').value = ''; document.getElementById('budget-amount').value = '';
+    if(document.getElementById('budget-category')) document.getElementById('budget-category').value = ''; 
+    if(document.getElementById('budget-name')) document.getElementById('budget-name').value = ''; 
+    if(amountEl) amountEl.value = '';
+    
     window.renderBudgetSetup(); window.updateUI(); window.updateCharts();
     
     const btn = document.getElementById('budget-submit-btn');
-    btn.innerText = "✓ Budget Saved!"; btn.style.background = "var(--success)";
-    setTimeout(() => { btn.innerText = "Add / Update Budget"; btn.style.background = ""; }, 1500);
+    if(btn) {
+        btn.innerText = "✓ Budget Saved!"; btn.style.background = "var(--success)";
+        setTimeout(() => { btn.innerText = "Add / Update Budget"; btn.style.background = ""; }, 1500);
+    }
 };
 
 window.editBudgetForm = function(cat, name, amount) {
-    document.getElementById('budget-category').value = cat;
-    document.getElementById('budget-name').value = name === '(General)' ? '' : name;
-    document.getElementById('budget-amount').value = amount;
-    document.getElementById('budget-amount').focus();
+    if(document.getElementById('budget-category')) document.getElementById('budget-category').value = cat;
+    if(document.getElementById('budget-name')) document.getElementById('budget-name').value = name === '(General)' ? '' : name;
+    const amtEl = document.getElementById('budget-amount');
+    if(amtEl) { amtEl.value = amount; amtEl.focus(); }
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
@@ -614,9 +700,14 @@ window.deleteBudget = function(cat, name, monthStr) {
 
 window.renderBudgetSetup = function() {
     try {
-        const monthStr = document.getElementById('budget-month-picker').value;
+        const monthPicker = document.getElementById('budget-month-picker');
+        if(!monthPicker) return;
+        const monthStr = monthPicker.value;
         if(!monthStr) return;
-        const tbody = document.getElementById('budget-setup-body'); tbody.innerHTML = '';
+        
+        const tbody = document.getElementById('budget-setup-body'); 
+        if(!tbody) return;
+        tbody.innerHTML = '';
 
         let activeItems = new Set();
         Object.keys(categoryBudgets).forEach(m => {
@@ -669,8 +760,10 @@ window.updateUI = function() {
     try {
         const monthStr = window.getMonthStr(currentDate);
         const monthYear = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
-        document.getElementById('current-month-display').innerText = monthYear;
-        document.getElementById('current-month-display-summaries').innerText = monthYear;
+        const cmEl = document.getElementById('current-month-display');
+        if(cmEl) cmEl.innerText = monthYear;
+        const cmSumEl = document.getElementById('current-month-display-summaries');
+        if(cmSumEl) cmSumEl.innerText = monthYear;
 
         const currentMonthTxs = transactions.filter(t => t.date && t.date.startsWith(monthStr));
         const rollover = window.calculateRollover(monthStr);
@@ -682,13 +775,16 @@ window.updateUI = function() {
         const groupedIncome = incomeTxs.reduce((acc, tx) => { acc[tx.category] = (acc[tx.category]||0) + tx.kes; return acc; }, {});
         totalIncome = Object.values(groupedIncome).reduce((a,b)=>a+b, 0);
 
-        const incomeBody = document.getElementById('income-body'); if(incomeBody) incomeBody.innerHTML = '';
-        if (rollover !== 0 && incomeBody) {
-            incomeBody.innerHTML += `<tr><td>Rollover from Previous Months</td><td class="${rollover >= 0 ? 'positive' : 'negative'}">${rollover > 0 ? '+' : ''}${rollover.toLocaleString(undefined, {minimumFractionDigits: 2})}</td></tr>`;
+        const incomeBody = document.getElementById('income-body'); 
+        if(incomeBody) {
+            incomeBody.innerHTML = '';
+            if (rollover !== 0) {
+                incomeBody.innerHTML += `<tr><td>Rollover from Previous Months</td><td class="${rollover >= 0 ? 'positive' : 'negative'}">${rollover > 0 ? '+' : ''}${rollover.toLocaleString(undefined, {minimumFractionDigits: 2})}</td></tr>`;
+            }
+            Object.keys(groupedIncome).forEach(cat => {
+                incomeBody.innerHTML += `<tr><td><a class="ledger-link" onclick="window.openLedger('${cat.replace(/'/g, "\\'")}', '', true)">${window.getIcon(cat)} ${cat}</a></td><td class="positive">+${groupedIncome[cat].toLocaleString(undefined, {minimumFractionDigits: 2})}</td></tr>`;
+            });
         }
-        Object.keys(groupedIncome).forEach(cat => {
-            if(incomeBody) incomeBody.innerHTML += `<tr><td><a class="ledger-link" onclick="window.openLedger('${cat.replace(/'/g, "\\'")}', '', true)">${window.getIcon(cat)} ${cat}</a></td><td class="positive">+${groupedIncome[cat].toLocaleString(undefined, {minimumFractionDigits: 2})}</td></tr>`;
-        });
         const bliEl = document.getElementById('bottom-line-income');
         if(bliEl) bliEl.innerText = `KES ${totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
 
@@ -740,18 +836,19 @@ window.updateUI = function() {
             let variance = bAmt - aAmt; let isPositive = variance >= 0;
             const varPct = bAmt ? ((variance / bAmt) * 100).toFixed(1) : 0;
 
-            const trHtml = `
-                <tr>
-                    <td>${window.getIcon(item.cat)} ${item.cat}</td>
-                    <td><a class="ledger-link" onclick="window.openLedger('${item.cat.replace(/'/g, "\\'")}', '${item.name.replace(/'/g, "\\'")}', false)">${item.name === '(General)' ? 'Category Target' : item.name}</a></td>
-                    <td><span style="background:var(--border); padding:2px 8px; border-radius:10px; font-size:0.8em; color:var(--primary);">${item.type}</span></td>
-                    <td>${bAmt.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                    <td>${aAmt.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                    <td class="${isPositive ? 'positive' : 'negative'}">${variance > 0 ? '+':''}${variance.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                    <td class="${isPositive ? 'positive' : 'negative'}">${varPct}%</td>
-                </tr>
-            `;
-            if(perfBody) perfBody.innerHTML += trHtml;
+            if(perfBody) {
+                perfBody.innerHTML += `
+                    <tr>
+                        <td>${window.getIcon(item.cat)} ${item.cat}</td>
+                        <td><a class="ledger-link" onclick="window.openLedger('${item.cat.replace(/'/g, "\\'")}', '${item.name.replace(/'/g, "\\'")}', false)">${item.name === '(General)' ? 'Category Target' : item.name}</a></td>
+                        <td><span style="background:var(--border); padding:2px 8px; border-radius:10px; font-size:0.8em; color:var(--primary);">${item.type}</span></td>
+                        <td>${bAmt.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                        <td>${aAmt.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                        <td class="${isPositive ? 'positive' : 'negative'}">${variance > 0 ? '+':''}${variance.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                        <td class="${isPositive ? 'positive' : 'negative'}">${varPct}%</td>
+                    </tr>
+                `;
+            }
         });
 
         let netVar = tableBudget - tableSpent;
@@ -780,13 +877,20 @@ window.updateUI = function() {
         let surplusDeficit = rawTotalBudget - actualOutgoing; 
         let amountUnassigned = totalAvailable - actualOutgoing; 
         
-        document.getElementById('top-income').innerText = `KES ${(totalIncome + rollover).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-        document.getElementById('top-rollover-text').innerText = `Includes ${rollover >= 0 ? '+':''}${rollover.toLocaleString(undefined, {minimumFractionDigits: 2})} rollover`;
-        document.getElementById('top-budget').innerText = `KES ${rawTotalBudget.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-        document.getElementById('top-spent').innerText = `KES ${actualOutgoing.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+        const topIncEl = document.getElementById('top-income');
+        if(topIncEl) topIncEl.innerText = `KES ${(totalIncome + rollover).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+        const topRollEl = document.getElementById('top-rollover-text');
+        if(topRollEl) topRollEl.innerText = `Includes ${rollover >= 0 ? '+':''}${rollover.toLocaleString(undefined, {minimumFractionDigits: 2})} rollover`;
+        const topBudgEl = document.getElementById('top-budget');
+        if(topBudgEl) topBudgEl.innerText = `KES ${rawTotalBudget.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+        const topSpentEl = document.getElementById('top-spent');
+        if(topSpentEl) topSpentEl.innerText = `KES ${actualOutgoing.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
         
-        document.getElementById('top-surplus').innerText = `KES ${surplusDeficit >= 0 ? '+':''}${surplusDeficit.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-        document.getElementById('top-surplus').className = `value ${surplusDeficit >= 0 ? 'positive' : 'negative'}`;
+        const topSurpEl = document.getElementById('top-surplus');
+        if(topSurpEl) {
+            topSurpEl.innerText = `KES ${surplusDeficit >= 0 ? '+':''}${surplusDeficit.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            topSurpEl.className = `value ${surplusDeficit >= 0 ? 'positive' : 'negative'}`;
+        }
 
         const topUnassignedEl = document.getElementById('top-unassigned');
         if (topUnassignedEl) {
@@ -810,7 +914,9 @@ window.updateUI = function() {
 };
 
 window.updatePortfolioView = function(currentMonthTxs, monthStr) {
-    const tbody = document.getElementById('portfolio-body'); tbody.innerHTML = '';
+    const tbody = document.getElementById('portfolio-body'); 
+    if(!tbody) return;
+    tbody.innerHTML = '';
     
     let activePortCats = new Set([...customMem.Savings]);
     transactions.filter(t => t.type.includes('Savings') || t.type === 'Starting-Balance').forEach(t => activePortCats.add(t.category));
@@ -844,13 +950,17 @@ window.updatePortfolioView = function(currentMonthTxs, monthStr) {
             </tr>`;
     });
 
-    document.getElementById('port-total-start').innerText = grandStart.toLocaleString(undefined, {minimumFractionDigits: 2});
+    const ptsEl = document.getElementById('port-total-start');
+    if(ptsEl) ptsEl.innerText = grandStart.toLocaleString(undefined, {minimumFractionDigits: 2});
     
     const totInflowsEl = document.getElementById('port-total-inflows');
-    totInflowsEl.innerText = `${grandInflow > 0 ? '+' : ''}${grandInflow.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-    totInflowsEl.className = grandInflow >= 0 ? 'positive' : 'negative';
+    if(totInflowsEl) {
+        totInflowsEl.innerText = `${grandInflow > 0 ? '+' : ''}${grandInflow.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+        totInflowsEl.className = grandInflow >= 0 ? 'positive' : 'negative';
+    }
 
-    document.getElementById('port-total-current').innerText = 'KES ' + grandCurrent.toLocaleString(undefined, {minimumFractionDigits: 2});
+    const ptcEl = document.getElementById('port-total-current');
+    if(ptcEl) ptcEl.innerText = 'KES ' + grandCurrent.toLocaleString(undefined, {minimumFractionDigits: 2});
 
     const ledgerBody = document.getElementById('portfolio-ledger-body');
     if(ledgerBody) {
@@ -899,6 +1009,9 @@ window.populateChartFilters = function(txs) {
     const catFilter = document.getElementById('analytics-cat-filter');
     const nameFilter = document.getElementById('analytics-name-filter');
     const infNameFilter = document.getElementById('inflation-expense-filter');
+    
+    if(!catFilter || !nameFilter || !infNameFilter) return;
+
     const currCat = catFilter.value; const currName = nameFilter.value; const currInfName = infNameFilter.value;
     
     catFilter.innerHTML = '<option value="ALL">All Categories</option>';
@@ -922,7 +1035,9 @@ window.populateChartFilters = function(txs) {
 };
 
 window.updateAnalytics = function() {
-    const period = document.getElementById('analytics-period').value;
+    const periodEl = document.getElementById('analytics-period');
+    if(!periodEl) return;
+    const period = periodEl.value;
     const now = new Date();
     const filteredTxs = transactions.filter(t => {
         if(!t.date) return false;
@@ -939,9 +1054,13 @@ window.updateAnalytics = function() {
 
 window.updateCharts = function(txList = null) {
     try {
-        if(!document.getElementById('analytics').classList.contains('active')) return;
+        const analyticsTab = document.getElementById('analytics');
+        if(!analyticsTab || !analyticsTab.classList.contains('active')) return;
+        
         if(!txList) {
-            const period = document.getElementById('analytics-period').value;
+            const periodEl = document.getElementById('analytics-period');
+            if(!periodEl) return;
+            const period = periodEl.value;
             const now = new Date();
             txList = transactions.filter(t => {
                 if(!t.date) return false;
@@ -953,24 +1072,34 @@ window.updateCharts = function(txList = null) {
             });
         }
 
-        const catFilter = document.getElementById('analytics-cat-filter').value;
-        const nameFilter = document.getElementById('analytics-name-filter').value;
+        const catFilterEl = document.getElementById('analytics-cat-filter');
+        const nameFilterEl = document.getElementById('analytics-name-filter');
+        const catFilter = catFilterEl ? catFilterEl.value : 'ALL';
+        const nameFilter = nameFilterEl ? nameFilterEl.value : 'ALL';
 
         let expenses = txList.filter(t => t.type === 'Expense' || t.type === 'Savings-Deposit');
         
         const income = txList.filter(t => t.type === 'Income').reduce((s,t)=>s+t.kes, 0);
         const savingsTotal = txList.filter(t => t.type === 'Savings-Deposit').reduce((s,t)=>s+t.kes, 0);
         const targetPct = income ? ((savingsTotal / income) * 100).toFixed(1) : 0;
-        document.getElementById('stat-target').innerText = `${targetPct}%`;
-        document.getElementById('stat-target').className = targetPct >= 30 ? 'value positive' : 'value negative';
+        
+        const stEl = document.getElementById('stat-target');
+        if(stEl) {
+            stEl.innerText = `${targetPct}%`;
+            stEl.className = targetPct >= 30 ? 'value positive' : 'value negative';
+        }
 
         const thirtyDaysAgo = new Date().setDate(new Date().getDate() - 30);
         const sixtyDaysAgo = new Date().setDate(new Date().getDate() - 60);
         const currentExp = transactions.filter(t => t.date && new Date(t.date) >= thirtyDaysAgo && t.type === 'Expense').reduce((s,t)=>s+t.kes,0);
         const prevExp = transactions.filter(t => t.date && new Date(t.date) >= sixtyDaysAgo && new Date(t.date) < thirtyDaysAgo && t.type === 'Expense').reduce((s,t)=>s+t.kes,0);
         const inflation = prevExp ? (((currentExp - prevExp) / prevExp) * 100).toFixed(1) : 0;
-        document.getElementById('stat-inflation').innerText = `${inflation > 0 ? '+':''}${inflation}%`;
-        document.getElementById('stat-inflation').className = inflation <= 0 ? 'value positive' : 'value negative';
+        
+        const siEl = document.getElementById('stat-inflation');
+        if(siEl) {
+            siEl.innerText = `${inflation > 0 ? '+':''}${inflation}%`;
+            siEl.className = inflation <= 0 ? 'value positive' : 'value negative';
+        }
 
         let chartExpenses = expenses;
         if(catFilter !== 'ALL') chartExpenses = chartExpenses.filter(e => e.category === catFilter);
@@ -981,8 +1110,12 @@ window.updateCharts = function(txList = null) {
 };
 
 window.drawCharts = function(expenses, catFilter, nameFilter) {
-    const ctxPie = document.getElementById('pieChart').getContext('2d');
-    const ctxBar = document.getElementById('barChart').getContext('2d');
+    const pCanvas = document.getElementById('pieChart');
+    const bCanvas = document.getElementById('barChart');
+    if(!pCanvas || !bCanvas) return;
+
+    const ctxPie = pCanvas.getContext('2d');
+    const ctxBar = bCanvas.getContext('2d');
     const textColor = getComputedStyle(document.body).getPropertyValue('--text-main').trim();
     const isDark = document.body.getAttribute('data-theme') === 'dark';
     Chart.defaults.color = textColor; Chart.defaults.borderColor = isDark ? '#14281f' : '#d1fae5';
@@ -1047,9 +1180,15 @@ window.drawCharts = function(expenses, catFilter, nameFilter) {
 
 window.updateInflationChart = function() {
     try {
-        if(!document.getElementById('analytics').classList.contains('active')) return;
-        const interval = document.getElementById('inflation-interval').value;
-        const nameFilter = document.getElementById('inflation-expense-filter').value;
+        const analyticsTab = document.getElementById('analytics');
+        if(!analyticsTab || !analyticsTab.classList.contains('active')) return;
+        
+        const intEl = document.getElementById('inflation-interval');
+        const nfEl = document.getElementById('inflation-expense-filter');
+        if(!intEl || !nfEl) return;
+        
+        const interval = intEl.value;
+        const nameFilter = nfEl.value;
 
         let data = transactions.filter(t => t.date && t.type === 'Expense');
         if (nameFilter !== 'ALL') data = data.filter(t => t.name === nameFilter);
@@ -1089,7 +1228,9 @@ window.updateInflationChart = function() {
             }
         }
 
-        const ctxInf = document.getElementById('inflationChart').getContext('2d');
+        const cInf = document.getElementById('inflationChart');
+        if(!cInf) return;
+        const ctxInf = cInf.getContext('2d');
         if(inflationChartInstance) inflationChartInstance.destroy();
         
         inflationChartInstance = new Chart(ctxInf, {
@@ -1147,6 +1288,7 @@ window.triggerDownload = function(content, fileName) {
 
 window.exportTableToExcel = function(tableID, filename = ''){
     var tableSelect = document.getElementById(tableID);
+    if(!tableSelect) return;
     var wb = XLSX.utils.table_to_book(tableSelect, {sheet:"Sheet1", raw: true});
     XLSX.writeFile(wb, filename+".xlsx");
 };
@@ -1232,6 +1374,43 @@ document.addEventListener('DOMContentLoaded', () => {
     setupProfileDropdown('profileTrigger', 'profileDropdown');
     setupProfileDropdown('appProfileTrigger', 'appProfileDropdown');
 
+    const payButton = document.getElementById('payButton');
+    if (payButton) {
+        payButton.addEventListener('click', async () => {
+            const phoneInput = document.getElementById('phoneInput');
+            const paymentStatus = document.getElementById('paymentStatus');
+            const phone = phoneInput ? phoneInput.value.trim() : '';
+            
+            if (!phone || phone.length < 9) { alert("Please enter a valid M-Pesa phone number."); return; }
+
+            payButton.disabled = true; payButton.textContent = "Processing...";
+            if (paymentStatus) { paymentStatus.textContent = "Contacting M-Pesa... please wait."; paymentStatus.style.color = "blue"; }
+
+            const uId = currentUser ? currentUser.id : 'local_user_' + Date.now();
+
+            try {
+                const response = await fetch('/.netlify/functions/initiate-tuma', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone: phone, userId: uId, amount: 1700 })
+                });
+                
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    if (paymentStatus) { paymentStatus.textContent = "Prompt sent! Enter your PIN on your phone."; paymentStatus.style.color = "orange"; }
+                    window.startPollingDatabase(); 
+                } else {
+                    throw new Error(result.message || "Payment failed to initiate.");
+                }
+            } catch (error) {
+                console.error("Payment error:", error);
+                if (paymentStatus) { paymentStatus.textContent = "Error: " + error.message; paymentStatus.style.color = "red"; }
+                payButton.disabled = false; payButton.textContent = "Pay to Unlock";
+            }
+        });
+    }
+
     const txNameEl = document.getElementById('tx-name');
     if(txNameEl) {
         txNameEl.addEventListener('input', function(e) {
@@ -1239,15 +1418,20 @@ document.addEventListener('DOMContentLoaded', () => {
             if(!val) return;
             let match = transactions.slice().reverse().find(t => t.name.toLowerCase() === val);
             if (match) {
-                if(match.type.includes('Savings') || match.type === 'Starting-Balance') {
-                    document.getElementById('tx-type').value = 'Savings';
-                    window.handleTypeChange('tx');
-                    document.getElementById('tx-savings-action').value = match.type;
-                } else {
-                    document.getElementById('tx-type').value = match.type;
-                    window.handleTypeChange('tx');
+                const txTypeEl = document.getElementById('tx-type');
+                const saveActEl = document.getElementById('tx-savings-action');
+                if(txTypeEl) {
+                    if(match.type.includes('Savings') || match.type === 'Starting-Balance') {
+                        txTypeEl.value = 'Savings';
+                        window.handleTypeChange('tx');
+                        if(saveActEl) saveActEl.value = match.type;
+                    } else {
+                        txTypeEl.value = match.type;
+                        window.handleTypeChange('tx');
+                    }
                 }
-                document.getElementById('tx-category').value = match.category;
+                const txCatEl = document.getElementById('tx-category');
+                if(txCatEl) txCatEl.value = match.category;
                 window.autoSelectIcon('tx');
             }
         });
@@ -1259,7 +1443,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let val = e.target.value.trim().toLowerCase();
             if(!val) return;
             let match = transactions.slice().reverse().find(t => t.name.toLowerCase() === val && t.type !== 'Income' && t.type !== 'Savings-Withdrawal' && t.type !== 'Starting-Balance');
-            if (match) document.getElementById('budget-category').value = match.category;
+            if (match && document.getElementById('budget-category')) document.getElementById('budget-category').value = match.category;
         });
     }
 
@@ -1274,24 +1458,27 @@ document.addEventListener('DOMContentLoaded', () => {
             const dateMatch = sms.match(/on (\d{1,2}\/\d{1,2}\/\d{2})/);
             const costMatch = sms.match(/Transaction cost, Ksh([\d,]+\.\d{2})/);
 
-            if (amountMatch) {
+            if (amountMatch && document.getElementById('tx-actual')) {
                 const amount = parseFloat(amountMatch[1].replace(/,/g, ''));
                 document.getElementById('tx-actual').value = amount;
                 
-                if (paidToMatch) {
+                if (paidToMatch && document.getElementById('tx-name')) {
                     const vendor = paidToMatch[1].trim();
                     document.getElementById('tx-name').value = vendor;
                     
                     const vLower = vendor.toLowerCase();
-                    if (vLower.includes('java') || vLower.includes('kfc') || vLower.includes('naivas') || vLower.includes('quickmart')) {
-                        document.getElementById('tx-category').value = 'Food';
-                    } else if (vLower.includes('uber') || vLower.includes('bolt') || vLower.includes('fuel')) {
-                        document.getElementById('tx-category').value = 'Transport';
+                    const txCatEl = document.getElementById('tx-category');
+                    if(txCatEl) {
+                        if (vLower.includes('java') || vLower.includes('kfc') || vLower.includes('naivas') || vLower.includes('quickmart')) {
+                            txCatEl.value = 'Food';
+                        } else if (vLower.includes('uber') || vLower.includes('bolt') || vLower.includes('fuel')) {
+                            txCatEl.value = 'Transport';
+                        }
                     }
                     window.autoSelectIcon('tx');
                 }
 
-                if (dateMatch) {
+                if (dateMatch && document.getElementById('tx-date')) {
                     const parts = dateMatch[1].split('/');
                     const year = "20" + parts[2];
                     const month = parts[1].padStart(2, '0');
@@ -1307,7 +1494,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if(txCost > 0 && confirm(`Also log KES ${txCost} as a Transaction Cost?`)) {
                         transactions.push({
                             id: Date.now() + 1, name: 'M-Pesa Fee', type: 'Expense', category: 'Transaction Cost',
-                            date: document.getElementById('tx-date').value, actual: txCost, qty: 1, fx: 1, kes: txCost, notes: 'Auto-extracted'
+                            date: document.getElementById('tx-date') ? document.getElementById('tx-date').value : new Date().toISOString().split('T')[0], 
+                            actual: txCost, qty: 1, fx: 1, kes: txCost, notes: 'Auto-extracted'
                         });
                         window.saveData(); window.updateDatalists(); window.updateUI();
                     }
