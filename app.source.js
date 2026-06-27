@@ -70,23 +70,73 @@ window.updateProfileUI = function(displayName, avatarUrl) {
     });
 };
 
-window.initializeApp = function() {
-    let localName = localStorage.getItem('suppa_local_name') || "Local User";
-    let localAvatar = localStorage.getItem('suppa_local_avatar') || "";
-    window.updateProfileUI(localName, localAvatar);
-    window.unlockApp();
+window.initializeApp = async function() {
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if (!user) {
+        window.location.href = 'login.html';
+        return;
+    }
+    
+    currentUser = user;
+    const metadata = currentUser.user_metadata || {};
+    const displayName = metadata.display_name || metadata.full_name || currentUser.email.split('@')[0];
+    const avatarUrl = metadata.avatar_url || metadata.picture || '';
+    
+    window.updateProfileUI(displayName, avatarUrl);
+    window.checkPremiumStatus();
+};
+
+window.checkPremiumStatus = async function() {
+    const { data, error } = await supabaseClient
+        .from('profiles')
+        .select('is_premium')
+        .eq('id', currentUser.id)
+        .single();
+        
+    if (data && data.is_premium === true) window.unlockApp();
+    else window.lockApp();
 };
 
 window.unlockApp = function() {
+    const lockedScreen = document.getElementById('lockedScreen');
     const appContainer = document.getElementById('appContainer');
+    if (lockedScreen) lockedScreen.style.display = 'none';
     if (appContainer) appContainer.style.display = 'block';
+    if (pollingInterval) clearInterval(pollingInterval);
+};
+
+window.lockApp = function() {
+    const lockedScreen = document.getElementById('lockedScreen');
+    const appContainer = document.getElementById('appContainer');
+    if (lockedScreen) lockedScreen.style.display = 'block';
+    if (appContainer) appContainer.style.display = 'none';
+};
+
+window.startPollingDatabase = function() {
+    pollingInterval = setInterval(async () => {
+        const { data } = await supabaseClient.from('profiles').select('is_premium').eq('id', currentUser.id).single();
+        if (data && data.is_premium === true) window.unlockApp();
+    }, 3000); 
+
+    setTimeout(() => {
+        if (pollingInterval) {
+            clearInterval(pollingInterval);
+            const paymentStatus = document.getElementById('paymentStatus');
+            const payButton = document.getElementById('payButton');
+            if (paymentStatus) { paymentStatus.textContent = "Payment timed out. Please try again."; paymentStatus.style.color = "red"; }
+            if (payButton) { payButton.disabled = false; payButton.textContent = "Pay to Unlock"; }
+        }
+    }, 120000); 
 };
 
 window.openProfileModal = function() {
-    document.getElementById('profile-name-input').value = localStorage.getItem('suppa_local_name') || "Local User";
-    document.getElementById('profile-avatar-input').value = localStorage.getItem('suppa_local_avatar') || "";
+    const metadata = currentUser.user_metadata || {};
+    document.getElementById('profile-name-input').value = metadata.display_name || metadata.full_name || currentUser.email.split('@')[0];
+    document.getElementById('profile-avatar-input').value = metadata.avatar_url || metadata.picture || '';
     
+    const d1 = document.getElementById('profileDropdown');
     const d2 = document.getElementById('appProfileDropdown');
+    if(d1) d1.style.display = 'none';
     if(d2) d2.style.display = 'none';
     
     document.getElementById('profile-modal').classList.remove('hidden');
@@ -94,31 +144,46 @@ window.openProfileModal = function() {
 
 window.closeProfileModal = function() { document.getElementById('profile-modal').classList.add('hidden'); };
 
-window.saveProfile = function(e) {
+window.saveProfile = async function(e) {
     e.preventDefault();
+    const btn = document.getElementById('save-profile-btn');
+    btn.textContent = "Saving..."; btn.disabled = true;
+
     const newName = document.getElementById('profile-name-input').value.trim();
     const newAvatar = document.getElementById('profile-avatar-input').value.trim();
 
-    localStorage.setItem('suppa_local_name', newName);
-    localStorage.setItem('suppa_local_avatar', newAvatar);
+    try {
+        const { data, error } = await supabaseClient.auth.updateUser({ data: { display_name: newName, avatar_url: newAvatar } });
+        if (error) throw error;
         
-    window.updateProfileUI(newName || "Local User", newAvatar);
-    window.closeProfileModal();
+        currentUser = data.user; 
+        window.updateProfileUI(newName || currentUser.email.split('@')[0], newAvatar);
+        window.closeProfileModal();
+    } catch (err) {
+        alert("Failed to update profile: " + err.message);
+    } finally {
+        btn.textContent = "Save Profile"; btn.disabled = false;
+    }
+};
+
+window.forceLogout = async function(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (e && e.target) { e.target.innerText = "Logging out..."; e.target.style.opacity = "0.6"; }
+    try { await supabaseClient.auth.signOut(); } catch (err) { console.error("SignOut error:", err); }
+    window.location.href = 'login.html';
 };
 
 window.getIcon = function(cat) { return defaultIcons[cat] || (customMem.Icons && customMem.Icons[cat]) || '🏷️'; };
 
 window.autoSelectIcon = function(prefix) {
-    const categoryInput = document.getElementById(prefix + '-category');
-    
-    // Add this null check
-    if (!categoryInput) {
-        console.warn(`Element ${prefix}-category not found.`);
-        return; 
+    const cat = document.getElementById(`${prefix}-category`).value.trim();
+    const iconDropdown = document.getElementById(`${prefix}-category-icon`);
+    if(cat && iconDropdown) {
+        const icon = window.getIcon(cat);
+        let optionExists = Array.from(iconDropdown.options).some(opt => opt.value === icon);
+        if(!optionExists) iconDropdown.innerHTML += `<option value="${icon}">${icon}</option>`;
+        iconDropdown.value = icon;
     }
-
-    const category = categoryInput.value;
-    // ... rest of your code
 };
 
 window.repairAndLoadData = function() {
