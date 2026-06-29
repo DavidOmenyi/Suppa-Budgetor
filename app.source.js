@@ -143,55 +143,39 @@ window.startPollingDatabase = function() {
 };
 
 window.openProfileModal = function() {
-    const nameInput = document.getElementById('profile-name-input');
-    const avatarInput = document.getElementById('profile-avatar-input');
-    const modal = document.getElementById('profile-modal');
-    
-    // Safety check: Prevent app crash if HTML is missing
-    if (!modal || !nameInput || !avatarInput) {
-        alert("System Error: Profile Modal HTML is missing from index.html.");
-        return;
-    }
-
-    // Pull directly from Supabase user object
-    const metadata = currentUser && currentUser.user_metadata ? currentUser.user_metadata : {};
-    
-    nameInput.value = metadata.display_name || metadata.full_name || (currentUser ? currentUser.email.split('@')[0] : "User");
-    avatarInput.value = metadata.avatar_url || metadata.picture || '';
+    const metadata = currentUser.user_metadata || {};
+    document.getElementById('profile-name-input').value = metadata.display_name || metadata.full_name || currentUser.email.split('@')[0];
+    document.getElementById('profile-avatar-input').value = metadata.avatar_url || metadata.picture || '';
     
     const d1 = document.getElementById('profileDropdown');
     const d2 = document.getElementById('appProfileDropdown');
     if(d1) d1.style.display = 'none';
     if(d2) d2.style.display = 'none';
     
-    modal.classList.remove('hidden');
+    document.getElementById('profile-modal').classList.remove('hidden');
 };
+
+window.closeProfileModal = function() { document.getElementById('profile-modal').classList.add('hidden'); };
 
 window.saveProfile = async function(e) {
     e.preventDefault();
     const btn = document.getElementById('save-profile-btn');
-    if(btn) { btn.textContent = "Saving..."; btn.disabled = true; }
+    btn.textContent = "Saving..."; btn.disabled = true;
 
-    const nameInput = document.getElementById('profile-name-input');
-    const avatarInput = document.getElementById('profile-avatar-input');
-    
-    const newName = nameInput ? nameInput.value.trim() : "";
-    const newAvatar = avatarInput ? avatarInput.value.trim() : "";
+    const newName = document.getElementById('profile-name-input').value.trim();
+    const newAvatar = document.getElementById('profile-avatar-input').value.trim();
 
     try {
-        // Push update securely to Supabase
-        const { data, error } = await supabaseClient.auth.updateUser({ 
-            data: { display_name: newName, avatar_url: newAvatar } 
-        });
+        const { data, error } = await supabaseClient.auth.updateUser({ data: { display_name: newName, avatar_url: newAvatar } });
         if (error) throw error;
         
         currentUser = data.user; 
-        window.updateProfileUI(newName || (currentUser ? currentUser.email.split('@')[0] : "User"), newAvatar);
+        window.updateProfileUI(newName || currentUser.email.split('@')[0], newAvatar);
         window.closeProfileModal();
     } catch (err) {
         alert("Failed to update profile: " + err.message);
     } finally {
-        if(btn) { btn.textContent = "Save Profile"; btn.disabled = false; }
+        btn.textContent = "Save Profile"; btn.disabled = false;
     }
 };
 
