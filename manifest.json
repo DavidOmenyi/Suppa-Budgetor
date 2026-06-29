@@ -14,4 +14,31 @@
       "purpose": "any maskable"
     }
   ]
+  "screenshots": [
+    {
+      "src": "desktop-screenshot-1.png",
+      "sizes": "1920x1040",
+      "type": "image/png",
+      "form_factor": "wide"
+    },
+    {
+      "src": "desktop-screenshot-2.png",
+      "sizes": "1920x1040",
+      "type": "image/png",
+      "form_factor": "wide"
+    },
+    {
+      "src": "mobile-screenshot-1.jpg",
+      "sizes": "1920x1040",
+      "type": "image/jpg",
+      "form_factor": "wide"
+    },
+    {
+      "src": "mobile-screenshot-2.jpg",
+      "sizes": "1920x1040",
+      "type": "image/jpg",
+      "form_factor": "wide"
+    }
+  ]
+}
 }
