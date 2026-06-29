@@ -29,15 +29,15 @@
     },
     {
       "src": "mobile-screenshot-1.jpg",
-      "sizes": "1920x1040",
+      "sizes": "819x1600",
       "type": "image/jpg",
-      "form_factor": "wide"
+      "form_factor": "narrow"
     },
     {
       "src": "mobile-screenshot-2.jpg",
-      "sizes": "1920x1040",
+      "sizes": "819x1600",
       "type": "image/jpg",
-      "form_factor": "wide"
+      "form_factor": "narrow"
     }
   ]
 }
