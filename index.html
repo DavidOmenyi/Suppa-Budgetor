@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Suppa Budgetor</title>
+    
+    <link rel="icon" type="image/png" href="app-icon.png">
+    <link rel="apple-touch-icon" href="app-icon.png">
+    <link rel="manifest" href="manifest.json">
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #f0fdf4; 
+            --surface-color: #ffffff;
+            --text-main: #064e3b; 
+            --text-muted: #475569;
+            --primary: #059669; 
+            --primary-hover: #047857;
+            --accent: #f59e0b; 
+            --accent-hover: #d97706;
+            --success: #10b981;
+            --danger: #ef4444;
+            --border: #d1fae5;
+            --shadow: 0 10px 15px -3px rgba(5, 150, 105, 0.1), 0 4px 6px -2px rgba(5, 150, 105, 0.05);
+            --radius: 12px;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #353c36;
+            --surface-color: #353c36;
+            --text-main: #ecfdf5;
+            --text-muted: #a7f3d0;
+            --primary: #10b981;
+            --primary-hover: #34d399;
+            --accent: #fbbf24;
+            --accent-hover: #f59e0b;
+            --border: #14281f;
+            --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.8);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-main); transition: background-color 0.4s ease; -webkit-user-select: none; user-select: none; }
+        
+        /* Paywall Lock Screen Vault */
+        #lockedScreen { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--bg-color); z-index: 999999; padding: 15px; overflow-y: auto; }
+        .paywall-center-wrapper { min-height: 95vh; display: flex; justify-content: center; align-items: center; }
+        .paywall-card { max-width: 440px; width: 100%; }
+
+        /* Layout */
+        .app-container { max-width: 1200px; margin: 0 auto; padding: 15px; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        h1 { color: var(--primary); font-weight: 800; letter-spacing: -0.5px; text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.25); }
+        
+        .controls { display: flex; flex-wrap: wrap; gap: 6px; }
+        .controls button { background: var(--surface-color); border: 1px solid var(--primary); color: var(--primary); padding: 6px 12px; border-radius: 20px; cursor: pointer; transition: 0.3s; font-weight: 600; font-size: 13px; }
+        .controls button:hover { background: var(--primary); color: #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .controls button.negative { border-color: var(--danger); color: var(--danger); }
+        .controls button.negative:hover { background: var(--danger); color: #fff; }
+        
+        /* Navigation */
+        nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid var(--border); padding-bottom: 10px; justify-content: space-between;}
+        nav button { flex: 1 1 auto; text-align: center; background: none; border: none; font-size: 15px; font-weight: 600; color: var(--text-muted); cursor: pointer; padding: 8px 16px; border-radius: var(--radius); transition: 0.3s; }
+        nav button:hover { color: var(--accent); background: rgba(245, 158, 11, 0.1); }
+        nav button.active { color: #fff; background: var(--primary); box-shadow: var(--shadow); }
+
+        /* Tabs & Animations */
+        @keyframes slideUpFade { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
+        .tab-content { display: none; background: var(--surface-color); padding: 20px; border-radius: var(--radius); box-shadow: var(--shadow); overflow-x: auto;}
+        .tab-content.active { display: block; animation: slideUpFade 0.4s ease forwards; }
+
+        /* Forms & Inputs */
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .form-group { display: flex; flex-direction: column; }
+        label { font-size: 13px; font-weight: 700; margin-bottom: 5px; color: var(--text-muted); text-transform: uppercase;}
+        input, select { padding: 10px; border: 2px solid var(--border); border-radius: var(--radius); background: var(--bg-color); color: var(--text-main); transition: 0.2s; width: 100%; }
+        input:focus, select:focus { border-color: var(--accent); outline: none; }
+        
+        .btn-primary { background: linear-gradient(135deg, var(--primary), var(--primary-hover)); color: #fff; border: none; padding: 10px 16px; border-radius: 20px; cursor: pointer; font-weight: bold; width: 100%; text-transform: uppercase; transition: 0.3s; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+
+        /* Tables */
+        table { width: 100%; border-collapse: separate; border-spacing: 0; min-width: 700px; margin-top: 10px;}
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); max-width: 250px; word-wrap: break-word;}
+        th { font-weight: 700; color: var(--text-muted); font-size: 12px; text-transform: uppercase; background: rgba(5,150,105,0.05);}
+        tr:hover:not(thead tr) { background-color: rgba(245, 158, 11, 0.05); }
+        .ledger-link { color: var(--accent); cursor: pointer; text-decoration: underline; font-weight: bold; }
+        .positive { color: var(--success); font-weight: bold; }
+        .negative { color: var(--danger); font-weight: bold; }
+
+        /* Budget Setup Table */
+        #budget-setup-table { min-width: 100%; }
+        #budget-setup-table th:first-child { width: 60%; }
+        #budget-setup-table th:last-child { width: 40%; }
+        #budget-setup-table td { padding: 8px 12px; }
+        #budget-setup-table input { padding: 8px; font-size: 14px; }
+
+        /* Summary Cards */
+        .summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .card { background: var(--surface-color); padding: 20px; border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); position: relative; overflow: hidden; }
+        .card::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: linear-gradient(90deg, var(--primary), var(--accent)); }
+        .card h3 { color: var(--text-muted); font-size: 12px; margin-bottom: 8px; text-transform: uppercase; }
+        .card .value { font-size: 22px; font-weight: 800; color: var(--text-main); }
+
+        /* Charts */
+        .chart-container { position: relative; height: 350px; width: 100%; margin-top: 20px; }
+        .analytics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+        .hidden { display: none !important; }
+        .flex-between { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 1000000; }
+        .modal-content { background: var(--surface-color); padding: 25px; border-radius: var(--radius); width: 90%; max-width: 800px; max-height: 85vh; overflow-y: auto; box-shadow: var(--shadow); position: relative;}
+        .modal-close { position: absolute; top: 20px; right: 20px; background: var(--danger); color: white; border: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="lockedScreen">
+    <div class="paywall-center-wrapper">
+        <div class="paywall-card card">
+            
+            <div class="flex-between" style="border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 25px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <img id="userAvatarImg" src="" style="width: 38px; height: 38px; border-radius: 50%; display: none; object-fit: cover; border: 2px solid var(--primary);">
+                    <div id="userAvatarFallback" style="width: 38px; height: 38px; border-radius: 50%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px;">👤</div>
+                    <div style="text-align: left;">
+                        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: bold;">Session</div>
+                        <div id="userNameDisplay" style="font-weight: 800; color: var(--primary); font-size: 14px;">Loading...</div>
+                    </div>
+                </div>
+                <div style="position: relative;">
+                    <button id="profileTrigger" style="background: var(--bg-color); border: 1px solid var(--primary); padding: 6px 10px; border-radius: 8px; color: var(--primary); font-weight: bold; cursor: pointer; font-size: 12px;">⚙️ Account</button>
+                    
+                    <div id="profileDropdown" style="display: none; position: absolute; right: 0; top: 38px; background: var(--surface-color); border: 2px solid var(--border); box-shadow: var(--shadow); padding: 12px; border-radius: var(--radius); width: 160px; z-index: 100; text-align: center;">
+                        <button onclick="window.openProfileModal()" style="width: 100%; padding: 8px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 8px;">Edit Profile</button>
+                        <button id="logoutBtnPaywall" style="width: 100%; padding: 8px; background: var(--danger); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">Sign Out</button>
+                    </div>
+                </div>
+            </div>
+
+            <div style="text-align: center; padding: 10px 0;">
+                <span style="font-size: 52px;">🍀</span>
+                <h2 style="color: var(--primary); font-weight: 800; margin: 10px 0;">Suppa Budgetor Pro</h2>
+                <p style="color: var(--text-muted); font-size: 14px; line-height: 1.5; margin-bottom: 25px;">
+                    You are in restricted mode. Unlock full offline data storage, custom multi-currency FX converters, and automated investment ledgers.
+                </p>
+
+                <div style="display: flex; flex-direction: column; gap: 12px; max-width: 280px; margin: 0 auto;">
+                    <input type="text" id="phoneInput" placeholder="M-Pesa Phone (07... / 01...)" style="text-align: center; font-weight: 800; letter-spacing: 1px; font-size: 15px;">
+                    <button id="payButton" class="btn-primary" style="margin: 0; padding: 14px;">Pay KES 1,700.00 to Unlock</button>
+                    <div id="paymentStatus" style="font-size: 12px; font-weight: bold; min-height: 36px; margin-top: 5px;"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<div id="appContainer" style="display: none; max-width: 1100px; margin: 0 auto; width: 100%; padding: 10px;">
+
+    <div style="display: flex; justify-content: flex-end; position: relative; margin-bottom: 25px; z-index: 50;">
+        <div id="appProfileTrigger" style="display: flex; align-items: center; gap: 12px; cursor: pointer; background: var(--surface-color); padding: 8px 16px; border-radius: 30px; border: 1px solid var(--border); box-shadow: var(--shadow); transition: 0.2s;">
+            <img id="appUserAvatarImg" src="" alt="User Avatar" style="width: 35px; height: 35px; border-radius: 50%; display: none; object-fit: cover;">
+            <div id="appUserAvatarFallback" style="background: var(--primary); color: white; border-radius: 50%; width: 35px; height: 35px; display: flex; justify-content: center; align-items: center; font-size: 18px;">👤</div>
+            <div style="text-align: right;">
+                <strong id="appUserNameDisplay" style="color: var(--text-main); font-size: 0.95em; display: block;">Loading...</strong>
+                <small style="color: var(--text-muted); font-size: 0.75em;">Premium Account ▾</small>
+            </div>
+        </div>
+
+        <div id="appProfileDropdown" style="display: none; position: absolute; top: 60px; right: 0; background: var(--surface-color); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); width: 220px; z-index: 100;">
+            <ul style="list-style: none; padding: 5px 0; margin: 0;">
+                <li>
+                    <button onclick="window.openProfileModal()" style="width: 100%; text-align: left; padding: 12px 20px; background: none; border: none; color: var(--text-main); cursor: pointer; font-size: 14px; transition: 0.2s;" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='none'">
+                        ✏️ Edit Profile
+                    </button>
+                </li>
+                <hr style="border: 0; border-top: 1px solid var(--border); margin: 0;">
+                <li>
+                    <button id="logoutBtnApp" onclick="window.forceLogout(event)" style="width: 100%; text-align: left; padding: 12px 20px; background: none; border: none; color: var(--danger); cursor: pointer; font-size: 14px; font-weight: bold; transition: 0.2s;" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'" onmouseout="this.style.background='none'">
+                        🚪 Logout
+                    </button>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="app-container">
+        <header>
+            <h1>Suppa Budgetor 🍀</h1>
+            <div class="controls">
+                <button onclick="window.toggleTheme()" title="Toggle Theme">🌓 Theme</button>
+            </div>
+        </header>
+
+        <nav>
+            <button class="active" onclick="window.switchTab('home')">Overview</button>
+            <button onclick="window.switchTab('summaries')">Summaries</button>
+            <button onclick="window.switchTab('budget')">Budget</button>
+            <button onclick="window.switchTab('entry')">Log Entry</button>
+            <button onclick="window.switchTab('analytics')">Analytics</button>
+            <button onclick="window.switchTab('savings')">Portfolio</button>
+            <button onclick="window.switchTab('utilities')">Utilities 🛠️</button>
+            <button onclick="window.switchTab('help')">Help 📞</button>
+            <button onclick="window.switchTab('instructions')">Instructions 💡</button>
+        </nav>
+
+        <div id="home" class="tab-content active">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>Financial Overview</h2>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="window.changeMonth(-1)">⬅</button>
+                    <span id="current-month-display" style="font-weight: 800; font-size: 18px; min-width: 150px; text-align: center; color: var(--primary);"></span>
+                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="window.changeMonth(1)">➡</button>
+                </div>
+            </div>
+            
+            <div class="summary-cards">
+                <div class="card">
+                    <h3>Total Income + Rollover</h3>
+                    <div class="value" id="top-income">KES 0.00</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;" id="top-rollover-text">Includes 0.00 rollover</div>
+                </div>
+                <div class="card">
+                    <h3>Target Budget</h3>
+                    <div class="value" id="top-budget">KES 0.00</div>
+                </div>
+                <div class="card">
+                    <h3>Actual Spent & Saved</h3>
+                    <div class="value" id="top-spent">KES 0.00</div>
+                </div>
+                <div class="card">
+                    <h3>Surplus / Deficit</h3>
+                    <div class="value" id="top-surplus">KES 0.00</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">(Total Budgeted - Actual Spent)</div>
+                </div>
+                <div class="card" style="border-top-color: var(--success);">
+                    <h3>Amount Unassigned</h3>
+                    <div class="value" id="top-unassigned">KES 0.00</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">(Available Cash - Actual Spent & Saved)</div>
+                </div>
+            </div>
+
+            <div class="flex-between" style="margin-top: 25px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
+                <h3 style="color: var(--primary); margin: 0;">Income Summary</h3>
+            </div>
+            <div style="overflow-x: auto;">
+                <table id="income-table">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>Actual Received (KES)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="income-body"></tbody>
+                    <tfoot>
+                        <tr>
+                            <th style="font-size: 14px;">Total Income</th>
+                            <th id="bottom-line-income" style="font-size: 14px; color: var(--primary);">KES 0.00</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+        <div id="summaries" class="tab-content">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>Detailed Summaries</h2>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="window.changeMonth(-1)">⬅</button>
+                    <span id="current-month-display-summaries" style="font-weight: 800; font-size: 18px; min-width: 150px; text-align: center; color: var(--primary);"></span>
+                    <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="window.changeMonth(1)">➡</button>
+                </div>
+            </div>
+
+            <div class="flex-between" style="margin-top: 25px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
+                <h3 style="color: var(--primary); margin: 0;">Category Performance</h3>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <label style="font-size: 13px; font-weight: 700; color: var(--text-muted);">Category Filter:</label>
+                    <select id="summary-cat-filter" onchange="window.updateUI()" style="padding: 6px; border-radius: 8px; border: 1px solid var(--border); width: auto;">
+                        <option value="ALL">All Categories</option>
+                    </select>
+                    
+                    <label style="font-size: 13px; font-weight: 700; color: var(--text-muted);">Actual Spent:</label>
+                    <select id="summary-spent-filter" onchange="window.updateUI()" style="padding: 6px; border-radius: 8px; border: 1px solid var(--border); width: auto;">
+                        <option value="ALL">All Amounts</option>
+                        <option value="ZERO">Zero Spent Only</option>
+                        <option value="NON_ZERO">Spent > 0 Only</option>
+                        <option value="UNDER_BUDGET">Not Fully Expensed</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex-between" style="margin-top: 10px;">
+                <p style="color: var(--text-muted); font-size: 13px; margin: 0;">Click an <b>Expense Name</b> to view all matching records in the detailed ledger.</p>
+                <button class="btn-primary" onclick="window.exportTableToExcel('performance-table', 'Category_Performance')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download XLSX</button>
+            </div>
+            
+            <div style="overflow-x: auto; margin-top: 10px;">
+                <table id="performance-table">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Target Budget (KES)</th>
+                            <th>Actual Spent (KES)</th>
+                            <th>Variance</th>
+                            <th>Var %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="performance-body"></tbody>
+                    <tfoot>
+                        <tr style="background: rgba(5,150,105,0.1);">
+                            <th colspan="3" style="font-size: 14px;">Filtered Totals</th>
+                            <th id="perf-bottom-line-budget" style="font-size: 14px;">0.00</th>
+                            <th id="perf-bottom-line-actual" style="font-size: 14px;">0.00</th>
+                            <th id="perf-bottom-line-variance" colspan="2" style="font-size: 14px;">0.00</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <div class="flex-between" style="margin-top: 40px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
+                <h3 style="color: var(--primary); margin: 0;">Transactions Log</h3>
+                <button class="btn-primary" onclick="window.toggleTransactionsLog()" style="width: auto; padding: 6px 12px; margin: 0; font-size: 13px;">👁️ View Detailed List</button>
+            </div>
+
+            <div id="detailed-transactions-section" class="hidden" style="margin-top: 15px; border: 1px solid var(--border); border-radius: var(--radius); padding: 15px; background: rgba(5,150,105,0.02);">
+                <div class="flex-between" style="margin-bottom: 10px;">
+                    <p style="color: var(--text-muted); font-size: 13px; margin: 0; font-weight:bold;">Page <span id="tx-page-indicator">1</span></p>
+                    <button class="btn-primary" onclick="window.exportFilteredTransactions()" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download All (XLSX)</button>
+                </div>
+                
+                <div style="overflow-x: auto;">
+                    <table id="transactions-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Category</th>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Amount (KES)</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transactions-body"></tbody>
+                    </table>
+                </div>
+
+                <div class="flex-between" style="margin-top: 15px; justify-content:center; gap: 20px;">
+                    <button class="btn-primary" id="tx-prev-btn" onclick="window.changeTxPage(-1)" style="width: auto; padding: 6px 15px; margin: 0;">&laquo; Previous</button>
+                    <button class="btn-primary" id="tx-next-btn" onclick="window.changeTxPage(1)" style="width: auto; padding: 6px 15px; margin: 0;">Next &raquo;</button>
+                </div>
+            </div>
+            </div>
+
+        <div id="budget" class="tab-content">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>Set Monthly Target Budgets</h2>
+                <div>
+                    <label style="font-size: 13px; font-weight: 700; color: var(--text-muted); margin-right: 10px;">Viewing Month:</label>
+                    <input type="month" id="budget-month-picker" onchange="window.renderBudgetSetup()" style="width: auto; padding: 6px; border-radius: 8px; border: 1px solid var(--border); display: inline-block;">
+                </div>
+            </div>
+            <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
+                Budgets set here automatically roll forward to future months.
+            </p>
+
+            <form id="budget-form" onsubmit="window.saveSingleBudget(event)" style="margin-top: 15px; padding-bottom: 20px; border-bottom: 2px solid var(--border);">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Category (Required)</label>
+                        <input type="text" id="budget-category" list="budget-cat-memory" required placeholder="Select or type..." autocomplete="off">
+                        <datalist id="budget-cat-memory"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>Item Name (Optional)</label>
+                        <input type="text" id="budget-name" list="budget-name-memory" placeholder="Leave blank for general category budget" autocomplete="off">
+                        <datalist id="budget-name-memory"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>Target Amount (KES)</label>
+                        <input type="number" id="budget-amount" step="0.01" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn-primary" id="budget-submit-btn" style="margin-top: 10px;">Add / Update Budget</button>
+            </form>
+
+            <div class="flex-between" style="margin-top: 25px; margin-bottom: 15px;">
+                <h3 style="color: var(--primary); margin: 0;">Active Budgets for Selected Month</h3>
+            </div>
+            <div style="overflow-x: auto;">
+                <table id="budget-setup-table" style="min-width: 100%;">
+                    <thead>
+                        <tr>
+                            <th style="width: 50%;">Category</th>
+                            <th style="width: 30%;">Target Amount (KES)</th>
+                            <th style="width: 20%;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="budget-setup-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="entry" class="tab-content">
+            <h2>Log / Edit Transaction</h2>
+            <div class="card" style="margin-top: 15px; margin-bottom: 25px; border-left: 4px solid var(--success);">
+                <h3 style="color: var(--success); margin-bottom: 8px;">🤖 Smart M-Pesa Paste</h3>
+                <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">Paste your M-Pesa SMS below to instantly auto-fill the form below!</p>
+                <textarea id="mpesa-paste-box" placeholder="e.g. OHE0000000 Confirmed. Ksh1,500.00 paid to JAVA HOUSE..." style="width: 100%; height: 60px; padding: 10px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px;"></textarea>
+            </div>
+
+            <form id="tx-form" onsubmit="window.saveTransaction(event)" style="margin-top: 15px;">
+                <input type="hidden" id="tx-id"> 
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Transaction Name</label>
+                        <input type="text" id="tx-name" list="tx-memory" required placeholder="e.g. Uber" autocomplete="off">
+                        <datalist id="tx-memory"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>Type</label>
+                        <select id="tx-type" onchange="window.handleTypeChange('tx')">
+                            <option value="Expense">Expense</option>
+                            <option value="Income">Income</option>
+                            <option value="Savings">Savings (Portfolio)</option>
+                        </select>
+                    </div>
+                    <div class="form-group hidden" id="tx-savings-action-group">
+                        <label>Action</label>
+                        <select id="tx-savings-action">
+                            <option value="Savings-Deposit">Deposit (Save Cash)</option>
+                            <option value="Savings-Withdrawal">Withdraw (Use Saved Cash)</option>
+                            <option value="Starting-Balance">Set Starting Balance (Initial Funds)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label id="tx-category-label">Category</label>
+                        <div style="display: flex; gap: 5px;">
+                            <select id="tx-category-icon" style="width: 75px; padding: 10px 5px; font-size: 18px;" title="Select an icon">
+                                <option value="🏷️">🏷️</option><option value="🍔">🍔</option><option value="🚌">🚌</option>
+                                <option value="🛒">🛒</option><option value="🏠">🏠</option><option value="📚">📚</option>
+                                <option value="🍿">🍿</option><option value="🏥">🏥</option><option value="✈️">✈️</option>
+                                <option value="👗">👗</option><option value="🐾">🐾</option><option value="🎁">🎁</option>
+                                <option value="⚡">⚡</option><option value="📱">📱</option><option value="💻">💻</option>
+                                <option value="💰">💰</option><option value="📈">📈</option><option value="🐖">🐖</option>
+                                <option value="👶">👶</option><option value="🛠️">🛠️</option><option value="💼">💼</option>
+                                <option value="🚑">🚑</option><option value="🕊️">🕊️</option>
+                            </select>
+                            <input type="text" id="tx-category" list="cat-memory" required placeholder="Select or type new..." autocomplete="off" style="flex: 1;" onchange="window.autoSelectIcon('tx')">
+                        </div>
+                        <datalist id="cat-memory"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" id="tx-date" required>
+                    </div>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Unit Amount / Foreign FX</label>
+                        <input type="number" id="tx-actual" step="0.01" required oninput="window.calcKES('tx')" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Quantity</label>
+                        <input type="number" id="tx-qty" step="0.01" value="1" oninput="window.calcKES('tx')" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>FX Conversion Rate</label>
+                        <input type="number" id="tx-fx" step="0.01" value="1" oninput="window.calcKES('tx')" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Total Value (KES)</label>
+                        <input type="number" id="tx-kes" step="0.01" readonly style="background: rgba(5,150,105, 0.1); font-weight: bold; color: var(--primary);">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Notes</label>
+                    <input type="text" id="tx-notes" placeholder="Any extra details...">
+                </div>
+                <button type="submit" class="btn-primary" id="tx-submit-btn" style="margin-top: 15px;">Add to Ledger</button>
+            </form>
+        </div>
+
+        <div id="analytics" class="tab-content">
+            <div class="flex-between">
+                <h2>Analytics & Insights</h2>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <select id="analytics-period" onchange="window.updateAnalytics()">
+                        <option value="MTD">Month-to-Date</option>
+                        <option value="QTD">Quarter-to-Date</option>
+                        <option value="YTD">Year-to-Date</option>
+                        <option value="ALL">All Time</option>
+                    </select>
+                    <select id="analytics-cat-filter" onchange="window.updateCharts()">
+                        <option value="ALL">All Categories</option>
+                    </select>
+                    <select id="analytics-name-filter" onchange="window.updateCharts()">
+                        <option value="ALL">All Expenses</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="summary-cards" style="margin-top: 20px;">
+                <div class="card">
+                    <h3>Savings Target (30%)</h3>
+                    <div class="value" id="stat-target">0%</div>
+                </div>
+                <div class="card">
+                    <h3>Life Inflation (MoM Expense Growth)</h3>
+                    <div class="value" id="stat-inflation">0%</div>
+                </div>
+            </div>
+            
+            <div class="analytics-grid">
+                <div class="card">
+                    <h3>Expense Distribution</h3>
+                    <div class="chart-container">
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Budget vs Actual (Filtered)</h3>
+                    <div class="chart-container">
+                        <canvas id="barChart"></canvas>
+                    </div>
+                </div>
+                <div class="card" style="grid-column: 1 / -1;">
+                    <div class="flex-between">
+                        <h3>Expense Inflation Tracker (%)</h3>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <select id="inflation-expense-filter" onchange="window.updateInflationChart()">
+                                <option value="ALL">All Expenses</option>
+                            </select>
+                            <select id="inflation-interval" onchange="window.updateInflationChart()">
+                                <option value="Monthly">Monthly</option>
+                                <option value="Quarterly">Quarterly</option>
+                                <option value="Half-Year">Half-Year</option>
+                                <option value="Yearly">Yearly</option>
+                                <option value="MTD">MTD (Historical)</option>
+                                <option value="QTD">QTD (Historical)</option>
+                                <option value="YTD">YTD (Historical)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="chart-container" style="height: 400px;">
+                        <canvas id="inflationChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="savings" class="tab-content">
+            <div class="flex-between">
+                <h2>Savings & Investments Portfolio</h2>
+            </div>
+            
+            <p style="color: var(--text-muted); font-size: 14px; margin-top: 10px; margin-bottom: 20px;">
+                Your portfolio balances. To create a new account or adjust an opening balance, use the <b>Log Entry</b> tab and select Type: Savings > Action: Opening Account Balance.
+            </p>
+
+            <div class="flex-between" style="margin-top: 20px; margin-bottom: 15px;">
+                <h3 style="margin: 0;">Current Portfolio View</h3>
+                <button class="btn-primary" onclick="window.exportTableToExcel('portfolio-table', 'Portfolio_Summary')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download XLSX</button>
+            </div>
+            <div style="overflow-x: auto;">
+                <table id="portfolio-table">
+                    <thead>
+                        <tr>
+                            <th>Account Type</th>
+                            <th>Opening Balance</th>
+                            <th>Net Movements (MTD)</th>
+                            <th>Current Total</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="portfolio-body"></tbody>
+                    <tfoot>
+                        <tr style="background: rgba(5,150,105,0.1);">
+                            <th style="font-size: 14px;">Grand Totals</th>
+                            <th id="port-total-start" style="font-size: 14px;">0.00</th>
+                            <th id="port-total-inflows" style="font-size: 14px;" class="positive">+0.00</th>
+                            <th id="port-total-current" style="font-size: 14px; color: var(--primary);">KES 0.00</th>
+                            <th></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <div class="flex-between" style="margin-top: 40px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
+                <h3 style="color: var(--primary); margin: 0;">Portfolio Ledger (MTD & Opening Balances)</h3>
+                <button class="btn-primary" onclick="window.exportTableToExcel('portfolio-ledger-table', 'Portfolio_Ledger')" style="width: auto; padding: 4px 10px; margin: 0; font-size: 12px;">⬇ Download Ledger</button>
+            </div>
+            <div style="overflow-x: auto; margin-top: 10px;">
+                <table id="portfolio-ledger-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Account / Category</th>
+                            <th>Name</th>
+                            <th>Action</th>
+                            <th>Amount (KES)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="portfolio-ledger-body"></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div id="utilities" class="tab-content">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>Utilities & Data Management</h2>
+            </div>
+            <div class="summary-cards" style="grid-template-columns: 1fr 1fr;">
+                <div class="card">
+                    <h3 style="color: var(--primary);">History Actions</h3>
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+                        <button class="btn-primary" onclick="window.undo()" style="margin: 0; padding: 12px;">↩ Undo Last Action</button>
+                        <button class="btn-primary" onclick="window.redo()" style="margin: 0; padding: 12px;">↪ Redo Action</button>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3 style="color: var(--primary);">Transactions & Portfolio</h3>
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+                        <button class="btn-primary" onclick="document.getElementById('import-csv').click()" style="margin: 0; padding: 12px;">📥 Import TX Data</button>
+                        <input type="file" id="import-csv" accept=".csv" style="display: none;" onchange="window.importCSV(event)">
+                        <button class="btn-primary" onclick="window.exportCSV()" style="margin: 0; padding: 12px;">💾 Export TX & Balances</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--primary);">Budgets</h3>
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+                        <button class="btn-primary" onclick="document.getElementById('import-budgets-csv').click()" style="margin: 0; padding: 12px;">📥 Import Budgets</button>
+                        <input type="file" id="import-budgets-csv" accept=".csv" style="display: none;" onchange="window.importBudgetCSV(event)">
+                        <button class="btn-primary" onclick="window.exportBudgetCSV()" style="margin: 0; padding: 12px;">💾 Export Budgets</button>
+                    </div>
+                </div>
+
+                <div class="card" style="border-top-color: var(--danger);">
+                    <h3 style="color: var(--danger);">Danger Zone</h3>
+                    <div style="margin-top: 15px;">
+                        <button class="btn-primary" onclick="window.resetData()" style="width: 100%; background: var(--danger); margin: 0; padding: 12px;">⚠ Factory Reset Data</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="help" class="tab-content">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>Help & Support 📞</h2>
+            </div>
+            <div class="summary-cards" style="grid-template-columns: 1fr;">
+                <div class="card">
+                    <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">Contact Us</h3>
+                    <p style="color: var(--text-main); font-size: 14px; line-height: 1.6; margin-bottom: 10px;">
+                        If you encounter any issues, have feature requests, or need assistance recovering data, please reach out to our dedicated support channel:
+                    </p>
+                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.8;">
+                        <li><b>Developer:</b> Realsur Global</li>
+                        <li><b>Phone Support:</b> <a href="tel:+254701275111" style="color: var(--primary); font-weight: bold; text-decoration: none;">+254 701 275 111</a></li>
+                        <li><b>Email Support:</b> <a href="mailto:realsurglobal@gmail.com" style="color: var(--primary); font-weight: bold; text-decoration: none;">realsurglobal@gmail.com</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div id="instructions" class="tab-content">
+            <div class="flex-between" style="margin-bottom: 15px;">
+                <h2>How to Use Suppa Budgetor</h2>
+            </div>
+            <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
+                Welcome to your personal, fully offline financial tracker. Because this app runs entirely inside your device's browser, your data is 100% private.
+            </p>
+
+            <div class="summary-cards" style="grid-template-columns: 1fr;">
+                <div class="card">
+                    <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">1. Setting Budgets</h3>
+                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
+                        <li>Go to the <b>Budget</b> tab to set your monthly targets.</li>
+                        <li>You can set a budget for an entire <b>Category</b> (e.g., Food), or leave the Expense Name blank to act as a general bucket.</li>
+                        <li>Budgets automatically <b>roll forward</b> to future months.</li>
+                    </ul>
+                </div>
+
+                <div class="card" style="border-top-color: #3b82f6;">
+                    <h3 style="color: #3b82f6; font-size: 16px; margin-bottom: 10px;">2. Portfolio & Savings Tracking</h3>
+                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
+                        <li><b>Creating Accounts & Initial Funds:</b> In the <i>Log Entry</i> tab, select Type: <b>Savings (Portfolio)</b>, and Action: <b>Opening Account Balance</b>. Type your account name in the Account Type box. This safely establishes your initial portfolio balance without altering your unassigned cash. You can log additional Opening Balances for the same account to increase its base value.</li>
+                        <li><b>Saving Money (Deposits):</b> In the <i>Log Entry</i> tab, select Action: <b>Deposit</b>. This registers as an expense (reducing your unassigned cash) and adds the money to the chosen Portfolio balance!</li>
+                        <li><b>Spending Savings (Withdrawals):</b> When you spend saved money, do it in two steps to avoid double-counting against your budget:
+                            <ol>
+                                <li>Log a <b>Savings</b> transaction with Action: <b>Withdrawal</b>. This removes the money from your portfolio and injects cash back into your <i>Amount Unassigned</i>.</li>
+                                <li>Log your actual purchase as a standard <b>Expense</b>.</li>
+                            </ol>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">3. Viewing & Editing Data</h3>
+                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
+                        <li>The <b>Summaries</b> tab breaks down your performance with dynamic filters.</li>
+                        <li><b>To Edit or Delete:</b> In the Summaries tab, scroll down to the <i>Transactions Log</i>. Click on any gold <b>Name</b> to quickly open the edit window.</li>
+                    </ul>
+                </div>
+
+                <div class="card" style="border-top-color: var(--danger);">
+                    <h3 style="color: var(--danger); font-size: 16px; margin-bottom: 10px;">4. Backups & Data Safety (Crucial!)</h3>
+                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
+                        <li>This app stores data entirely in your browser's local storage. <b>If you clear your browser history or cache, you will lose everything.</b></li>
+                        <li>Go to the <b>Utilities</b> tab to <b>Export (💾)</b> your data regularly.</li>
+                        <li>Your custom Portfolio accounts and Opening Balances are safely packed inside your main <b>TX (Transactions)</b> backup CSV! You only need to export <b>TX</b> and <b>Budgets</b>.</li>
+                        <li>To restore your data on a new device or browser, simply click the <b>Import (📥)</b> buttons and select your saved CSV files.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div> 
+
+<div id="edit-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <button class="modal-close" onclick="window.closeEditModal()">Close</button>
+        <h2 style="color: var(--primary); margin-bottom: 15px;">Edit Transaction</h2>
+        <form id="edit-tx-form" onsubmit="window.updateTransaction(event)">
+            <input type="hidden" id="edit-tx-id">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Transaction Name</label>
+                    <input type="text" id="edit-tx-name" required autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label>Type</label>
+                    <select id="edit-tx-type" onchange="window.handleTypeChange('edit-tx')">
+                        <option value="Expense">Expense</option>
+                        <option value="Income">Income</option>
+                        <option value="Savings">Savings (Portfolio)</option>
+                    </select>
+                </div>
+                <div class="form-group hidden" id="edit-tx-savings-action-group">
+                    <label>Action</label>
+                    <select id="edit-tx-savings-action">
+                        <option value="Savings-Deposit">Deposit (Save Cash)</option>
+                        <option value="Savings-Withdrawal">Withdraw (Use Saved Cash)</option>
+                        <option value="Starting-Balance">Set Starting Balance (Initial Funds)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label id="edit-tx-category-label">Category</label>
+                    <div style="display: flex; gap: 5px;">
+                        <select id="edit-tx-category-icon" style="width: 75px; padding: 10px 5px; font-size: 18px;" title="Select an icon">
+                            <option value="🏷️">🏷️</option><option value="🍔">🍔</option><option value="🚌">🚌</option>
+                            <option value="🛒">🛒</option><option value="🏠">🏠</option><option value="📚">📚</option>
+                            <option value="🍿">🍿</option><option value="🏥">🏥</option><option value="✈️">✈️</option>
+                            <option value="👗">👗</option><option value="🐾">🐾</option><option value="🎁">🎁</option>
+                            <option value="⚡">⚡</option><option value="📱">📱</option><option value="💻">💻</option>
+                            <option value="💰">💰</option><option value="📈">📈</option><option value="🐖">🐖</option>
+                            <option value="👶">👶</option><option value="🛠️">🛠️</option><option value="💼">💼</option>
+                            <option value="🚑">🚑</option><option value="🕊️">🕊️</option>
+                        </select>
+                        <input type="text" id="edit-tx-category" list="edit-cat-memory" required autocomplete="off" style="flex: 1;" onchange="window.autoSelectIcon('edit-tx')">
+                    </div>
+                    <datalist id="edit-cat-memory"></datalist>
+                </div>
+                <div class="form-group">
+                    <label>Date</label>
+                    <input type="date" id="edit-tx-date" required>
+                </div>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Unit Amount</label>
+                    <input type="number" id="edit-tx-actual" step="0.01" required oninput="window.calcKES('edit-tx')" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Quantity</label>
+                    <input type="number" id="edit-tx-qty" step="0.01" required oninput="window.calcKES('edit-tx')" min="0">
+                </div>
+                <div class="form-group">
+                    <label>FX</label>
+                    <input type="number" id="edit-tx-fx" step="0.01" required oninput="window.calcKES('edit-tx')" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Total Value (KES)</label>
+                    <input type="number" id="edit-tx-kes" step="0.01" readonly style="background: rgba(5,150,105,0.1); font-weight:bold;">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Notes</label>
+                <input type="text" id="edit-tx-notes">
+            </div>
+            <div class="flex-between">
+                <button type="submit" class="btn-primary" style="width: auto;">Save Changes</button>
+                <button type="button" class="btn-primary" style="width: auto; background: var(--danger);" onclick="window.deleteEditTx()">Delete Entry</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="ledger-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <button class="modal-close" onclick="window.closeLedger()">Close</button>
+        <h2 id="ledger-title" style="color: var(--primary); margin-bottom: 15px;">Detailed Ledger</h2>
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Name</th>
+                        <th>Amount (KES)</th>
+                        <th>Notes</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="ledger-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="edit-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <button class="modal-close" onclick="window.closeEditModal()">Close</button>
+        <h2 style="color: var(--primary); margin-bottom: 15px;">Edit Transaction</h2>
+        <form id="edit-tx-form" onsubmit="window.updateTransaction(event)">
+            <input type="hidden" id="edit-tx-id">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Transaction Name</label>
+                    <input type="text" id="edit-tx-name" required autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label>Type</label>
+                    <select id="edit-tx-type" onchange="window.handleTypeChange('edit-tx')">
+                        <option value="Expense">Expense</option>
+                        <option value="Income">Income</option>
+                        <option value="Savings">Savings (Portfolio)</option>
+                    </select>
+                </div>
+                <div class="form-group hidden" id="edit-tx-savings-action-group">
+                    <label>Action</label>
+                    <select id="edit-tx-savings-action">
+                        <option value="Savings-Deposit">Deposit (Save Cash)</option>
+                        <option value="Savings-Withdrawal">Withdraw (Use Saved Cash)</option>
+                        <option value="Starting-Balance">Set Starting Balance (Initial Funds)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label id="edit-tx-category-label">Category</label>
+                    <div style="display: flex; gap: 5px;">
+                        <select id="edit-tx-category-icon" style="width: 75px; padding: 10px 5px; font-size: 18px;" title="Select an icon">
+                            <option value="🏷️">🏷️</option><option value="🍔">🍔</option><option value="🚌">🚌</option>
+                            <option value="🛒">🛒</option><option value="🏠">🏠</option><option value="📚">📚</option>
+                            <option value="🍿">🍿</option><option value="🏥">🏥</option><option value="✈️">✈️</option>
+                            <option value="👗">👗</option><option value="🐾">🐾</option><option value="🎁">🎁</option>
+                            <option value="⚡">⚡</option><option value="📱">📱</option><option value="💻">💻</option>
+                            <option value="💰">💰</option><option value="📈">📈</option><option value="🐖">🐖</option>
+                            <option value="👶">👶</option><option value="🛠️">🛠️</option><option value="💼">💼</option>
+                            <option value="🚑">🚑</option><option value="🕊️">🕊️</option>
+                        </select>
+                        <input type="text" id="edit-tx-category" list="edit-cat-memory" required autocomplete="off" style="flex: 1;" onchange="window.autoSelectIcon('edit-tx')">
+                    </div>
+                    <datalist id="edit-cat-memory"></datalist>
+                </div>
+                <div class="form-group">
+                    <label>Date</label>
+                    <input type="date" id="edit-tx-date" required>
+                </div>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Unit Amount</label>
+                    <input type="number" id="edit-tx-actual" step="0.01" required oninput="window.calcKES('edit-tx')" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Quantity</label>
+                    <input type="number" id="edit-tx-qty" step="0.01" required oninput="window.calcKES('edit-tx')" min="0">
+                </div>
+                <div class="form-group">
+                    <label>FX</label>
+                    <input type="number" id="edit-tx-fx" step="0.01" required oninput="window.calcKES('edit-tx')" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Total Value (KES)</label>
+                    <input type="number" id="edit-tx-kes" step="0.01" readonly style="background: rgba(5,150,105,0.1); font-weight:bold;">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Notes</label>
+                <input type="text" id="edit-tx-notes">
+            </div>
+            <div class="flex-between">
+                <button type="submit" class="btn-primary" style="width: auto;">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script src="app.js"></script>
+
+</body>
+</html>
