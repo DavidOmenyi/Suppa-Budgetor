@@ -1,45 +1,58 @@
 {
-  "name": "Suppa Budgetor: Smart Finance",
-  "short_name": "Budgetor",
-  "description": "Track spending, manage budgets, and auto-sync M-Pesa receipts in a 100% offline, fully private financial tracker.",
-  "start_url": "/index.html",
-  "display": "standalone",
   "background_color": "#f0fdf4",
+  "dir": "ltr",
+  "display": "standalone",
+  "name": "suppabudgetorapp",
+  "orientation": "any",
+  "scope": "/",
+  "short_name": "suppabudgetorapp",
+  "start_url": "/",
   "theme_color": "#059669",
-  "orientation": "portrait-primary",
-  "categories": ["finance", "productivity", "business"],
   "icons": [
     {
-      "src": "app-icon.png",
-      "sizes": "192x192 512x512",
+      "src": "https://suppabudgetorapp.com/app-icon.png",
       "type": "image/png",
-      "purpose": "any maskable"
+      "sizes": "512x512",
+      "isSquare": true,
+      "isPng": true,
+      "isWebp": false,
+      "isJpg": false,
+      "width": 512,
+      "is512x512": true,
+      "is256x256": false,
+      "is192x192": false
     }
-  ]
+  ],
   "screenshots": [
     {
-      "src": "desktop-screenshot-1.png",
+      "src": "https://suppabudgetorapp.com/desktop-screenshot-1.png",
+      "type": "image/png",
+      "sizes": "1920x1040",
+      "form_factor": "wide"
+    },
+    {
+      "src": "https://suppabudgetorapp.com/desktop-screenshot-2.png",
       "sizes": "1920x1040",
       "type": "image/png",
       "form_factor": "wide"
     },
     {
-      "src": "desktop-screenshot-2.png",
-      "sizes": "1920x1040",
-      "type": "image/png",
-      "form_factor": "wide"
-    },
-    {
-      "src": "mobile-screenshot-1.jpg",
+      "src": "https://suppabudgetorapp.com/mobile-screenshot-1.jpg",
       "sizes": "819x1600",
       "type": "image/jpg",
       "form_factor": "narrow"
     },
     {
-      "src": "mobile-screenshot-2.jpg",
+      "src": "https://suppabudgetorapp.com/mobile-screenshot-2.jpg",
       "sizes": "819x1600",
       "type": "image/jpg",
       "form_factor": "narrow"
     }
+  ],
+  "id": "suppabudgetorapp",
+  "description": "Track spending, manage budgets, and auto-sync M-Pesa receipts in a 100% offline, fully private financial tracker.",
+  "categories": [
+    "business",
+    "finance"
   ]
 }
