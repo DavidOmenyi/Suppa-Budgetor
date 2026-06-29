@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline - Suppa Budgetor</title>
+    <style>
+        body {
+            background-color: #f0fdf4;
+            color: #064e3b;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+            padding: 20px;
+        }
+        h1 {
+            color: #059669;
+            font-weight: 800;
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+        p {
+            color: #475569;
+            font-size: 1rem;
+            max-width: 400px;
+            line-height: 1.5;
+            margin-bottom: 30px;
+        }
+        .btn {
+            background: linear-gradient(135deg, #059669, #047857);
+            color: #fff;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+            transition: 0.3s;
+            text-decoration: none;
+        }
+        .btn:hover {
+            box-shadow: 0 10px 15px -3px rgba(5, 150, 105, 0.2);
+            transform: translateY(-2px);
+        }
+        .icon {
+            font-size: 60px;
+            margin-bottom: 10px;
+            filter: grayscale(100%);
+        }
+    </style>
+</head>
+<body>
+    <div class="icon">🦖</div>
+    <h1>You are offline</h1>
+    <p>It looks like you've lost your internet connection. Don't worry, because you are using Suppa Budgetor, all your financial data is perfectly safe on your device!</p>
+    <button class="btn" onclick="window.location.reload()">Try Reconnecting</button>
+</body>
+</html>
