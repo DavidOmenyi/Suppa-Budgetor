@@ -1,11 +1,13 @@
 {
-  "name": "Suppa Budgetor",
-  "short_name": "SuppaBudgetor",
-  "description": "A sleek, modern budgeting and financial tracking tool.",
-  "start_url": "index.html",
+  "name": "Suppa Budgetor: Smart Finance",
+  "short_name": "Budgetor",
+  "description": "Track spending, manage budgets, and auto-sync M-Pesa receipts in a 100% offline, fully private financial tracker.",
+  "start_url": "/index.html",
   "display": "standalone",
   "background_color": "#f0fdf4",
   "theme_color": "#059669",
+  "orientation": "portrait-primary",
+  "categories": ["finance", "productivity", "business"],
   "icons": [
     {
       "src": "app-icon.png",
