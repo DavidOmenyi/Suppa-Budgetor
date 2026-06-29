@@ -1,9 +1,9 @@
 // Bumped version number to force browsers to update the cache
-const CACHE_NAME = 'suppa-budgetor-v3'; 
+const CACHE_NAME = 'suppa-budgetor-v4'; 
 const ASSETS_TO_CACHE = [
     '/',
     '/index.html',
-    '/app.source.js',
+    '/app.js',
     '/manifest.json',
     '/offline.html', /* ADDED OFFLINE PAGE HERE */
     '/app-icon.png',
