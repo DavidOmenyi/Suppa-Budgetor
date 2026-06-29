@@ -1,17 +1,32 @@
 {
-  "name": "Suppa Budgetor",
-  "short_name": "SuppaBudgetor",
-  "description": "A sleek, modern budgeting and financial tracking tool.",
-  "start_url": "index.html",
-  "display": "standalone",
   "background_color": "#f0fdf4",
+  "dir": "ltr",
+  "display": "standalone",
+  "name": "suppabudgetorapp",
+  "orientation": "any",
+  "scope": "/",
+  "short_name": "suppabudgetorapp",
+  "start_url": "/",
   "theme_color": "#059669",
   "icons": [
     {
-      "src": "app-icon.png",
-      "sizes": "192x192 512x512",
+      "src": "https://suppabudgetorapp.com/app-icon.png",
       "type": "image/png",
-      "purpose": "any maskable"
+      "sizes": "512x512",
+      "isSquare": true,
+      "isPng": true,
+      "isWebp": false,
+      "isJpg": false,
+      "width": 512,
+      "is512x512": true,
+      "is256x256": false,
+      "is192x192": false
     }
+  ],
+  "id": "suppabudgetorapp",
+  "description": "Track spending, manage budgets, and auto-sync M-Pesa receipts in a 100% offline, fully private financial tracker.",
+  "categories": [
+    "business",
+    "finance"
   ]
 }
