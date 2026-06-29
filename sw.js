@@ -3,8 +3,10 @@ const ASSETS_TO_CACHE = [
     '/',
     '/index.html',
     '/app.source.js',
-    '/manifest.json'
-    // Add any icons or images here if you have them, e.g., '/app-icon.png'
+    '/manifest.json',
+    '/app-icon.png',
+    '/screenshot-mobile.png',
+    '/screenshot-desktop.png'
 ];
 
 // Install Event: Cache files
