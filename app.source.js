@@ -1,3 +1,4 @@
+console.log("App script is loading...");
 // ==========================================
 // 1. SUPABASE AUTH & CONFIGURATION
 // ==========================================
