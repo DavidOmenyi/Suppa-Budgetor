@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.suppabudgetorapp.twa",
+        "sha256_cert_fingerprints": ["26:27:18:51:E8:64:FD:C7:DA:BC:66:1D:47:C3:51:24:76:86:31:82:BD:BB:B6:34:FB:4E:CB:9D:F9:9E:7B:23"]
+      }
+    }]
