@@ -84,30 +84,66 @@ window.updateProfileUI = function(displayName, avatarUrl) {
 };
 
 window.initializeApp = async function() {
-    const { data: { user } } = await supabaseClient.auth.getUser();
-    if (!user) {
-        window.location.href = 'login.html';
-        return;
+    try {
+        const { data: { session }, error } = await supabaseClient.auth.getSession();
+        
+        if (error || !session || !session.user) {
+            window.location.href = 'login.html';
+            return;
+        }
+        
+        currentUser = session.user;
+        const metadata = currentUser.user_metadata || {};
+        
+        // CRASH PREVENTER: Safely extract default name even for phone logins
+        let defaultName = "User";
+        if (currentUser.email) {
+            defaultName = currentUser.email.split('@')[0];
+        } else if (currentUser.phone) {
+            defaultName = currentUser.phone;
+        }
+        
+        const displayName = metadata.display_name || metadata.full_name || defaultName;
+        const avatarUrl = metadata.avatar_url || metadata.picture || '';
+        
+        window.updateProfileUI(displayName, avatarUrl);
+        window.checkPremiumStatus();
+    } catch (err) {
+        console.error("Auth init error:", err);
+        // Fallback for offline mode: Use local cache so app doesn't stay blank
+        let fallbackName = localStorage.getItem('suppa_local_name') || "Offline User";
+        window.updateProfileUI(fallbackName, "");
+        window.checkPremiumStatus(); 
     }
-    
-    currentUser = user;
-    const metadata = currentUser.user_metadata || {};
-    const displayName = metadata.display_name || metadata.full_name || currentUser.email.split('@')[0];
-    const avatarUrl = metadata.avatar_url || metadata.picture || '';
-    
-    window.updateProfileUI(displayName, avatarUrl);
-    window.checkPremiumStatus();
 };
 
 window.checkPremiumStatus = async function() {
-    const { data, error } = await supabaseClient
-        .from('profiles')
-        .select('is_premium')
-        .eq('id', currentUser.id)
-        .single();
-        
-    if (data && data.is_premium === true) window.unlockApp();
-    else window.lockApp();
+    try {
+        if (!currentUser) {
+            window.lockApp();
+            return;
+        }
+        const { data, error } = await supabaseClient
+            .from('profiles')
+            .select('is_premium')
+            .eq('id', currentUser.id)
+            .single();
+            
+        if (data && data.is_premium === true) {
+            localStorage.setItem('suppa_premium_cache', 'true');
+            window.unlockApp();
+        } else {
+            localStorage.setItem('suppa_premium_cache', 'false');
+            window.lockApp();
+        }
+    } catch (err) {
+        console.warn("Offline or profile check failed. Using cache.");
+        if (localStorage.getItem('suppa_premium_cache') === 'true') {
+            window.unlockApp();
+        } else {
+            window.lockApp();
+        }
+    }
 };
 
 window.unlockApp = function() {
@@ -127,6 +163,7 @@ window.lockApp = function() {
 
 window.startPollingDatabase = function() {
     pollingInterval = setInterval(async () => {
+        if (!currentUser) return; // Prevent crash if user is null
         const { data } = await supabaseClient.from('profiles').select('is_premium').eq('id', currentUser.id).single();
         if (data && data.is_premium === true) window.unlockApp();
     }, 3000); 
@@ -143,39 +180,71 @@ window.startPollingDatabase = function() {
 };
 
 window.openProfileModal = function() {
-    const metadata = currentUser.user_metadata || {};
-    document.getElementById('profile-name-input').value = metadata.display_name || metadata.full_name || currentUser.email.split('@')[0];
-    document.getElementById('profile-avatar-input').value = metadata.avatar_url || metadata.picture || '';
+    const nameInput = document.getElementById('profile-name-input');
+    const avatarInput = document.getElementById('profile-avatar-input');
+    const modal = document.getElementById('profile-modal');
+    
+    // Safety check: Prevent app crash if HTML is missing
+    if (!modal || !nameInput || !avatarInput) return;
+
+    const metadata = currentUser && currentUser.user_metadata ? currentUser.user_metadata : {};
+    
+    // Safety check for fallback name
+    let fallbackName = "User";
+    if (currentUser && currentUser.email) fallbackName = currentUser.email.split('@')[0];
+    else if (currentUser && currentUser.phone) fallbackName = currentUser.phone;
+
+    nameInput.value = metadata.display_name || metadata.full_name || fallbackName;
+    avatarInput.value = metadata.avatar_url || metadata.picture || '';
     
     const d1 = document.getElementById('profileDropdown');
     const d2 = document.getElementById('appProfileDropdown');
     if(d1) d1.style.display = 'none';
     if(d2) d2.style.display = 'none';
     
-    document.getElementById('profile-modal').classList.remove('hidden');
+    modal.classList.remove('hidden');
 };
 
-window.closeProfileModal = function() { document.getElementById('profile-modal').classList.add('hidden'); };
+window.closeProfileModal = function() { 
+    const modal = document.getElementById('profile-modal');
+    if(modal) modal.classList.add('hidden'); 
+};
 
 window.saveProfile = async function(e) {
     e.preventDefault();
     const btn = document.getElementById('save-profile-btn');
-    btn.textContent = "Saving..."; btn.disabled = true;
+    if(btn) { btn.textContent = "Saving..."; btn.disabled = true; }
 
-    const newName = document.getElementById('profile-name-input').value.trim();
-    const newAvatar = document.getElementById('profile-avatar-input').value.trim();
+    const nameInput = document.getElementById('profile-name-input');
+    const avatarInput = document.getElementById('profile-avatar-input');
+    
+    const newName = nameInput ? nameInput.value.trim() : "";
+    const newAvatar = avatarInput ? avatarInput.value.trim() : "";
 
     try {
-        const { data, error } = await supabaseClient.auth.updateUser({ data: { display_name: newName, avatar_url: newAvatar } });
+        if (!currentUser) throw new Error("No authenticated user to update.");
+
+        const { data, error } = await supabaseClient.auth.updateUser({ 
+            data: { display_name: newName, avatar_url: newAvatar } 
+        });
         if (error) throw error;
         
         currentUser = data.user; 
-        window.updateProfileUI(newName || currentUser.email.split('@')[0], newAvatar);
+        
+        // Safety check for fallback name
+        let fallbackName = "User";
+        if (currentUser && currentUser.email) fallbackName = currentUser.email.split('@')[0];
+        else if (currentUser && currentUser.phone) fallbackName = currentUser.phone;
+        
+        const finalName = newName || fallbackName;
+        localStorage.setItem('suppa_local_name', finalName); // Fallback memory
+        
+        window.updateProfileUI(finalName, newAvatar);
         window.closeProfileModal();
     } catch (err) {
         alert("Failed to update profile: " + err.message);
     } finally {
-        btn.textContent = "Save Profile"; btn.disabled = false;
+        if(btn) { btn.textContent = "Save Profile"; btn.disabled = false; }
     }
 };
 
@@ -186,13 +255,17 @@ window.forceLogout = async function(e) {
     window.location.href = 'login.html';
 };
 
-
 window.getIcon = function(cat) { return defaultIcons[cat] || (customMem.Icons && customMem.Icons[cat]) || '🏷️'; };
 
 window.autoSelectIcon = function(prefix) {
     const categoryInput = document.getElementById(prefix + '-category');
-    if (!categoryInput) return;
     
+    // Null check included to prevent silent crash
+    if (!categoryInput) {
+        console.warn(`Element ${prefix}-category not found.`);
+        return; 
+    }
+
     const cat = categoryInput.value.trim();
     const iconDropdown = document.getElementById(prefix + '-category-icon');
     if(cat && iconDropdown) {
@@ -295,7 +368,7 @@ window.toggleCategories = function(clearInput = true, typeId, inputId, listId) {
     const dl = document.getElementById(listId);
     const input = document.getElementById(inputId);
     
-    if (!typeEl) return; // Prevent crashes
+    if (!typeEl) return;
     const type = typeEl.value;
     
     if (clearInput && input) { input.value = ''; window.autoSelectIcon(inputId.split('-')[0]); }
@@ -315,7 +388,7 @@ window.handleTypeChange = function(prefix) {
     window.toggleCategories(true, prefix+'-type', prefix+'-category', prefix === 'tx' ? 'cat-memory' : 'edit-cat-memory');
     
     const typeEl = document.getElementById(prefix+'-type');
-    if(!typeEl) return; // Prevent crashes
+    if(!typeEl) return;
     const type = typeEl.value;
     
     const actionGroup = document.getElementById(prefix+'-savings-action-group');
@@ -510,9 +583,7 @@ window.deleteTxFast = function(id) {
     window.updateInflationChart();
 };
 
-// ==========================================
-// PAGINATED TRANSACTIONS LOG LOGIC
-// ==========================================
+// Pagination 
 window.toggleTransactionsLog = function() {
     const section = document.getElementById('detailed-transactions-section');
     if(!section) return;
