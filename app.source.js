@@ -786,13 +786,19 @@ window.editBudgetForm = function(cat, name, amount) {
 };
 
 window.deleteBudget = function(cat, name, monthStr) {
-    if(!confirm("Delete this budget allocation?")) return;
+    if(!confirm("Are you sure you want to stop this budget allocation from this month onwards?\n\n(Previous months will retain their historical budget records.)")) return;
     const key = `${cat}::${name}`;
-    if(categoryBudgets[monthStr] && categoryBudgets[monthStr][key] !== undefined) {
-        categoryBudgets[monthStr][key] = 0; 
-        localStorage.setItem('suppa_budgets_v2', JSON.stringify(categoryBudgets));
-        window.renderBudgetSetup(); window.updateUI(); window.updateCharts();
+    
+    // Ensure the current month object exists
+    if (!categoryBudgets[monthStr]) {
+        categoryBudgets[monthStr] = {};
     }
+    
+    // Explicitly set to 0 for the selected month to cap it and stop it rolling forward
+    categoryBudgets[monthStr][key] = 0; 
+    
+    localStorage.setItem('suppa_budgets_v2', JSON.stringify(categoryBudgets));
+    window.renderBudgetSetup(); window.updateUI(); window.updateCharts();
 };
 
 window.renderBudgetSetup = function() {
@@ -828,7 +834,7 @@ window.renderBudgetSetup = function() {
                     <td style="font-weight:bold;">${amt.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                     <td>
                         <button type="button" style="background:var(--accent); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer;" onclick="window.editBudgetForm('${cat.replace(/'/g,"\\'")}', '${name.replace(/'/g,"\\'")}', ${amt})">Edit</button>
-                        ${isExplicit ? `<button type="button" style="background:var(--danger); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; margin-left:5px;" onclick="window.deleteBudget('${cat.replace(/'/g,"\\'")}', '${name.replace(/'/g,"\\'")}', '${monthStr}')">Del</button>` : ''}
+                        <button type="button" style="background:var(--danger); color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; margin-left:5px;" onclick="window.deleteBudget('${cat.replace(/'/g,"\\'")}', '${name.replace(/'/g,"\\'")}', '${monthStr}')">Del</button>
                     </td>
                 </tr>
             `;
@@ -1197,7 +1203,17 @@ window.updateCharts = function(txList = null) {
             siEl.innerText = `${inflation > 0 ? '+':''}${inflation}%`;
             siEl.className = inflation <= 0 ? 'value positive' : 'value negative';
         }
-
+// New: Calculate MoM Income Growth
+        const currentInc = transactions.filter(t => t.date && new Date(t.date) >= thirtyDaysAgo && t.type === 'Income').reduce((s,t)=>s+t.kes,0);
+        const prevInc = transactions.filter(t => t.date && new Date(t.date) >= sixtyDaysAgo && new Date(t.date) < thirtyDaysAgo && t.type === 'Income').reduce((s,t)=>s+t.kes,0);
+        const incGrowth = prevInc ? (((currentInc - prevInc) / prevInc) * 100).toFixed(1) : (currentInc > 0 ? 100 : 0);
+        
+        const incEl = document.getElementById('stat-income-growth');
+        if(incEl) {
+            incEl.innerText = `${incGrowth > 0 ? '+':''}${incGrowth}%`;
+            // Income growth is positive (green), contraction is negative (red)
+            incEl.className = incGrowth >= 0 ? 'value positive' : 'value negative';
+        }
         let chartExpenses = expenses;
         if(catFilter !== 'ALL') chartExpenses = chartExpenses.filter(e => e.category === catFilter);
         if(nameFilter !== 'ALL') chartExpenses = chartExpenses.filter(e => e.name === nameFilter);
