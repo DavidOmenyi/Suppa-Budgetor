@@ -374,7 +374,22 @@
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Category (Required)</label>
-                        <input type="text" id="budget-category" list="budget-cat-memory" required placeholder="Select or type..." autocomplete="off">
+                        <div style="display: flex; gap: 5px;">
+                            <select id="budget-category-icon" style="width: 75px; padding: 10px 5px; font-size: 18px;" title="Select an icon">
+                                <option value="🏷️">🏷️</option><option value="🍔">🍔</option><option value="🚌">🚌</option>
+                                <option value="🛒">🛒</option><option value="🏠">🏠</option><option value="📚">📚</option>
+                                <option value="🍿">🍿</option><option value="🏥">🏥</option><option value="✈️">✈️</option>
+                                <option value="👗">👗</option><option value="🐾">🐾</option><option value="🎁">🎁</option>
+                                <option value="⚡">⚡</option><option value="📱">📱</option><option value="💻">💻</option>
+                                <option value="💰">💰</option><option value="📈">📈</option><option value="🐖">🐖</option>
+                                <option value="👶">👶</option><option value="🛠️">🛠️</option><option value="💼">💼</option>
+                                <option value="🚑">🚑</option><option value="🕊️">🕊️</option><option value="💸">💸</option>
+                                <option value="💆">💆</option><option value="🆘">🆘</option><option value="💵">💵</option>
+                                <option value="🏪">🏪</option><option value="🏦">🏦</option><option value="📦">📦</option>
+                                <option value="⚓">⚓</option><option value="💎">💎</option>
+                            </select>
+                            <input type="text" id="budget-category" list="budget-cat-memory" required placeholder="Select or type..." autocomplete="off" style="flex: 1;" onchange="window.autoSelectIcon('budget')">
+                        </div>
                         <datalist id="budget-cat-memory"></datalist>
                     </div>
                     <div class="form-group">
@@ -512,8 +527,12 @@
                     <div class="value" id="stat-target">0%</div>
                 </div>
                 <div class="card">
-                    <h3>Life Inflation (MoM Expense Growth)</h3>
+                    <h3>Life Inflation (MoM Expense)</h3>
                     <div class="value" id="stat-inflation">0%</div>
+                </div>
+                <div class="card">
+                    <h3>Income Growth (MoM)</h3>
+                    <div class="value" id="stat-income-growth">0%</div>
                 </div>
             </div>
             
