@@ -1192,9 +1192,10 @@ window.updateCharts = function(txList = null) {
             stEl.className = targetPct >= 30 ? 'value positive' : 'value negative';
         }
 
-        const infModeEl = document.getElementById('stat-inflation-filter');
+       const infModeEl = document.getElementById('stat-inflation-filter');
         const infMode = infModeEl ? infModeEl.value : 'rolling';
         
+        // We declare the variables exactly once here using 'let'
         let currentExp = 0, prevExp = 0, currentInc = 0, prevInc = 0;
         const now = new Date();
 
@@ -1205,6 +1206,7 @@ window.updateCharts = function(txList = null) {
             currentExp = transactions.filter(t => t.date && new Date(t.date) >= thirtyDaysAgo && t.type === 'Expense').reduce((s,t)=>s+t.kes,0);
             prevExp = transactions.filter(t => t.date && new Date(t.date) >= sixtyDaysAgo && new Date(t.date) < thirtyDaysAgo && t.type === 'Expense').reduce((s,t)=>s+t.kes,0);
             
+            // We assign values to the existing variables without using 'const' again
             currentInc = transactions.filter(t => t.date && new Date(t.date) >= thirtyDaysAgo && t.type === 'Income').reduce((s,t)=>s+t.kes,0);
             prevInc = transactions.filter(t => t.date && new Date(t.date) >= sixtyDaysAgo && new Date(t.date) < thirtyDaysAgo && t.type === 'Income').reduce((s,t)=>s+t.kes,0);
         } else {
