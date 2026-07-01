@@ -527,11 +527,20 @@
                     <div class="value" id="stat-target">0%</div>
                 </div>
                 <div class="card">
-                    <h3>Life Inflation (MoM Expense)</h3>
+                    <div class="flex-between" style="margin-bottom: 8px;">
+                        <h3 style="margin: 0;">Life Inflation</h3>
+                        <select id="stat-inflation-filter" onchange="window.updateCharts()" style="padding: 2px 4px; border-radius: 4px; border: 1px solid var(--border); font-size: 11px; background: var(--bg-color); color: var(--text-muted); cursor: pointer;">
+                            <option value="rolling">Rolling 30 Days</option>
+                            <option value="calendar">Calendar Month</option>
+                        </select>
+                    </div>
                     <div class="value" id="stat-inflation">0%</div>
                 </div>
                 <div class="card">
-                    <h3>Income Growth (MoM)</h3>
+                    <div class="flex-between" style="margin-bottom: 8px;">
+                        <h3 style="margin: 0;">Income Growth</h3>
+                        <span style="font-size: 11px; color: var(--text-muted);">Syncs with filter</span>
+                    </div>
                     <div class="value" id="stat-income-growth">0%</div>
                 </div>
             </div>
