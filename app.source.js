@@ -570,10 +570,19 @@ window.deleteTxFast = function(id) {
     window.updateInflationChart();
 };
 
+// TOGGLE TRANSACTION LOG
 window.toggleTransactionsLog = function() {
     const section = document.getElementById('detailed-transactions-section');
     if(!section) return;
     if(section.classList.contains('hidden')) { section.classList.remove('hidden'); window.renderTransactionsLog(); } 
+    else { section.classList.add('hidden'); }
+};
+
+// TOGGLE CATEGORY PERFORMANCE
+window.toggleCategoryPerformance = function() {
+    const section = document.getElementById('detailed-performance-section');
+    if(!section) return;
+    if(section.classList.contains('hidden')) { section.classList.remove('hidden'); } 
     else { section.classList.add('hidden'); }
 };
 
@@ -1567,58 +1576,82 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // SMART WATERFALL PARSER
     const pasteBox = document.getElementById('mpesa-paste-box');
     if (pasteBox) {
         pasteBox.addEventListener('input', function(e) {
             const sms = e.target.value.trim();
             if (!sms) return;
             
-            const amountMatch = sms.match(/Ksh([\d,]+\.\d{2})/);
-            const paidToMatch = sms.match(/paid to (.*?)(?=\. on)/) || sms.match(/paid to (.*?)(?= on)/);
-            const dateMatch = sms.match(/on (\d{1,2}\/\d{1,2}\/\d{2})/);
-            const costMatch = sms.match(/Transaction cost, Ksh([\d,]+\.\d{2})/);
+            let amount = null, vendor = null, txDate = null, txCost = null;
 
-            if (amountMatch && document.getElementById('tx-actual')) {
-                const amount = parseFloat(amountMatch[1].replace(/,/g, ''));
-                document.getElementById('tx-actual').value = amount;
+            // 1. Pass 1: Strict M-Pesa parsing
+            const mpesaAmount = sms.match(/Ksh([\d,]+\.\d{2})/i);
+            const mpesaPaidTo = sms.match(/paid to (.*?)(?=\. on| on)/i);
+            const mpesaReceivedFrom = sms.match(/received Ksh[\d,]+\.\d{2} from (.*?)(?=\. on| on)/i);
+            const mpesaDate = sms.match(/on (\d{1,2}\/\d{1,2}\/\d{2})/i);
+            const mpesaCost = sms.match(/Transaction cost, Ksh([\d,]+\.\d{2})/i);
+
+            if (mpesaAmount) {
+                amount = parseFloat(mpesaAmount[1].replace(/,/g, ''));
+                if (mpesaPaidTo) vendor = mpesaPaidTo[1].trim();
+                else if (mpesaReceivedFrom) vendor = mpesaReceivedFrom[1].trim();
                 
-                if (paidToMatch && document.getElementById('tx-name')) {
-                    const vendor = paidToMatch[1].trim();
+                if (mpesaDate) {
+                    const parts = mpesaDate[1].split('/');
+                    txDate = `20${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                }
+                if (mpesaCost) txCost = parseFloat(mpesaCost[1].replace(/,/g, ''));
+            } 
+            // 2. Pass 2: Generic Financial Fallback (Bank SMS, Airtel, Etc)
+            else {
+                const genericAmount = sms.match(/(?:Ksh|KES|\$)\s*([\d,]+(?:\.\d{2})?)/i);
+                if (genericAmount) {
+                    amount = parseFloat(genericAmount[1].replace(/,/g, ''));
+                }
+                
+                const genericEntity = sms.match(/(?:to|from|at)\s+([A-Z0-9\s\.\-\']+?)(?=\s+(on|for|at|\d|$))/i);
+                if (genericEntity) {
+                    vendor = genericEntity[1].trim();
+                }
+            }
+
+            if (amount !== null) {
+                if (document.getElementById('tx-actual')) {
+                    document.getElementById('tx-actual').value = amount;
+                }
+                
+                if (vendor && document.getElementById('tx-name')) {
                     document.getElementById('tx-name').value = vendor;
                     
                     const vLower = vendor.toLowerCase();
                     const txCatEl = document.getElementById('tx-category');
                     if(txCatEl) {
-                        if (vLower.includes('java') || vLower.includes('kfc') || vLower.includes('naivas') || vLower.includes('quickmart')) {
+                        if (vLower.includes('java') || vLower.includes('kfc') || vLower.includes('naivas') || vLower.includes('quickmart') || vLower.includes('carrefour')) {
                             txCatEl.value = 'Food';
-                        } else if (vLower.includes('uber') || vLower.includes('bolt') || vLower.includes('fuel')) {
+                        } else if (vLower.includes('uber') || vLower.includes('bolt') || vLower.includes('fuel') || vLower.includes('rubis') || vLower.includes('shell')) {
                             txCatEl.value = 'Transport';
+                        } else if (vLower.includes('kplc') || vLower.includes('token')) {
+                            txCatEl.value = 'Homecare';
                         }
                     }
                     window.autoSelectIcon('tx');
                 }
 
-                if (dateMatch && document.getElementById('tx-date')) {
-                    const parts = dateMatch[1].split('/');
-                    const year = "20" + parts[2];
-                    const month = parts[1].padStart(2, '0');
-                    const day = parts[0].padStart(2, '0');
-                    document.getElementById('tx-date').value = `${year}-${month}-${day}`;
+                if (txDate && document.getElementById('tx-date')) {
+                    document.getElementById('tx-date').value = txDate;
                 }
                 
                 window.calcKES('tx');
                 setTimeout(() => e.target.value = '', 500);
                 
-                if (costMatch) {
-                    const txCost = parseFloat(costMatch[1].replace(/,/g, ''));
-                    if(txCost > 0 && confirm(`Also log KES ${txCost} as a Transaction Cost?`)) {
-                        transactions.push({
-                            id: Date.now() + 1, name: 'M-Pesa Fee', type: 'Expense', category: 'Transaction Cost',
-                            date: document.getElementById('tx-date') ? document.getElementById('tx-date').value : new Date().toISOString().split('T')[0], 
-                            actual: txCost, qty: 1, fx: 1, kes: txCost, notes: 'Auto-extracted'
-                        });
-                        window.saveData(); window.updateDatalists(); window.updateUI();
-                    }
+                if (txCost !== null && txCost > 0 && confirm(`Also log KES ${txCost} as a Transaction Cost?`)) {
+                    transactions.push({
+                        id: Date.now() + 1, name: 'M-Pesa Fee', type: 'Expense', category: 'Transaction Cost',
+                        date: document.getElementById('tx-date') ? document.getElementById('tx-date').value : new Date().toISOString().split('T')[0], 
+                        actual: txCost, qty: 1, fx: 1, kes: txCost, notes: 'Auto-extracted'
+                    });
+                    window.saveData(); window.updateDatalists(); window.updateUI();
                 }
             }
         });
