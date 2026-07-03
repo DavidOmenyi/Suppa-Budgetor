@@ -773,6 +773,14 @@ input, select, textarea, datalist, option {
                         <li><b>Email Support:</b> <a href="mailto:realsurglobal@gmail.com" style="color: var(--primary); font-weight: bold; text-decoration: none;">realsurglobal@gmail.com</a></li>
                     </ul>
                 </div>
+                
+                <div class="card" style="border-top-color: var(--accent);">
+                    <h3 style="color: var(--accent); font-size: 16px; margin-bottom: 10px;">Legal & Privacy</h3>
+                    <p style="color: var(--text-main); font-size: 14px; line-height: 1.6;">
+                        We take your data security seriously. Your financial information is stored entirely locally on your device. 
+                        Read our complete <a href="privacy.html" target="_blank" style="color: var(--primary); font-weight: bold; text-decoration: underline;">Privacy Policy</a> to understand how we protect your data and handle your account information.
+                    </p>
+                </div>
             </div>
         </div>
 
@@ -785,6 +793,7 @@ input, select, textarea, datalist, option {
             </p>
 
             <div class="summary-cards" style="grid-template-columns: 1fr;">
+                
                 <div class="card">
                     <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">1. Setting Budgets</h3>
                     <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
@@ -794,37 +803,51 @@ input, select, textarea, datalist, option {
                     </ul>
                 </div>
 
-                <div class="card" style="border-top-color: #3b82f6;">
-                    <h3 style="color: #3b82f6; font-size: 16px; margin-bottom: 10px;">2. Portfolio & Savings Tracking</h3>
+                <div class="card" style="border-top-color: var(--accent);">
+                    <h3 style="color: var(--accent); font-size: 16px; margin-bottom: 10px;">2. Smart Log Entry</h3>
                     <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
-                        <li><b>Creating Accounts & Initial Funds:</b> In the <i>Log Entry</i> tab, select Type: <b>Savings (Portfolio)</b>, and Action: <b>Opening Account Balance</b>. Type your account name in the Account Type box. This safely establishes your initial portfolio balance without altering your unassigned cash. You can log additional Opening Balances for the same account to increase its base value.</li>
-                        <li><b>Saving Money (Deposits):</b> In the <i>Log Entry</i> tab, select Action: <b>Deposit</b>. This registers as an expense (reducing your unassigned cash) and adds the money to the chosen Portfolio balance!</li>
-                        <li><b>Spending Savings (Withdrawals):</b> When you spend saved money, do it in two steps to avoid double-counting against your budget:
-                            <ol>
-                                <li>Log a <b>Savings</b> transaction with Action: <b>Withdrawal</b>. This removes the money from your portfolio and injects cash back into your <i>Amount Unassigned</i>.</li>
-                                <li>Log your actual purchase as a standard <b>Expense</b>.</li>
-                            </ol>
-                        </li>
+                        <li>In the <b>Log Entry</b> tab, you can manually type transactions, or use the <b>🤖 Smart Message Paste</b> box.</li>
+                        <li>Simply copy an SMS from M-Pesa, Airtel Money, or your Bank and paste it into the box. The app will automatically extract the vendor, amount, and date!</li>
+                        <li>If the app detects a transaction fee in the SMS, it will ask if you want to automatically log that as a separate expense.</li>
+                    </ul>
+                </div>
+
+                <div class="card" style="border-top-color: #8b5cf6;">
+                    <h3 style="color: #8b5cf6; font-size: 16px; margin-bottom: 10px;">3. Custom Shopping Lists</h3>
+                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
+                        <li>Go to the <b>Lists 🛒</b> tab to draft shopping lists before you go to the store.</li>
+                        <li>Add items with their estimated prices and quantities to track your expected total.</li>
+                        <li><b>One-Click Buy:</b> While shopping, tap the green <b>✓ Buy</b> button next to an item. It will be removed from your list and instantly logged into your main Ledger as an actual Expense!</li>
+                    </ul>
+                </div>
+
+                <div class="card" style="border-top-color: #3b82f6;">
+                    <h3 style="color: #3b82f6; font-size: 16px; margin-bottom: 10px;">4. Portfolio & Savings Tracking</h3>
+                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
+                        <li><b>Initial Funds:</b> In the <i>Log Entry</i> tab, select Type: <b>Savings (Portfolio)</b> > Action: <b>Opening Account Balance</b>. Type your account name. This safely establishes your initial portfolio balance.</li>
+                        <li><b>Saving Money:</b> Log a <b>Deposit</b>. This registers as an expense (reducing unassigned cash) and adds money to the Portfolio!</li>
+                        <li><b>Spending Savings:</b> When you spend saved money, first log a <b>Withdrawal</b> (moves money from portfolio back to cash), then log your actual purchase as a standard <b>Expense</b>.</li>
                     </ul>
                 </div>
 
                 <div class="card">
-                    <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">3. Viewing & Editing Data</h3>
+                    <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">5. Viewing & Editing Data</h3>
                     <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
                         <li>The <b>Summaries</b> tab breaks down your performance with dynamic filters.</li>
-                        <li><b>To Edit or Delete:</b> In the Summaries tab, scroll down to the <i>Transactions Log</i>. Click on any gold <b>Name</b> to quickly open the edit window.</li>
+                        <li><b>To Edit or Delete:</b> In the Summaries tab, scroll down to the <i>Transactions Log</i> or click any Expense Name to open the detailed ledger. Click <b>Edit</b> or <b>Del</b> to modify records.</li>
                     </ul>
                 </div>
 
                 <div class="card" style="border-top-color: var(--danger);">
-                    <h3 style="color: var(--danger); font-size: 16px; margin-bottom: 10px;">4. Backups & Data Safety (Crucial!)</h3>
+                    <h3 style="color: var(--danger); font-size: 16px; margin-bottom: 10px;">6. Backups & Data Safety (Crucial!)</h3>
                     <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
-                        <li>This app stores data entirely in your browser's local storage. <b>If you clear your browser history or cache, you will lose everything.</b></li>
-                        <li>Go to the <b>Utilities</b> tab to <b>Export (💾)</b> your data regularly.</li>
-                        <li>Your custom Portfolio accounts and Opening Balances are safely packed inside your main <b>TX (Transactions)</b> backup CSV! You only need to export <b>TX</b> and <b>Budgets</b>.</li>
+                        <li>Because this app is "Local-First", your data lives exclusively in your browser's local storage. <b>If you clear your browser history or cache, you will lose everything.</b></li>
+                        <li>Go to the <b>Utilities 🛠️</b> tab to <b>Export (💾)</b> your data regularly.</li>
+                        <li>Your custom Portfolio accounts and Opening Balances are safely packed inside your main Transactions backup CSV.</li>
                         <li>To restore your data on a new device or browser, simply click the <b>Import (📥)</b> buttons and select your saved CSV files.</li>
                     </ul>
                 </div>
+                
             </div>
         </div>
 
