@@ -705,35 +705,90 @@ window.deleteTxFromLedger = function(id) {
     window.closeLedger();
 };
 
-window.updateDatalists = function() {
-    const txMem = document.getElementById('tx-memory'); 
-    if(txMem) {
-        let allNames = [...new Set([...transactions.map(t => t.name), ...customMem.Names])];
-        let htmlBuffer = '';
-        allNames.forEach(n => { if(n!=='(General)') htmlBuffer += `<option value="${n}">`; });
-        txMem.innerHTML = htmlBuffer;
+// 1. The custom autocomplete builder
+window.setupCustomAutocomplete = function(inputId, getListFn, callback) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+
+    // Disconnect the buggy native Android datalist
+    input.removeAttribute('list'); 
+    input.setAttribute('autocomplete', 'off'); 
+
+    // Wrap the input to hold the custom dropdown
+    if (!input.parentNode.classList.contains('autocomplete-wrapper')) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'autocomplete-wrapper';
+        input.parentNode.insertBefore(wrapper, input);
+        wrapper.appendChild(input);
+        
+        const listDiv = document.createElement('div');
+        listDiv.className = 'custom-datalist';
+        listDiv.id = inputId + '-list';
+        wrapper.appendChild(listDiv);
     }
 
-    const bCatMem = document.getElementById('budget-cat-memory');
-    const bNameMem = document.getElementById('budget-name-memory');
-    if(bCatMem && bNameMem) {
+    const listDiv = document.getElementById(inputId + '-list');
+
+    function showList(filterText = '') {
+        const fullList = getListFn();
+        const filtered = fullList.filter(item => item.toLowerCase().includes(filterText.toLowerCase()));
+        
+        if (filtered.length === 0) {
+            listDiv.classList.remove('active');
+            return;
+        }
+
+        listDiv.innerHTML = '';
+        filtered.forEach(item => {
+            const opt = document.createElement('div');
+            opt.className = 'custom-option';
+            opt.textContent = item;
+            
+            // Using mousedown bypasses Android's focus-loss bugs
+            opt.addEventListener('mousedown', function(e) {
+                e.preventDefault(); 
+                input.value = item;
+                listDiv.classList.remove('active');
+                if (callback) callback();
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+            listDiv.appendChild(opt);
+        });
+        listDiv.classList.add('active');
+    }
+
+    input.addEventListener('focus', () => showList(input.value));
+    input.addEventListener('input', () => showList(input.value));
+    input.addEventListener('blur', () => {
+        setTimeout(() => listDiv.classList.remove('active'), 200);
+    });
+};
+
+// 2. The initialization hook for all inputs
+window.initAutocompletes = function() {
+    const getNames = () => [...new Set([...transactions.map(t => t.name), ...customMem.Names])].filter(n => n !== '(General)');
+    
+    const getCats = () => {
         let allCats = new Set();
         Object.keys(categories).forEach(type => { if (type !== 'Income') categories[type].forEach(c => allCats.add(c)); });
         if (customMem.Expense) customMem.Expense.forEach(c => allCats.add(c));
         if (customMem.Savings) customMem.Savings.forEach(c => allCats.add(c));
         transactions.filter(t => t.type !== 'Income').forEach(t => allCats.add(t.category));
-        
-        let allNames = [...new Set([...transactions.map(t => t.name), ...customMem.Names])];
-        
-        let nameHtml = '';
-        allNames.forEach(n => { if(n !== '(General)') nameHtml += `<option value="${n}">`; });
-        bNameMem.innerHTML = nameHtml;
+        return [...allCats].sort();
+    };
 
-        let catHtml = '';
-        [...allCats].sort().forEach(c => { catHtml += `<option value="${c}">`; });
-        bCatMem.innerHTML = catHtml;
-    }
+    window.setupCustomAutocomplete('tx-name', getNames);
+    window.setupCustomAutocomplete('tx-category', getCats, () => window.autoSelectIcon('tx'));
+    
+    window.setupCustomAutocomplete('edit-tx-name', getNames);
+    window.setupCustomAutocomplete('edit-tx-category', getCats, () => window.autoSelectIcon('edit-tx'));
+    
+    window.setupCustomAutocomplete('budget-name', getNames);
+    window.setupCustomAutocomplete('budget-category', getCats, () => window.autoSelectIcon('budget'));
 };
+
+// 3. Override the old function so it doesn't clash
+window.updateDatalists = function() {};
 
 window.getMonthStr = function(dateObj) { return `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2, '0')}`; };
 
@@ -1732,6 +1787,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.handleTypeChange('tx');
     window.updateDatalists();
     window.updateUI();
+    window.initAutocompletes();
    window.loadShoppingData();
 window.renderShoppingTabs();
 window.renderActiveShoppingList();
