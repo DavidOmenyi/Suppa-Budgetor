@@ -1653,52 +1653,59 @@ window.renderShoppingTabs = function() {
 window.renderActiveShoppingList = function() {
     const titleEl = document.getElementById('active-list-title');
     const formEl = document.getElementById('shopping-item-form');
-    const tableEl = document.getElementById('shopping-items-table');
-    const tbody = document.getElementById('shopping-items-body');
+    const containerEl = document.getElementById('shopping-items-container');
+    const listEl = document.getElementById('shopping-items-list');
     const totalEl = document.getElementById('shopping-list-total');
     const delBtn = document.getElementById('delete-list-btn');
 
-    if (!titleEl || !formEl || !tableEl || !tbody || !totalEl) return;
+    if (!titleEl || !formEl || !containerEl || !listEl || !totalEl) return;
 
     if (!activeShoppingListKey || !shoppingLists[activeShoppingListKey]) {
         titleEl.innerText = "Select or Create a List";
         formEl.classList.add('hidden');
-        tableEl.classList.add('hidden');
+        containerEl.classList.add('hidden');
         if (delBtn) delBtn.style.display = 'none';
         return;
     }
 
     titleEl.innerText = activeShoppingListKey;
     formEl.classList.remove('hidden');
-    tableEl.classList.remove('hidden');
+    containerEl.classList.remove('hidden');
     if (delBtn) delBtn.style.display = 'block';
 
-    tbody.innerHTML = '';
+    listEl.innerHTML = '';
     let totalAccumulator = 0;
     const items = shoppingLists[activeShoppingListKey];
 
     if (items.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">List is empty. Enter items above.</td></tr>`;
+        listEl.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 25px; border: 2px dashed var(--border); border-radius: 10px;">List is empty. Enter items above.</div>`;
         totalEl.innerText = "KES 0.00";
         return;
     }
 
-    // Corrected loop - no duplicates!
+    // Render spacious cards for each item
     items.forEach(item => {
         const itemRowTotal = item.price * item.qty;
         totalAccumulator += itemRowTotal;
 
-        tbody.innerHTML += `
-            <tr>
-                <td style="font-weight: 600;">${item.name}</td>
-                <td>${item.price.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                <td>${item.qty}</td>
-                <td style="font-weight: bold;">KES ${itemRowTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                <td style="white-space: nowrap;">
-                    <button onclick="window.buyShoppingItem(${item.id})" style="background: var(--success); color: white; border: none; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 11px; margin-right: 4px; font-weight: bold;" title="Log as Expense & Remove">✓ Buy</button>
-                    <button onclick="window.deleteShoppingItem(${item.id})" style="background: var(--danger); color: white; border: none; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 11px;" title="Delete Item">✕</button>
-                </td>
-            </tr>`;
+        listEl.innerHTML += `
+            <div style="background: var(--surface-color); border: 1px solid var(--border); border-radius: 10px; padding: 15px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div style="font-weight: 800; font-size: 16px; color: var(--text-main);">${item.name}</div>
+                    <div style="font-weight: 800; color: var(--primary); font-size: 15px;">KES ${itemRowTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+                </div>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div style="font-size: 13px; color: var(--text-muted); background: var(--bg-color); padding: 4px 8px; border-radius: 6px;">
+                        ${item.qty} ${item.qty === 1 ? 'Unit' : 'Units'} × KES ${item.price.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                    </div>
+                    
+                    <div style="display: flex; gap: 8px;">
+                        <button onclick="window.buyShoppingItem(${item.id})" style="background: rgba(16,185,129,0.1); color: var(--success); border: 1px solid var(--success); padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: bold; transition: 0.2s;" onmouseover="this.style.background='var(--success)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(16,185,129,0.1)'; this.style.color='var(--success)';">✓ Buy</button>
+                        <button onclick="window.deleteShoppingItem(${item.id})" style="background: rgba(239,68,68,0.1); color: var(--danger); border: 1px solid var(--danger); padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: bold; transition: 0.2s;" onmouseover="this.style.background='var(--danger)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(239,68,68,0.1)'; this.style.color='var(--danger)';">✕</button>
+                    </div>
+                </div>
+            </div>`;
     });
 
     totalEl.innerText = `KES ${totalAccumulator.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
