@@ -12,6 +12,8 @@
       --text-muted: #475569;
       --accent-color: #0284c7;
       --border-color: #e2e8f0;
+      --danger-color: #dc2626;
+      --danger-bg: #fef2f2;
     }
 
     * {
@@ -98,6 +100,38 @@
       color: #0f172a;
     }
 
+    .deletion-box {
+      background: var(--danger-bg);
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      padding: 1.25rem;
+      margin-top: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .deletion-box h4 {
+      color: var(--danger-color);
+      margin-bottom: 0.5rem;
+      font-size: 1rem;
+    }
+
+    .btn-delete {
+      display: inline-block;
+      background-color: var(--danger-color);
+      color: #ffffff !important;
+      padding: 0.6rem 1.2rem;
+      border-radius: 6px;
+      font-weight: 500;
+      text-decoration: none;
+      margin-top: 0.5rem;
+      transition: background-color 0.2s;
+    }
+
+    .btn-delete:hover {
+      background-color: #b91c1c;
+      text-decoration: none;
+    }
+
     .contact-box {
       background: #f8fafc;
       border-left: 4px solid var(--accent-color);
@@ -139,61 +173,68 @@
       <h3>A. Financial Data (Stored Locally Only)</h3>
       <p>The Application provides tools for logging transactions, managing category budgets, and tracking portfolio history.</p>
       <ul>
-        <li><strong>What is collected:</strong> Ledger entries (names, dates, currency categories, transaction costs, and actual amounts).</li>
-        <li><strong>Where it lives:</strong> All financial inputs are stored locally on your device via secure browser storage mechanisms (<code>localStorage</code>).</li>
-        <li><strong>Developer Access:</strong> We do not transmit, sync, or copy your transaction logs to our servers. We have zero visibility and zero access to your financial information.</li>
+        <li><strong>What is collected:</strong> Ledger entries (names, dates, currency categories, transaction costs, and actual amounts)[cite: 1].</li>
+        <li><strong>Where it lives:</strong> All financial inputs are stored locally on your device via secure browser storage mechanisms (<code>localStorage</code>)[cite: 1].</li>
+        <li><strong>Developer Access:</strong> We do not transmit, sync, or copy your transaction logs to our servers[cite: 1]. We have zero visibility and zero access to your financial information[cite: 1].</li>
       </ul>
 
       <h3>B. Account Authentication and Profile Data</h3>
-      <p>To provide secure account access and sync premium user status, the Application utilizes Supabase as a third-party identity management platform.</p>
+      <p>To provide secure account access and sync premium user status, the Application utilizes Supabase as a third-party identity management platform[cite: 1].</p>
       <ul>
-        <li><strong>Information collected:</strong> When you register or log in, Supabase processes your email address, display name, and optional avatar/profile picture URL.</li>
-        <li><strong>Usage:</strong> This metadata is used exclusively to personalize the app interface and authorize your secure access to premium features.</li>
+        <li><strong>Information collected:</strong> When you register or log in, Supabase processes your email address, display name, and optional avatar/profile picture URL[cite: 1].</li>
+        <li><strong>Usage:</strong> This metadata is used exclusively to personalize the app interface and authorize your secure access to premium features[cite: 1].</li>
       </ul>
 
       <h3>C. M-Pesa SMS Text Processing (Local Parsing)</h3>
-      <p>The Application features an automated transaction parsing box (<code>mpesa-paste-box</code>) where you can voluntarily paste transaction SMS text confirmations to expedite manual data entry.</p>
+      <p>The Application features an automated transaction parsing box (<code>mpesa-paste-box</code>) where you can voluntarily paste transaction SMS text confirmations to expedite manual data entry[cite: 1].</p>
       <ul>
-        <li><strong>Processing standard:</strong> This text parsing happens entirely on your local device thread. The pasted text is instantly scrubbed for values (vendor, transaction cost, and amounts) locally.</li>
-        <li><strong>Data Isolation:</strong> The raw SMS text string is never uploaded to any backend database or transmitted across the network.</li>
+        <li><strong>Processing standard:</strong> This text parsing happens entirely on your local device thread[cite: 1]. The pasted text is instantly scrubbed for values (vendor, transaction cost, and amounts) locally[cite: 1].</li>
+        <li><strong>Data Isolation:</strong> The raw SMS text string is never uploaded to any backend database or transmitted across the network[cite: 1].</li>
       </ul>
     </section>
 
     <section>
       <h2>2. Third-Party Services and Sub-Processors</h2>
-      <p>To facilitate user authentication and handle subscription features, the Application securely communicates with the following platforms:</p>
+      <p>To facilitate user authentication and handle subscription features, the Application securely communicates with the following platforms[cite: 1]:</p>
       <ul>
-        <li><strong>Supabase Auth & Database:</strong> Handles secure user onboarding, session persistence, and verifies the premium subscription status (<code>is_premium</code>) linked to your unique account identifier.</li>
-        <li><strong>Netlify Functions:</strong> The Application forwards initialization metrics safely to serverless functions (<code>/initiate-tuma</code>) purely to securely request and cross-reference mobile payment states (such as M-Pesa) without collecting extraneous personal files.</li>
+        <li><strong>Supabase Auth & Database:</strong> Handles secure user onboarding, session persistence, and verifies the premium subscription status (<code>is_premium</code>) linked to your unique account identifier[cite: 1].</li>
+        <li><strong>Netlify Functions:</strong> The Application forwards initialization metrics safely to serverless functions (<code>/initiate-tuma</code>) purely to securely request and cross-reference mobile payment states (such as M-Pesa) without collecting extraneous personal files[cite: 1].</li>
       </ul>
     </section>
 
     <section>
       <h2>3. Data Retention and Deletion Rights</h2>
-      <p>Because you retain absolute custody of your financial metrics, you control how they are maintained:</p>
+      <p>Because you retain absolute custody of your financial metrics, you control how they are maintained[cite: 1]:</p>
       <ul>
-        <li><strong>Local Financial Data Wiping:</strong> You can permanently purge every transaction, budget setup, and portfolio configuration directly from your device at any point using the built-in Reset Data mechanism within the app settings.</li>
-        <li><strong>Account Deletion:</strong> If you wish to permanently delete your profile registration, email records, and premium billing links, you can request an account removal through standard authentication configurations.</li>
+        <li><strong>Local Financial Data Wiping:</strong> You can permanently purge every transaction, budget setup, and portfolio configuration directly from your device at any point using the built-in Reset Data mechanism within the app settings[cite: 1].</li>
+        <li><strong>Account Deletion:</strong> If you wish to permanently delete your profile registration, email records, and premium billing links, you can request an account removal through standard authentication configurations[cite: 1] or by submitting a direct request below.</li>
       </ul>
+
+      <div class="deletion-box">
+        <h4>Need to delete your account?</h4>
+        <p>To permanently erase your SuppaBudget account and remove your authentication profile from our Supabase servers, click the button below to submit a verified deletion request from your registered email address.</p>
+        <a href="mailto:realsurglobal@gmail.com?subject=Account%20Deletion%20Request%20-%20SuppaBudget&body=Please%20delete%20my%20SuppaBudget%20account%20and%20all%20associated%20profile%20data.%0A%0ARegistered%20Account%20Email:%20[Enter%20your%20email%20here]" class="btn-delete">Request Account Deletion</a>
+      </div>
     </section>
 
     <section>
       <h2>4. Security of Your Data</h2>
-      <p>We employ industry-recognized safeguards to protect your identity profiles via verified Supabase client libraries. Because your local device is the exclusive repository for your transaction ledgers, the integrity of your personal budgeting data heavily relies on the physical security of your smartphone or mobile hardware. We highly advise implementing standard device security protocols (PIN, biometrics, or passwords).</p>
+      <p>We employ industry-recognized safeguards to protect your identity profiles via verified Supabase client libraries[cite: 1]. Because your local device is the exclusive repository for your transaction ledgers, the integrity of your personal budgeting data heavily relies on the physical security of your smartphone or mobile hardware[cite: 1]. We highly advise implementing standard device security protocols (PIN, biometrics, or passwords)[cite: 1].</p>
     </section>
 
     <section>
       <h2>5. Changes to This Privacy Policy</h2>
-      <p>We may update our Privacy Policy from time to time to align with rolling software releases or shifting regulatory frameworks. We will notify you of any structural revisions by updating the "Last Updated" date at the top of this document.</p>
+      <p>We may update our Privacy Policy from time to time to align with rolling software releases or shifting regulatory frameworks[cite: 1]. We will notify you of any structural revisions by updating the "Last Updated" date at the top of this document[cite: 1].</p>
     </section>
 
     <section>
       <h2>6. Contact Us</h2>
-      <p>If you have any questions or concerns regarding this Privacy Policy, please contact our support team:</p>
+      <p>If you have any questions or concerns regarding this Privacy Policy, or wish to manually request data deletion, please contact our support team[cite: 1]:</p>
       <div class="contact-box">
-        <p><strong>Developer:</strong> Realsur Global</p>
-        <p><strong>Email:</strong> <a href="mailto:realsurglobal@gmail.com">realsurglobal@gmail.com</a></p>
-        <p><strong>Phone Support:</strong> <a href="tel:+254701275111">+254 701 275 111</a></p>
+        <p><strong>Developer:</strong> Realsur Global[cite: 1]</p>
+        <p><strong>Email:</strong> <a href="mailto:realsurglobal@gmail.com">realsurglobal@gmail.com</a>[cite: 1]</p>
+        <p><strong>Direct Deletion Support:</strong> <a href="mailto:realsurglobal@gmail.com?subject=Account%20Deletion%20Request%20-%20SuppaBudget">realsurglobal@gmail.com</a>[cite: 1]</p>
+        <p><strong>Phone Support:</strong> <a href="tel:+254701275111">+254 701 275 111</a>[cite: 1]</p>
       </div>
     </section>
   </div>
