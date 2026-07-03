@@ -20,6 +20,8 @@ var customMem = { Expense: [], Income: [], Savings: [], Names: [], Icons: {} };
 var historyStack = []; 
 var redoStack = []; 
 var currentDate = new Date();
+var shoppingLists = {}; 
+var activeShoppingListKey = null;
 
 // Pagination State for Transactions Log
 var txCurrentPage = 1;
@@ -1381,6 +1383,9 @@ window.resetData = function() {
             localStorage.clear(); transactions = []; categoryBudgets = {}; 
             customMem = { Expense: [], Income: [], Savings: [], Names: [], Icons: {} };
             window.updateDatalists(); window.updateUI();
+            localStorage.removeItem('suppa_shopping_lists');
+shoppingLists = {};
+activeShoppingListKey = null;
         }
     }
 };
@@ -1465,6 +1470,230 @@ window.importBudgetCSV = function(e) {
     };
     reader.readAsText(file);
 };
+// Load shopping features safely from localStorage
+window.loadShoppingData = function() {
+    try {
+        shoppingLists = JSON.parse(localStorage.getItem('suppa_shopping_lists')) || {};
+    } catch(e) {
+        console.error("Failed to parse shopping list metrics", e);
+        shoppingLists = {};
+    }
+};
+
+window.saveShoppingData = function() {
+    localStorage.setItem('suppa_shopping_lists', JSON.stringify(shoppingLists));
+};
+
+window.createShoppingList = function() {
+    const nameInput = document.getElementById('new-list-name');
+    if (!nameInput) return;
+    const listName = nameInput.value.trim();
+    if (!listName) return alert("Please type a deployment title for your list.");
+    
+    if (shoppingLists[listName]) return alert("A list with this designation already exists.");
+    
+    shoppingLists[listName] = [];
+    activeShoppingListKey = listName;
+    nameInput.value = '';
+    
+    window.saveShoppingData();
+    window.renderShoppingTabs();
+    window.renderActiveShoppingList();
+};
+
+window.selectShoppingList = function(key) {
+    activeShoppingListKey = key;
+    window.renderShoppingTabs();
+    window.renderActiveShoppingList();
+};
+
+window.deleteActiveList = function() {
+    if (!activeShoppingListKey) return;
+    if (!confirm(`Permanently remove list "${activeShoppingListKey}"?`)) return;
+    
+    delete shoppingLists[activeShoppingListKey];
+    activeShoppingListKey = Object.keys(shoppingLists)[0] || null;
+    
+    window.saveShoppingData();
+    window.renderShoppingTabs();
+    window.renderActiveShoppingList();
+};
+
+window.addShoppingItem = function(e) {
+    e.preventDefault();
+    if (!activeShoppingListKey) return;
+
+    const nameEl = document.getElementById('shop-item-name');
+    const priceEl = document.getElementById('shop-item-price');
+    const qtyEl = document.getElementById('shop-item-qty');
+
+    const item = {
+        id: Date.now(),
+        name: nameEl.value.trim(),
+        price: Math.abs(parseFloat(priceEl.value) || 0),
+        qty: Math.abs(parseInt(qtyEl.value) || 1)
+    };
+
+    shoppingLists[activeShoppingListKey].push(item);
+    
+    nameEl.value = '';
+    priceEl.value = '';
+    qtyEl.value = '1';
+    nameEl.focus();
+
+    window.saveShoppingData();
+    window.renderActiveShoppingList();
+};
+
+window.deleteShoppingItem = function(itemId) {
+    if (!activeShoppingListKey) return;
+    shoppingLists[activeShoppingListKey] = shoppingLists[activeShoppingListKey].filter(item => item.id !== itemId);
+    window.saveShoppingData();
+    window.renderActiveShoppingList();
+};
+// One-click conversion from Shopping List to Ledger Expense
+window.buyShoppingItem = function(itemId) {
+    if (!activeShoppingListKey) return;
+    
+    const list = shoppingLists[activeShoppingListKey];
+    const itemIndex = list.findIndex(i => i.id === itemId);
+    if (itemIndex === -1) return;
+    
+    const item = list[itemIndex];
+    const totalCost = item.price * item.qty;
+    
+    if (!confirm(`Log "${item.name}" as an Expense of KES ${totalCost.toLocaleString(undefined, {minimumFractionDigits: 2})} and remove it from your list?`)) {
+        return;
+    }
+    
+    // 1. Save state for History Undo/Redo support
+    window.saveState();
+    
+    // 2. Create the new Expense transaction
+    const newTx = {
+        id: Date.now(),
+        name: item.name || '(General)',
+        type: 'Expense',
+        category: 'Groceries', // Default category for shopping list items
+        date: new Date().toISOString().split('T')[0],
+        actual: item.price,
+        qty: item.qty,
+        fx: 1,
+        kes: totalCost,
+        notes: `Bought from shopping list: ${activeShoppingListKey}`
+    };
+    
+    // Push to main ledger and save to custom memory
+    transactions.push(newTx);
+    window.addToMemory('Expense', 'Groceries', item.name, '🛒');
+    
+    // 3. Remove the item from the shopping list
+    list.splice(itemIndex, 1);
+    
+    // 4. Save all changes and update UI across all tabs
+    window.saveData();
+    window.saveShoppingData();
+    window.updateDatalists();
+    window.updateUI();
+    window.updateCharts();
+    window.updateInflationChart();
+    window.renderActiveShoppingList();
+    
+    // Quick confirmation feedback
+    const btn = document.getElementById('shopping-list-total');
+    if (btn) {
+        const originalText = btn.innerText;
+        btn.innerText = `✓ "${item.name}" Logged to Ledger!`;
+        btn.style.color = "var(--success)";
+        setTimeout(() => {
+            btn.innerText = originalText;
+            btn.style.color = "var(--primary)";
+        }, 2000);
+    }
+};
+// UI Rendering Pipeline
+window.renderShoppingTabs = function() {
+    const sidebar = document.getElementById('shopping-lists-sidebar');
+    if (!sidebar) return;
+    sidebar.innerHTML = '';
+
+    const listKeys = Object.keys(shoppingLists);
+    if (listKeys.length === 0) {
+        sidebar.innerHTML = `<li style="font-size: 12px; color: var(--text-muted); text-align: center;">No lists compiled</li>`;
+        return;
+    }
+
+    listKeys.sort().forEach(key => {
+        const isActive = key === activeShoppingListKey;
+        const bg = isActive ? 'var(--primary)' : 'var(--bg-color)';
+        const color = isActive ? '#ffffff' : 'var(--text-main)';
+        const weight = isActive ? 'bold' : 'normal';
+
+        sidebar.innerHTML += `
+            <li>
+                <button onclick="window.selectShoppingList('${key.replace(/'/g, "\\'")}')" style="width: 100%; text-align: left; padding: 8px 12px; background: ${bg}; color: ${color}; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-weight: ${weight}; font-size: 13px; transition: 0.2s;">
+                    📋 ${key}
+                </button>
+            </li>`;
+    });
+};
+
+window.renderActiveShoppingList = function() {
+    const titleEl = document.getElementById('active-list-title');
+    const formEl = document.getElementById('shopping-item-form');
+    const tableEl = document.getElementById('shopping-items-table');
+    const tbody = document.getElementById('shopping-items-body');
+    const totalEl = document.getElementById('shopping-list-total');
+    const delBtn = document.getElementById('delete-list-btn');
+
+    if (!titleEl || !formEl || !tableEl || !tbody || !totalEl) return;
+
+    if (!activeShoppingListKey || !shoppingLists[activeShoppingListKey]) {
+        titleEl.innerText = "Select or Create a List";
+        formEl.classList.add('hidden');
+        tableEl.classList.add('hidden');
+        if (delBtn) delBtn.style.display = 'none';
+        return;
+    }
+
+    titleEl.innerText = activeShoppingListKey;
+    formEl.classList.remove('hidden');
+    tableEl.classList.remove('hidden');
+    if (delBtn) delBtn.style.display = 'block';
+
+    tbody.innerHTML = '';
+    let totalAccumulator = 0;
+    const items = shoppingLists[activeShoppingListKey];
+
+    if (items.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">List is empty. Enter items above.</td></tr>`;
+        totalEl.innerText = "KES 0.00";
+        return;
+    }
+
+    items.forEach(item => {
+        const itemRowTotal = item.price * item.qty;
+        totalAccumulator += itemRowTotal;
+
+        items.forEach(item => {
+        const itemRowTotal = item.price * item.qty;
+        totalAccumulator += itemRowTotal;
+
+        tbody.innerHTML += `
+            <tr>
+                <td style="font-weight: 600;">${item.name}</td>
+                <td>${item.price.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                <td>${item.qty}</td>
+                <td style="font-weight: bold;">KES ${itemRowTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                <td style="white-space: nowrap;">
+                    <button onclick="window.buyShoppingItem(${item.id})" style="background: var(--success); color: white; border: none; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 11px; margin-right: 4px; font-weight: bold;" title="Log as Expense & Remove">✓ Buy</button>
+                    <button onclick="window.deleteShoppingItem(${item.id})" style="background: var(--danger); color: white; border: none; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 11px;" title="Delete Item">✕</button>
+                </td>
+            </tr>`;
+    });
+
+    totalEl.innerText = `KES ${totalAccumulator.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+};
 
 // ==========================================
 // 4. EVENT LISTENERS
@@ -1484,6 +1713,9 @@ document.addEventListener('DOMContentLoaded', () => {
     window.handleTypeChange('tx');
     window.updateDatalists();
     window.updateUI();
+   window.loadShoppingData();
+window.renderShoppingTabs();
+window.renderActiveShoppingList();
 
     const setupProfileDropdown = (triggerId, dropdownId) => {
         const trigger = document.getElementById(triggerId);
