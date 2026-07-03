@@ -256,14 +256,19 @@ window.getIcon = function(cat) { return defaultIcons[cat] || (customMem.Icons &&
 
 window.autoSelectIcon = function(prefix) {
     const categoryInput = document.getElementById(prefix + '-category');
-    if (!categoryInput) { return; }
+    if (!categoryInput) return;
 
     const cat = categoryInput.value.trim();
     const iconDropdown = document.getElementById(prefix + '-category-icon');
     if(cat && iconDropdown) {
         const icon = window.getIcon(cat);
         let optionExists = Array.from(iconDropdown.options).some(opt => opt.value === icon);
-        if(!optionExists) iconDropdown.innerHTML += `<option value="${icon}">${icon}</option>`;
+        if(!optionExists) {
+            const newOpt = document.createElement('option');
+            newOpt.value = icon;
+            newOpt.textContent = icon;
+            iconDropdown.appendChild(newOpt);
+        }
         iconDropdown.value = icon;
     }
 };
@@ -364,7 +369,6 @@ window.toggleCategories = function(clearInput = true, typeId, inputId, listId) {
     const type = typeEl.value;
     
     if (clearInput && input) { input.value = ''; window.autoSelectIcon(inputId.split('-')[0]); }
-    if (dl) dl.innerHTML = '';
     
     let baseOpts = categories[type] || [];
     let customOpts = transactions.filter(t => t.type.includes(type) || (type==='Savings' && t.type==='Starting-Balance')).map(t => t.category);
@@ -372,7 +376,9 @@ window.toggleCategories = function(clearInput = true, typeId, inputId, listId) {
     
     let allOpts = [...new Set([...baseOpts, ...customOpts])];
     if (dl) {
-        allOpts.forEach(c => dl.innerHTML += `<option value="${c}">`);
+        let htmlBuffer = '';
+        allOpts.forEach(c => htmlBuffer += `<option value="${c}">`);
+        dl.innerHTML = htmlBuffer;
     }
 };
 
@@ -702,16 +708,15 @@ window.deleteTxFromLedger = function(id) {
 window.updateDatalists = function() {
     const txMem = document.getElementById('tx-memory'); 
     if(txMem) {
-        txMem.innerHTML = '';
         let allNames = [...new Set([...transactions.map(t => t.name), ...customMem.Names])];
-        // UPDATE 1
-        allNames.forEach(n => { if(n!=='(General)') txMem.innerHTML += `<option value="${n}">`; });
+        let htmlBuffer = '';
+        allNames.forEach(n => { if(n!=='(General)') htmlBuffer += `<option value="${n}">`; });
+        txMem.innerHTML = htmlBuffer;
     }
 
     const bCatMem = document.getElementById('budget-cat-memory');
     const bNameMem = document.getElementById('budget-name-memory');
     if(bCatMem && bNameMem) {
-        bCatMem.innerHTML = ''; bNameMem.innerHTML = '';
         let allCats = new Set();
         Object.keys(categories).forEach(type => { if (type !== 'Income') categories[type].forEach(c => allCats.add(c)); });
         if (customMem.Expense) customMem.Expense.forEach(c => allCats.add(c));
@@ -719,10 +724,14 @@ window.updateDatalists = function() {
         transactions.filter(t => t.type !== 'Income').forEach(t => allCats.add(t.category));
         
         let allNames = [...new Set([...transactions.map(t => t.name), ...customMem.Names])];
-        // UPDATE 2
-        allNames.forEach(n => { if(n !== '(General)') bNameMem.innerHTML += `<option value="${n}">`; });
-        // UPDATE 3
-        [...allCats].sort().forEach(c => { bCatMem.innerHTML += `<option value="${c}">`; });
+        
+        let nameHtml = '';
+        allNames.forEach(n => { if(n !== '(General)') nameHtml += `<option value="${n}">`; });
+        bNameMem.innerHTML = nameHtml;
+
+        let catHtml = '';
+        [...allCats].sort().forEach(c => { catHtml += `<option value="${c}">`; });
+        bCatMem.innerHTML = catHtml;
     }
 };
 
