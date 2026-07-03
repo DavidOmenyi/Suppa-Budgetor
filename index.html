@@ -79,6 +79,11 @@
         label { font-size: 13px; font-weight: 700; margin-bottom: 5px; color: var(--text-muted); text-transform: uppercase;}
         input, select { padding: 10px; border: 2px solid var(--border); border-radius: var(--radius); background: var(--bg-color); color: var(--text-main); transition: 0.2s; width: 100%; }
         input:focus, select:focus { border-color: var(--accent); outline: none; }
+        /* Fix for datalist dropdown selection on mobile */
+input, select, textarea, datalist, option {
+    -webkit-user-select: auto !important;
+    user-select: auto !important;
+}
         
         .btn-primary { background: linear-gradient(135deg, var(--primary), var(--primary-hover)); color: #fff; border: none; padding: 10px 16px; border-radius: 20px; cursor: pointer; font-weight: bold; width: 100%; text-transform: uppercase; transition: 0.3s; }
         .btn-primary:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
