@@ -567,25 +567,13 @@ input, select, textarea, datalist, option {
                 <button type="submit" class="btn-primary" style="padding: 8px 15px; width: auto;">Add Item</button>
             </form>
 
-            <div style="overflow-x: auto;">
-                <table id="shopping-items-table" class="hidden">
-                    <thead>
-                        <tr>
-                            <th style="width: 40%;">Item</th>
-                            <th style="width: 20%;">Est. Price</th>
-                            <th style="width: 15%;">Qty</th>
-                            <th style="width: 15%;">Total</th>
-                            <th style="width: 10%;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="shopping-items-body"></tbody>
-                    <tfoot>
-                        <tr style="background: rgba(5,150,105,0.05); font-weight: bold;">
-                            <td colspan="3">Estimated Total Cost</td>
-                            <td id="shopping-list-total" colspan="2" style="color: var(--primary);">KES 0.00</td>
-                        </tr>
-                    </tfoot>
-                </table>
+            <div id="shopping-items-container" class="hidden">
+                <div id="shopping-items-list" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;"></div>
+                
+                <div style="background: rgba(5,150,105,0.05); padding: 15px 20px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border);">
+                    <span style="font-weight: bold; color: var(--text-muted); font-size: 14px;">Estimated Total Cost:</span>
+                    <span id="shopping-list-total" style="font-size: 20px; font-weight: 900; color: var(--primary);">KES 0.00</span>
+                </div>
             </div>
         </div>
     </div>
