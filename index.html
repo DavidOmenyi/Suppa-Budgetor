@@ -405,13 +405,13 @@ input, select, textarea, datalist, option {
                                 <option value="🏪">🏪</option><option value="🏦">🏦</option><option value="📦">📦</option>
                                 <option value="⚓">⚓</option><option value="💎">💎</option>
                             </select>
-                            <input type="text" id="budget-category" list="budget-cat-memory" required placeholder="Select or type..." autocomplete="off" style="flex: 1;" oninput="window.autoSelectIcon('budget')">
-                        </div>
+                            <input type="text" id="budget-category" list="budget-cat-memory" required placeholder="Select or type..." style="flex: 1;" oninput="window.autoSelectIcon('budget')">
+                         </div>   
                         <datalist id="budget-cat-memory"></datalist>
                     </div>
                     <div class="form-group">
                         <label>Item Name (Optional)</label>
-                        <input type="text" id="budget-name" list="budget-name-memory" placeholder="Leave blank for general category budget" autocomplete="off">
+                        <input type="text" id="budget-name" list="budget-name-memory" placeholder="Leave blank for general category budget">
                         <datalist id="budget-name-memory"></datalist>
                     </div>
                     <div class="form-group">
@@ -452,7 +452,7 @@ input, select, textarea, datalist, option {
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Transaction Name</label>
-                        <input type="text" id="tx-name" list="tx-memory" required placeholder="e.g. Uber" autocomplete="off">
+                        <input type="text" id="tx-name" list="tx-memory" required placeholder="e.g. Uber">
                         <datalist id="tx-memory"></datalist>
                     </div>
                     <div class="form-group">
@@ -484,7 +484,7 @@ input, select, textarea, datalist, option {
                                 <option value="👶">👶</option><option value="🛠️">🛠️</option><option value="💼">💼</option>
                                 <option value="🚑">🚑</option><option value="🕊️">🕊️</option>
                             </select>
-                            <input type="text" id="tx-category" list="cat-memory" required placeholder="Select or type new..." autocomplete="off" style="flex: 1;" oninput="window.autoSelectIcon('tx')">
+                            <input type="text" id="tx-category" list="cat-memory" required placeholder="Select or type new..." style="flex: 1;" oninput="window.autoSelectIcon('tx')">
                         </div>
                         <datalist id="cat-memory"></datalist>
                     </div>
@@ -852,7 +852,7 @@ input, select, textarea, datalist, option {
             <div class="form-grid">
                 <div class="form-group">
                     <label>Transaction Name</label>
-                    <input type="text" id="edit-tx-name" required autocomplete="off">
+                    <input type="text" id="edit-tx-name" list="tx-memory" required>
                 </div>
                 <div class="form-group">
                     <label>Type</label>
@@ -883,7 +883,7 @@ input, select, textarea, datalist, option {
                             <option value="👶">👶</option><option value="🛠️">🛠️</option><option value="💼">💼</option>
                             <option value="🚑">🚑</option><option value="🕊️">🕊️</option>
                         </select>
-                        <input type="text" id="edit-tx-category" list="edit-cat-memory" required autocomplete="off" style="flex: 1;" oninput="window.autoSelectIcon('edit-tx')">
+                        <input type="text" id="edit-tx-category" list="edit-cat-memory" required style="flex: 1;" oninput="window.autoSelectIcon('edit-tx')">
                     </div>
                     <datalist id="edit-cat-memory"></datalist>
                 </div>
