@@ -535,11 +535,15 @@ input, select, textarea, datalist, option {
         </div>
     </div>
 
-    <div class="form-grid" style="grid-template-columns: 1fr 3fr; gap: 20px; margin-top: 20px;">
-        <!-- Lists Sidebar -->
-        <div class="card" style="padding: 15px;">
-            <h3 style="font-size: 13px; margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 5px;">Active Lists</h3>
-            <ul id="shopping-lists-sidebar" style="list-style: none; display: flex; flex-direction: column; gap: 8px;"></ul>
+    <div style="display: flex; flex-direction: column; gap: 20px; margin-top: 20px;">
+        
+        <!-- Horizontal Lists Bar -->
+        <div class="card" style="padding: 15px; background: rgba(5,150,105,0.02);">
+            <div style="border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 12px;">
+                <h3 style="font-size: 14px; margin: 0; color: var(--primary);">Active Lists</h3>
+            </div>
+            <!-- Note the flex-direction: row and overflow-x: auto -->
+            <ul id="shopping-lists-sidebar" style="list-style: none; display: flex; flex-direction: row; gap: 10px; overflow-x: auto; padding-bottom: 5px; scrollbar-width: thin;"></ul>
         </div>
 
         <!-- Active List Items View -->
@@ -567,9 +571,11 @@ input, select, textarea, datalist, option {
                 <button type="submit" class="btn-primary" style="padding: 8px 15px; width: auto;">Add Item</button>
             </form>
 
+            <!-- Spacious Card Layout Container -->
             <div id="shopping-items-container" class="hidden">
                 <div id="shopping-items-list" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;"></div>
                 
+                <!-- Total Footer Card -->
                 <div style="background: rgba(5,150,105,0.05); padding: 15px 20px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border);">
                     <span style="font-weight: bold; color: var(--text-muted); font-size: 14px;">Estimated Total Cost:</span>
                     <span id="shopping-list-total" style="font-size: 20px; font-weight: 900; color: var(--primary);">KES 0.00</span>
