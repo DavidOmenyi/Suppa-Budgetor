@@ -1768,7 +1768,75 @@ window.renderActiveShoppingList = function() {
 
     totalEl.innerText = `KES ${totalAccumulator.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
 };
+// Export Shopping Lists to CSV
+window.exportShoppingCSV = function() {
+    if(Object.keys(shoppingLists).length === 0) return alert("No shopping list data to export!");
+    
+    let csvContent = "List_Name,Item_ID,Item_Name,Estimated_Price,Quantity\n";
+    
+    Object.keys(shoppingLists).sort().forEach(listName => {
+        shoppingLists[listName].forEach(item => {
+            // Escape quotes to prevent CSV breakage
+            const safeListName = listName.replace(/"/g, '""');
+            const safeItemName = (item.name || '').replace(/"/g, '""');
+            csvContent += `"${safeListName}",${item.id},"${safeItemName}",${item.price},${item.qty}\n`;
+        });
+    });
+    
+    window.triggerDownload(csvContent, `Suppa_Shopping_Lists_Backup_${new Date().toISOString().split('T')[0]}.csv`);
+};
 
+// Import Shopping Lists from CSV
+window.importShoppingCSV = function(e) {
+    const file = e.target.files[0]; 
+    if(!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+        const rows = evt.target.result.split('\n');
+        let importedCount = 0;
+        
+        rows.forEach((row, i) => {
+            if(i === 0 || !row.trim()) return; // Skip header row or empty rows
+            
+            // Parse CSV safely handling commas inside quotes
+            const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(s => s.replace(/(^"|"$)/g, '').trim());
+            
+            if(cols.length >= 5 && cols[0] !== 'List_Name') {
+                const listName = cols[0];
+                const itemId = parseInt(cols[1]) || Date.now() + Math.floor(Math.random() * 1000);
+                const itemName = cols[2];
+                const itemPrice = parseFloat(cols[3]) || 0;
+                const itemQty = parseInt(cols[4]) || 1;
+                
+                // Create list if it doesn't exist
+                if(!shoppingLists[listName]) {
+                    shoppingLists[listName] = [];
+                }
+                
+                // Prevent duplicate imports based on item ID
+                const exists = shoppingLists[listName].some(i => String(i.id) === String(itemId));
+                if(!exists) {
+                    shoppingLists[listName].push({
+                        id: itemId,
+                        name: itemName,
+                        price: itemPrice,
+                        qty: itemQty
+                    });
+                    importedCount++;
+                }
+            }
+        });
+        
+        window.saveShoppingData();
+        window.renderShoppingTabs();
+        window.renderActiveShoppingList();
+        
+        alert(`Successfully imported ${importedCount} shopping list items!`);
+        e.target.value = ''; // Reset input so you can re-import the same file if needed
+    };
+    reader.readAsText(file);
+};
 // ==========================================
 // 4. EVENT LISTENERS
 // ==========================================
