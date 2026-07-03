@@ -1624,6 +1624,7 @@ window.buyShoppingItem = function(itemId) {
     }
 };
 // UI Rendering Pipeline
+// UI Rendering Pipeline
 window.renderShoppingTabs = function() {
     const sidebar = document.getElementById('shopping-lists-sidebar');
     if (!sidebar) return;
@@ -1631,7 +1632,7 @@ window.renderShoppingTabs = function() {
 
     const listKeys = Object.keys(shoppingLists);
     if (listKeys.length === 0) {
-        sidebar.innerHTML = `<li style="font-size: 12px; color: var(--text-muted); text-align: center;">No lists compiled</li>`;
+        sidebar.innerHTML = `<li style="font-size: 13px; color: var(--text-muted); padding: 5px 0;">No lists compiled yet.</li>`;
         return;
     }
 
@@ -1639,11 +1640,13 @@ window.renderShoppingTabs = function() {
         const isActive = key === activeShoppingListKey;
         const bg = isActive ? 'var(--primary)' : 'var(--bg-color)';
         const color = isActive ? '#ffffff' : 'var(--text-main)';
-        const weight = isActive ? 'bold' : 'normal';
+        const weight = isActive ? 'bold' : '600';
+        const shadow = isActive ? 'var(--shadow)' : 'none';
 
+        // flex: 0 0 auto prevents squishing; white-space: nowrap keeps text on one line
         sidebar.innerHTML += `
-            <li>
-                <button onclick="window.selectShoppingList('${key.replace(/'/g, "\\'")}')" style="width: 100%; text-align: left; padding: 8px 12px; background: ${bg}; color: ${color}; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-weight: ${weight}; font-size: 13px; transition: 0.2s;">
+            <li style="flex: 0 0 auto;">
+                <button onclick="window.selectShoppingList('${key.replace(/'/g, "\\'")}')" style="white-space: nowrap; padding: 8px 16px; background: ${bg}; color: ${color}; border: 1px solid var(--border); border-radius: 25px; cursor: pointer; font-weight: ${weight}; font-size: 13px; transition: 0.2s; box-shadow: ${shadow};">
                     📋 ${key}
                 </button>
             </li>`;
