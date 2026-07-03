@@ -1671,11 +1671,8 @@ window.renderActiveShoppingList = function() {
         return;
     }
 
+    // Corrected loop - no duplicates!
     items.forEach(item => {
-        const itemRowTotal = item.price * item.qty;
-        totalAccumulator += itemRowTotal;
-
-        items.forEach(item => {
         const itemRowTotal = item.price * item.qty;
         totalAccumulator += itemRowTotal;
 
