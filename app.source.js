@@ -1813,6 +1813,7 @@ window.renderActiveShoppingList();
             if (!sms) return;
             
             let amount = null, vendor = null, txDate = null, txCost = null;
+            let detectedType = 'Expense'; // Default assumption
 
             // 1. Pass 1: Strict M-Pesa parsing
             const mpesaAmount = sms.match(/Ksh([\d,]+\.\d{2})/i);
@@ -1823,8 +1824,13 @@ window.renderActiveShoppingList();
 
             if (mpesaAmount) {
                 amount = parseFloat(mpesaAmount[1].replace(/,/g, ''));
-                if (mpesaPaidTo) vendor = mpesaPaidTo[1].trim();
-                else if (mpesaReceivedFrom) vendor = mpesaReceivedFrom[1].trim();
+                if (mpesaPaidTo) {
+                    vendor = mpesaPaidTo[1].trim();
+                    detectedType = 'Expense';
+                } else if (mpesaReceivedFrom) {
+                    vendor = mpesaReceivedFrom[1].trim();
+                    detectedType = 'Income';
+                }
                 
                 if (mpesaDate) {
                     const parts = mpesaDate[1].split('/');
@@ -1843,19 +1849,37 @@ window.renderActiveShoppingList();
                 if (genericEntity) {
                     vendor = genericEntity[1].trim();
                 }
+
+                // Generic Income vs Expense detection
+                const isIncome = /received from|deposited|credited/i.test(sms);
+                detectedType = isIncome ? 'Income' : 'Expense';
             }
 
             if (amount !== null) {
+                // 1. Set Amount
                 if (document.getElementById('tx-actual')) {
                     document.getElementById('tx-actual').value = amount;
                 }
+
+                // 2. Set the Transaction Type explicitly
+                const txTypeEl = document.getElementById('tx-type');
+                if (txTypeEl) {
+                    txTypeEl.value = detectedType;
+                    window.handleTypeChange('tx'); // Updates UI rules for Income/Expense
+                }
                 
+                // 3. Set Vendor Name and trigger Memory
                 if (vendor && document.getElementById('tx-name')) {
-                    document.getElementById('tx-name').value = vendor;
+                    const nameInput = document.getElementById('tx-name');
+                    nameInput.value = vendor;
                     
+                    // Force the input event so historical memory triggers
+                    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    
+                    // Apply generic category guesses if memory didn't catch it
                     const vLower = vendor.toLowerCase();
                     const txCatEl = document.getElementById('tx-category');
-                    if(txCatEl) {
+                    if(txCatEl && (!txCatEl.value || txCatEl.value === 'Uncategorized')) {
                         if (vLower.includes('java') || vLower.includes('kfc') || vLower.includes('naivas') || vLower.includes('quickmart') || vLower.includes('carrefour')) {
                             txCatEl.value = 'Food';
                         } else if (vLower.includes('uber') || vLower.includes('bolt') || vLower.includes('fuel') || vLower.includes('rubis') || vLower.includes('shell')) {
@@ -1867,13 +1891,16 @@ window.renderActiveShoppingList();
                     window.autoSelectIcon('tx');
                 }
 
+                // 4. Set Date
                 if (txDate && document.getElementById('tx-date')) {
                     document.getElementById('tx-date').value = txDate;
                 }
                 
+                // Finalize Math and clear the paste box
                 window.calcKES('tx');
                 setTimeout(() => e.target.value = '', 500);
                 
+                // Log M-Pesa fees automatically
                 if (txCost !== null && txCost > 0 && confirm(`Also log KES ${txCost} as a Transaction Cost?`)) {
                     transactions.push({
                         id: Date.now() + 1, name: 'M-Pesa Fee', type: 'Expense', category: 'Transaction Cost',
