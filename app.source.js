@@ -372,7 +372,7 @@ window.toggleCategories = function(clearInput = true, typeId, inputId, listId) {
     
     let allOpts = [...new Set([...baseOpts, ...customOpts])];
     if (dl) {
-        allOpts.forEach(c => dl.innerHTML += `<option value="${c}">${c}</option>`);
+        allOpts.forEach(c => dl.innerHTML += `<option value="${c}">`);
     }
 };
 
@@ -704,7 +704,8 @@ window.updateDatalists = function() {
     if(txMem) {
         txMem.innerHTML = '';
         let allNames = [...new Set([...transactions.map(t => t.name), ...customMem.Names])];
-        allNames.forEach(n => { if(n!=='(General)') txMem.innerHTML += `<option value="${n}">${n}</option>`; });
+        // UPDATE 1
+        allNames.forEach(n => { if(n!=='(General)') txMem.innerHTML += `<option value="${n}">`; });
     }
 
     const bCatMem = document.getElementById('budget-cat-memory');
@@ -718,8 +719,10 @@ window.updateDatalists = function() {
         transactions.filter(t => t.type !== 'Income').forEach(t => allCats.add(t.category));
         
         let allNames = [...new Set([...transactions.map(t => t.name), ...customMem.Names])];
-        allNames.forEach(n => { if(n !== '(General)') bNameMem.innerHTML += `<option value="${n}">${n}</option>`; });
-        [...allCats].sort().forEach(c => { bCatMem.innerHTML += `<option value="${c}">${c}</option>`; });
+        // UPDATE 2
+        allNames.forEach(n => { if(n !== '(General)') bNameMem.innerHTML += `<option value="${n}">`; });
+        // UPDATE 3
+        [...allCats].sort().forEach(c => { bCatMem.innerHTML += `<option value="${c}">`; });
     }
 };
 
