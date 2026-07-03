@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - SuppaBudget</title>
+  <style>
+    :root {
+      --bg-color: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --accent-color: #0284c7;
+      --border-color: #e2e8f0;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      line-height: 1.6;
+      padding: 2rem 1rem;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      padding: 2.5rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+      border: 1px solid var(--border-color);
+    }
+
+    header {
+      border-bottom: 2px solid var(--border-color);
+      padding-bottom: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    h1 {
+      font-size: 2rem;
+      color: var(--text-main);
+      margin-bottom: 0.5rem;
+    }
+
+    .last-updated {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    h2 {
+      font-size: 1.35rem;
+      color: var(--text-main);
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 0.5rem;
+    }
+
+    h3 {
+      font-size: 1.1rem;
+      color: var(--accent-color);
+      margin-top: 1.25rem;
+      margin-bottom: 0.5rem;
+    }
+
+    p, ul {
+      margin-bottom: 1rem;
+      color: var(--text-muted);
+    }
+
+    ul {
+      padding-left: 1.5rem;
+    }
+
+    li {
+      margin-bottom: 0.5rem;
+    }
+
+    strong {
+      color: var(--text-main);
+    }
+
+    code {
+      background: #f1f5f9;
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.875em;
+      font-family: monospace;
+      color: #0f172a;
+    }
+
+    .contact-box {
+      background: #f8fafc;
+      border-left: 4px solid var(--accent-color);
+      padding: 1.25rem;
+      border-radius: 0 8px 8px 0;
+      margin-top: 1rem;
+    }
+
+    a {
+      color: var(--accent-color);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        padding: 1.5rem;
+      }
+      h1 {
+        font-size: 1.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>Privacy Policy for SuppaBudget</h1>
+      <div class="last-updated">Last Updated: July 2026</div>
+    </header>
+
+    <section>
+      <h2>1. Information We Collect and How We Use It</h2>
+      
+      <h3>A. Financial Data (Stored Locally Only)</h3>
+      <p>The Application provides tools for logging transactions, managing category budgets, and tracking portfolio history.</p>
+      <ul>
+        <li><strong>What is collected:</strong> Ledger entries (names, dates, currency categories, transaction costs, and actual amounts).</li>
+        <li><strong>Where it lives:</strong> All financial inputs are stored locally on your device via secure browser storage mechanisms (<code>localStorage</code>).</li>
+        <li><strong>Developer Access:</strong> We do not transmit, sync, or copy your transaction logs to our servers. We have zero visibility and zero access to your financial information.</li>
+      </ul>
+
+      <h3>B. Account Authentication and Profile Data</h3>
+      <p>To provide secure account access and sync premium user status, the Application utilizes Supabase as a third-party identity management platform.</p>
+      <ul>
+        <li><strong>Information collected:</strong> When you register or log in, Supabase processes your email address, display name, and optional avatar/profile picture URL.</li>
+        <li><strong>Usage:</strong> This metadata is used exclusively to personalize the app interface and authorize your secure access to premium features.</li>
+      </ul>
+
+      <h3>C. M-Pesa SMS Text Processing (Local Parsing)</h3>
+      <p>The Application features an automated transaction parsing box (<code>mpesa-paste-box</code>) where you can voluntarily paste transaction SMS text confirmations to expedite manual data entry.</p>
+      <ul>
+        <li><strong>Processing standard:</strong> This text parsing happens entirely on your local device thread. The pasted text is instantly scrubbed for values (vendor, transaction cost, and amounts) locally.</li>
+        <li><strong>Data Isolation:</strong> The raw SMS text string is never uploaded to any backend database or transmitted across the network.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>2. Third-Party Services and Sub-Processors</h2>
+      <p>To facilitate user authentication and handle subscription features, the Application securely communicates with the following platforms:</p>
+      <ul>
+        <li><strong>Supabase Auth & Database:</strong> Handles secure user onboarding, session persistence, and verifies the premium subscription status (<code>is_premium</code>) linked to your unique account identifier.</li>
+        <li><strong>Netlify Functions:</strong> The Application forwards initialization metrics safely to serverless functions (<code>/initiate-tuma</code>) purely to securely request and cross-reference mobile payment states (such as M-Pesa) without collecting extraneous personal files.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>3. Data Retention and Deletion Rights</h2>
+      <p>Because you retain absolute custody of your financial metrics, you control how they are maintained:</p>
+      <ul>
+        <li><strong>Local Financial Data Wiping:</strong> You can permanently purge every transaction, budget setup, and portfolio configuration directly from your device at any point using the built-in Reset Data mechanism within the app settings.</li>
+        <li><strong>Account Deletion:</strong> If you wish to permanently delete your profile registration, email records, and premium billing links, you can request an account removal through standard authentication configurations.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>4. Security of Your Data</h2>
+      <p>We employ industry-recognized safeguards to protect your identity profiles via verified Supabase client libraries. Because your local device is the exclusive repository for your transaction ledgers, the integrity of your personal budgeting data heavily relies on the physical security of your smartphone or mobile hardware. We highly advise implementing standard device security protocols (PIN, biometrics, or passwords).</p>
+    </section>
+
+    <section>
+      <h2>5. Changes to This Privacy Policy</h2>
+      <p>We may update our Privacy Policy from time to time to align with rolling software releases or shifting regulatory frameworks. We will notify you of any structural revisions by updating the "Last Updated" date at the top of this document.</p>
+    </section>
+
+    <section>
+      <h2>6. Contact Us</h2>
+      <p>If you have any questions or concerns regarding this Privacy Policy, please contact our support team:</p>
+      <div class="contact-box">
+        <p><strong>Developer:</strong> Realsur Global</p>
+        <p><strong>Email:</strong> <a href="mailto:realsurglobal@gmail.com">realsurglobal@gmail.com</a></p>
+        <p><strong>Phone Support:</strong> <a href="tel:+254701275111">+254 701 275 111</a></p>
+      </div>
+    </section>
+  </div>
+
+</body>
+</html>
