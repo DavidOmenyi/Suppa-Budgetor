@@ -760,6 +760,14 @@ input, select, textarea, datalist, option {
                         <button class="btn-primary" onclick="window.exportBudgetCSV()" style="margin: 0; padding: 12px;">💾 Export Budgets</button>
                     </div>
                 </div>
+                <div class="card" style="border-top-color: #8b5cf6;">
+                    <h3 style="color: #8b5cf6;">Shopping Lists</h3>
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+                        <button class="btn-primary" onclick="document.getElementById('import-shopping-csv').click()" style="margin: 0; padding: 12px; background: linear-gradient(135deg, #8b5cf6, #7c3aed);">📥 Import Lists</button>
+                        <input type="file" id="import-shopping-csv" accept=".csv" style="display: none;" onchange="window.importShoppingCSV(event)">
+                        <button class="btn-primary" onclick="window.exportShoppingCSV()" style="margin: 0; padding: 12px; background: linear-gradient(135deg, #8b5cf6, #7c3aed);">💾 Export Lists</button>
+                    </div>
+                </div>
 
                 <div class="card" style="border-top-color: var(--danger);">
                     <h3 style="color: var(--danger);">Danger Zone</h3>
