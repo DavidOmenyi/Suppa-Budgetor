@@ -2098,49 +2098,94 @@ window.parsePDFStatement = async function(file) {
     }
 
     // ==========================================
-    // UPGRADED TEXT EXTRACTION & PATTERN MATCHING
+    // UPGRADED Y-COORDINATE PHYSICAL ROW PARSER
     // ==========================================
     try {
-        let fullText = "";
+        let physicalRows = [];
+        const yTolerance = 3; // Vertical pixel tolerance for items on the same visual line
+
+        // 1. Extract physical rows page-by-page using visual XY coordinates
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
             const page = await pdf.getPage(pageNum);
             const textContent = await page.getTextContent();
-            // Join with double spaces to prevent table columns from gluing together
-            const pageText = textContent.items.map(item => item.str).join("  ");
-            fullText += "  " + pageText;
+            
+            let pageLines = [];
+            
+            textContent.items.forEach(item => {
+                if (!item.str || !item.str.trim()) return;
+                
+                // transform[5] is the Y coordinate (vertical height on page)
+                // transform[4] is the X coordinate (horizontal position)
+                const y = Math.round(item.transform[5]);
+                const x = Math.round(item.transform[4]);
+                
+                // Find an existing line group within our Y-tolerance
+                let lineGroup = pageLines.find(l => Math.abs(l.y - y) <= yTolerance);
+                
+                if (!lineGroup) {
+                    lineGroup = { y: y, items: [] };
+                    pageLines.push(lineGroup);
+                }
+                lineGroup.items.push({ x: x, text: item.str.trim() });
+            });
+
+            // Sort lines top-to-bottom (PDF Y-coordinates start from bottom-left = 0, so higher Y is higher on page)
+            pageLines.sort((a, b) => b.y - a.y);
+
+            // Sort items in each line left-to-right by X coordinate and join with clean spacing
+            pageLines.forEach(line => {
+                line.items.sort((a, b) => a.x - b.x);
+                const rowString = line.items.map(i => i.text).join("  ");
+                if (rowString.length > 3) {
+                    physicalRows.push(rowString);
+                }
+            });
         }
 
-        console.log("🔍 RAW PDF TEXT LAYER:", fullText);
+        console.log("🔍 RECONSTRUCTED PHYSICAL ROWS:", physicalRows);
 
-        const dateRegexStr = `(?:\\d{1,2}[\\/\\-\\.]\\d{1,2}[\\/\\-\\.]\\d{2,4}|\\d{1,2}\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\s+\\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\s+\\d{1,2}[,\\s]+\\d{2,4})`;
-        const chunkRegex = new RegExp(`(?=${dateRegexStr})`, 'gi');
-        const lines = fullText.split(chunkRegex);
-        
+        // 2. Universal Date & Amount Regex Patterns
+        const dateRegex = /(?:\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}[,\s]+\d{2,4})/i;
+        const amountRegex = /(?:KES|Ksh|Kshs)?\s*(-?[\d]{1,3}(?:,[\d]{3})*(?:\.\d{2})?)\s*(?:CR|DR)?/gi;
+
         let importCount = 0;
+        let currentTransaction = null;
 
-        lines.forEach(line => {
-            const dateMatch = line.match(new RegExp(dateRegexStr, 'i'));
-            const amountMatches = line.match(/(?:KES|Ksh|Kshs)?\s*(-?[\d]{1,3}(?:,[\d]{3})*(?:\.\d{2})?)\s*(?:CR|DR)?/gi);
+        // 3. Process rows with Multi-Line Wrapping support
+        physicalRows.forEach(rowStr => {
+            const dateMatch = rowStr.match(dateRegex);
+            const amountMatches = rowStr.match(amountRegex);
 
+            // Check if this row has both a valid date and at least one potential amount
             if (dateMatch && amountMatches && amountMatches.length > 0) {
                 let bestAmount = 0;
+                
                 amountMatches.forEach(amtStr => {
                     let cleanNumStr = amtStr.replace(/[^0-9.]/g, '');
                     let val = parseFloat(cleanNumStr);
+                    // Filter out years (2024-2026) or massive account/reference numbers
                     if (!isNaN(val) && val > bestAmount && val < 10000000 && val !== 2024 && val !== 2025 && val !== 2026) {
                         bestAmount = val;
                     }
                 });
 
                 if (bestAmount > 0) {
-                    let desc = line.replace(dateMatch[0], '')
-                                   .replace(/(?:KES|Ksh|Kshs)?\s*-?[\d]{1,3}(?:,[\d]{3})*(?:\.\d{2})?\s*(?:CR|DR)?/gi, '')
-                                   .replace(/completed|confirmed|balance|paid to|sent to|transfer|withdrawal|deposit|available/gi, '')
-                                   .replace(/\s+/g, ' ')
-                                   .trim().substring(0, 45);
+                    // If we were building a previous transaction, push it to the inbox before starting the new one
+                    if (currentTransaction) {
+                        pendingInbox.push(currentTransaction);
+                        importCount++;
+                    }
+
+                    // Clean vendor description
+                    let desc = rowStr.replace(dateMatch[0], '')
+                                     .replace(/(?:KES|Ksh|Kshs)?\s*-?[\d]{1,3}(?:,[\d]{3})*(?:\.\d{2})?\s*(?:CR|DR)?/gi, '')
+                                     .replace(/completed|confirmed|balance|paid to|sent to|transfer|withdrawal|deposit|available|reference|ref/gi, '')
+                                     .replace(/\s+/g, ' ')
+                                     .trim();
                     
                     if (!desc || desc.length < 2) desc = "PDF Extracted Transaction";
 
+                    // Format Date to YYYY-MM-DD
                     let formattedDate = new Date().toISOString().split('T')[0];
                     try {
                         let dStr = dateMatch[0].replace(/,/g, '').trim();
@@ -2156,21 +2201,51 @@ window.parsePDFStatement = async function(file) {
                         }
                     } catch(e){}
 
-                    pendingInbox.push({
+                    currentTransaction = {
                         id: Date.now() + Math.floor(Math.random() * 100000),
                         date: formattedDate,
-                        name: window.normalizeCase ? window.normalizeCase('Name', desc) : desc,
+                        name: desc,
                         amount: bestAmount,
                         type: 'Expense',
                         category: 'Uncategorized'
-                    });
-                    importCount++;
+                    };
+                    return; // Move to next row
+                }
+            }
+
+            // 4. MULTI-LINE WRAP CATCHER:
+            // If this row does NOT have a date/amount, but we have an active transaction building,
+            // this line is almost certainly a wrapped description line from the vendor!
+            if (currentTransaction && !dateMatch) {
+                // Ignore page footers/headers or repeated table column titles
+                const lowerRow = rowStr.toLowerCase();
+                const isBoilerplate = ['page ', 'statement of', 'account no', 'opening balance', 'closing balance', 'date', 'description', 'debit', 'credit'].some(term => lowerRow.includes(term));
+                
+                if (!isBoilerplate && rowStr.trim().length > 2) {
+                    let cleanContinuation = rowStr.replace(/\s+/g, ' ').trim();
+                    // Append continuation text up to a sane max length of 55 characters
+                    if ((currentTransaction.name.length + cleanContinuation.length) < 55) {
+                        currentTransaction.name += " " + cleanContinuation;
+                        // Apply normalizer if available
+                        if (window.normalizeCase) {
+                            currentTransaction.name = window.normalizeCase('Name', currentTransaction.name);
+                        }
+                    }
                 }
             }
         });
 
+        // Push the final built transaction in the loop
+        if (currentTransaction) {
+            if (window.normalizeCase) {
+                currentTransaction.name = window.normalizeCase('Name', currentTransaction.name);
+            }
+            pendingInbox.push(currentTransaction);
+            importCount++;
+        }
+
         if (importCount === 0) {
-            alert("We opened your statement, but could not detect valid transactions. Open your browser console (F12) to see the 'RAW PDF TEXT LAYER' and check how dates are formatted!");
+            alert("We opened your statement, but could not detect valid transactions. Open your browser console (F12) to see the 'RECONSTRUCTED PHYSICAL ROWS' and check how dates are formatted!");
         } else {
             window.saveInbox();
             alert(`🎉 Successfully extracted and staged ${importCount} transactions into your Inbox!`);
