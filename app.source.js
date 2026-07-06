@@ -2055,6 +2055,7 @@ window.parsePDFStatement = async function(file) {
             return alert("Error reading PDF document: " + err.message);
         }
     }
+};
 
    // ==========================================
     // UPGRADED TEXT EXTRACTION & PATTERN MATCHING
@@ -2153,7 +2154,8 @@ window.parsePDFStatement = async function(file) {
         console.error("Extraction Error:", err);
         alert("Error analyzing PDF text: " + err.message);
     }
-    
+    };
+
 // 3. COLUMN MAPPING MODAL LOGIC
 window.openColumnMappingModal = function(headers, previewRows) {
     const dateSel = document.getElementById('map-col-date');
