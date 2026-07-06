@@ -1908,44 +1908,138 @@ window.handleStatementUpload = async function(e) {
     e.target.value = ''; // Reset input
 };
 
-// 2. SPREADSHEET (CSV / EXCEL) PARSER
-window.parseSpreadsheetStatement = function(file) {
-    const reader = new FileReader();
-    reader.onload = function(evt) {
-        try {
-            const data = new Uint8Array(evt.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
-            const firstSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheetName];
-            
-            // Convert to array of arrays (rows)
-            const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
-            
-            if (!rows || rows.length < 2) {
-                return alert("The uploaded spreadsheet appears to be empty!");
-            }
+// ==========================================
+// PDF PASSWORD MODAL BRIDGE
+// ==========================================
+let activePasswordResolve = null;
 
-            // Find header row (first row with at least 2 non-empty text cells)
-            let headerIdx = 0;
-            for (let i = 0; i < Math.min(rows.length, 10); i++) {
-                if (rows[i] && rows[i].filter(cell => cell && String(cell).trim().length > 0).length >= 2) {
-                    headerIdx = i;
-                    break;
-                }
-            }
-
-            const headers = rows[headerIdx].map((h, idx) => String(h || `Column ${idx + 1}`).trim());
-            tempSpreadsheetRows = rows.slice(headerIdx + 1).filter(r => r && r.length > 0 && r.some(c => c !== null && c !== ''));
-
-            window.openColumnMappingModal(headers, tempSpreadsheetRows.slice(0, 3));
-        } catch (err) {
-            console.error(err);
-            alert("Error reading spreadsheet: " + err.message);
+window.requestPDFPassword = function(reason) {
+    return new Promise((resolve) => {
+        activePasswordResolve = resolve;
+        const modal = document.getElementById('pdf-password-modal');
+        const input = document.getElementById('pdf-password-input');
+        const title = document.getElementById('pdf-pwd-title');
+        
+        // Reason 1 = First attempt, Reason 2 = Incorrect password
+        if (reason === 2) {
+            title.innerHTML = "❌ Incorrect Password - Try Again";
+            title.style.color = "var(--danger)";
+        } else {
+            title.innerHTML = "Enter Statement Password";
+            title.style.color = "var(--primary)";
         }
-    };
-    reader.readAsArrayBuffer(file);
+        
+        input.value = '';
+        modal.classList.remove('hidden');
+        setTimeout(() => input.focus(), 100);
+    });
 };
 
+window.confirmPDFPassword = function(e) {
+    if (e) e.preventDefault();
+    const input = document.getElementById('pdf-password-input');
+    const pwd = input ? input.value.trim() : '';
+    
+    document.getElementById('pdf-password-modal').classList.add('hidden');
+    if (activePasswordResolve) activePasswordResolve(pwd);
+};
+
+window.cancelPDFPassword = function() {
+    document.getElementById('pdf-password-modal').classList.add('hidden');
+    if (activePasswordResolve) activePasswordResolve(null);
+};
+
+// ==========================================
+// 4. PDF STATEMENT PARSER (WITH ENCRYPTION SUPPORT)
+// ==========================================
+window.parsePDFStatement = async function(file) {
+    if (typeof pdfjsLib === 'undefined') {
+        return alert("PDF library is still loading. Please check your internet connection or try again in a few seconds.");
+    }
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const arrayBuffer = await file.arrayBuffer();
+    
+    try {
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        
+        // Intercept encryption and trigger custom modal
+        loadingTask.onPassword = async function(updatePassword, reason) {
+            const userPwd = await window.requestPDFPassword(reason);
+            if (userPwd !== null && userPwd !== "") {
+                updatePassword(userPwd); // Feed password back to PDF.js engine
+            } else {
+                updatePassword(""); // Will trigger clean cancellation rejection
+            }
+        };
+
+        const pdf = await loadingTask.promise;
+        let fullText = "";
+
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            const page = await pdf.getPage(pageNum);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map(item => item.str).join(" ");
+            fullText += " " + pageText;
+        }
+
+        // Regex patterns to hunt for dates (DD/MM/YYYY or YYYY-MM-DD) and amounts
+        const lines = fullText.split(/(?=\d{2}[\/\--]\d{2}[\/\--]\d{2,4})/g);
+        let importCount = 0;
+
+        lines.forEach(line => {
+            const dateMatch = line.match(/(\d{2}[\/\--]\d{2}[\/\--]\d{2,4})/);
+            const amountMatches = line.match(/(?:KES|Ksh|Kshs)?\s*([0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2})/gi);
+
+            if (dateMatch && amountMatches && amountMatches.length > 0) {
+                let bestAmount = 0;
+                amountMatches.forEach(amtStr => {
+                    let val = parseFloat(amtStr.replace(/[^0-9.]/g, ''));
+                    if (val > bestAmount && val < 10000000) bestAmount = val;
+                });
+
+                if (bestAmount > 0) {
+                    let desc = line.replace(dateMatch[0], '')
+                                   .replace(/(?:KES|Ksh|Kshs)?\s*[0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2}/gi, '')
+                                   .replace(/completed|confirmed|balance|paid to|sent to/gi, '')
+                                   .trim().substring(0, 40) || "PDF Extracted Transaction";
+
+                    let formattedDate = new Date().toISOString().split('T')[0];
+                    try {
+                        let parts = dateMatch[1].split(/[\/\--]/);
+                        if (parts[0].length === 4) formattedDate = `${parts[0]}-${parts[1]}-${parts[2]}`;
+                        else formattedDate = `${parts[2].length===2 ? '20'+parts[2] : parts[2]}-${parts[1]}-${parts[0]}`;
+                    } catch(e){}
+
+                    pendingInbox.push({
+                        id: Date.now() + Math.floor(Math.random() * 100000),
+                        date: formattedDate,
+                        name: window.normalizeCase ? window.normalizeCase('Name', desc) : desc,
+                        amount: bestAmount,
+                        type: 'Expense',
+                        category: 'Uncategorized'
+                    });
+                    importCount++;
+                }
+            }
+        });
+
+        if (importCount === 0) {
+            alert("We opened the PDF, but could not extract structured transaction rows. Please ensure it is a valid financial statement.");
+        } else {
+            window.saveInbox();
+            alert(`🎉 Successfully unlocked, extracted, and staged ${importCount} transactions into your Inbox!`);
+        }
+    } catch (err) {
+        console.error(err);
+        if (err.name === 'PasswordException') {
+            alert("⚠️ Password entry was cancelled or failed. Statement could not be imported.");
+        } else {
+            alert("Error parsing PDF statement: " + err.message);
+        }
+    }
+};
 // 3. COLUMN MAPPING MODAL LOGIC
 window.openColumnMappingModal = function(headers, previewRows) {
     const dateSel = document.getElementById('map-col-date');
