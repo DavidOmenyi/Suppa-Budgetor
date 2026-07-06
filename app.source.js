@@ -1909,7 +1909,7 @@ window.handleStatementUpload = async function(e) {
 };
 
 // ==========================================
-// 2. SPREADSHEET (CSV / EXCEL) PARSER
+// 2. UPGRADED SPREADSHEET (CSV / EXCEL) PARSER
 // ==========================================
 window.parseSpreadsheetStatement = function(file) {
     const reader = new FileReader();
@@ -1927,14 +1927,56 @@ window.parseSpreadsheetStatement = function(file) {
                 return alert("The uploaded spreadsheet appears to be empty!");
             }
 
-            // Find header row (first row with at least 2 non-empty text cells)
+            // SMART HEADER DETECTION (Scans up to 50 rows with Keyword Scoring)
             let headerIdx = 0;
-            for (let i = 0; i < Math.min(rows.length, 10); i++) {
-                if (rows[i] && rows[i].filter(cell => cell && String(cell).trim().length > 0).length >= 2) {
-                    headerIdx = i;
-                    break;
+            let bestScore = -1;
+            const maxScan = Math.min(rows.length, 50); // Increased from 10 to 50 rows
+            
+            // Keywords typically found in financial statement table headers
+            const headerKeywords = ['date', 'time', 'description', 'details', 'narration', 'particulars', 'vendor', 'amount', 'debit', 'credit', 'balance', 'paid', 'received', 'reference', 'channel', 'kes', 'ksh'];
+
+            for (let i = 0; i < maxScan; i++) {
+                const row = rows[i];
+                if (!row || !Array.isArray(row)) continue;
+
+                const validCells = row.filter(cell => cell !== null && cell !== undefined && String(cell).trim().length > 0);
+                
+                // Must have at least 2 columns to be considered a table header
+                if (validCells.length >= 2) {
+                    let currentScore = 0;
+                    
+                    // Score the row based on how many financial column terms it contains
+                    validCells.forEach(cell => {
+                        const cellLower = String(cell).trim().toLowerCase();
+                        if (headerKeywords.some(kw => cellLower.includes(kw))) {
+                            currentScore += 2; // Strong match for known header terms
+                        } else {
+                            currentScore += 0.2; // Minor weight for having general text columns
+                        }
+                    });
+
+                    // Bonus weight if the row has 3 or more populated columns (very common for tables)
+                    if (validCells.length >= 3) currentScore += 1;
+
+                    // Keep track of the highest-scoring row
+                    if (currentScore > bestScore) {
+                        bestScore = currentScore;
+                        headerIdx = i;
+                    }
                 }
             }
+
+            // Fallback: If no keywords matched at all, just pick the first row with 3+ columns
+            if (bestScore < 2) {
+                for (let i = 0; i < maxScan; i++) {
+                    if (rows[i] && rows[i].filter(c => c && String(c).trim().length > 0).length >= 3) {
+                        headerIdx = i;
+                        break;
+                    }
+                }
+            }
+
+            console.log(`🗺️ Statement Header detected at Row ${headerIdx + 1} with score ${bestScore.toFixed(1)}`);
 
             const headers = rows[headerIdx].map((h, idx) => String(h || `Column ${idx + 1}`).trim());
             tempSpreadsheetRows = rows.slice(headerIdx + 1).filter(r => r && r.length > 0 && r.some(c => c !== null && c !== ''));
