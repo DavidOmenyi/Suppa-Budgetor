@@ -1877,6 +1877,345 @@ window.importShoppingCSV = function(e) {
     };
     reader.readAsText(file);
 };
+
+// ==========================================
+// STATEMENT PARSING & TRANSACTION INBOX
+// ==========================================
+
+// Initialize Global Inbox State
+let pendingInbox = JSON.parse(localStorage.getItem('suppa_pending_inbox')) || [];
+let tempSpreadsheetRows = []; // Temporary holder during column mapping
+
+window.saveInbox = function() {
+    localStorage.setItem('suppa_pending_inbox', JSON.stringify(pendingInbox));
+    window.renderInbox();
+};
+
+// 1. UNIFIED FILE UPLOAD HANDLER
+window.handleStatementUpload = async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const fileName = file.name.toLowerCase();
+    
+    if (fileName.endsWith('.pdf')) {
+        await window.parsePDFStatement(file);
+    } else if (fileName.endsWith('.csv') || fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        window.parseSpreadsheetStatement(file);
+    } else {
+        alert("Invalid file format! Please upload a CSV, Excel (.xlsx/.xls), or PDF file.");
+    }
+    e.target.value = ''; // Reset input
+};
+
+// 2. SPREADSHEET (CSV / EXCEL) PARSER
+window.parseSpreadsheetStatement = function(file) {
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+        try {
+            const data = new Uint8Array(evt.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            
+            // Convert to array of arrays (rows)
+            const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
+            
+            if (!rows || rows.length < 2) {
+                return alert("The uploaded spreadsheet appears to be empty!");
+            }
+
+            // Find header row (first row with at least 2 non-empty text cells)
+            let headerIdx = 0;
+            for (let i = 0; i < Math.min(rows.length, 10); i++) {
+                if (rows[i] && rows[i].filter(cell => cell && String(cell).trim().length > 0).length >= 2) {
+                    headerIdx = i;
+                    break;
+                }
+            }
+
+            const headers = rows[headerIdx].map((h, idx) => String(h || `Column ${idx + 1}`).trim());
+            tempSpreadsheetRows = rows.slice(headerIdx + 1).filter(r => r && r.length > 0 && r.some(c => c !== null && c !== ''));
+
+            window.openColumnMappingModal(headers, tempSpreadsheetRows.slice(0, 3));
+        } catch (err) {
+            console.error(err);
+            alert("Error reading spreadsheet: " + err.message);
+        }
+    };
+    reader.readAsArrayBuffer(file);
+};
+
+// 3. COLUMN MAPPING MODAL LOGIC
+window.openColumnMappingModal = function(headers, previewRows) {
+    const dateSel = document.getElementById('map-col-date');
+    const descSel = document.getElementById('map-col-desc');
+    const amtSel = document.getElementById('map-col-amount');
+    
+    dateSel.innerHTML = descSel.innerHTML = amtSel.innerHTML = '';
+
+    headers.forEach((h, idx) => {
+        const opt = `<option value="${idx}">${h}</option>`;
+        dateSel.innerHTML += opt;
+        descSel.innerHTML += opt;
+        amtSel.innerHTML += opt;
+    });
+
+    // Auto-guess columns based on header names
+    headers.forEach((h, idx) => {
+        const lower = h.toLowerCase();
+        if (lower.includes('date') || lower.includes('time')) dateSel.value = idx;
+        if (lower.includes('desc') || lower.includes('details') || lower.includes('narration') || lower.includes('particular')) descSel.value = idx;
+        if (lower.includes('amount') || lower.includes('debit') || lower.includes('paid') || lower.includes('kes') || lower.includes('value')) amtSel.value = idx;
+    });
+
+    // Build Preview Table
+    const prevHead = document.getElementById('mapping-preview-head');
+    const prevBody = document.getElementById('mapping-preview-body');
+    
+    prevHead.innerHTML = `<tr>${headers.map(h => `<th style="background:rgba(0,0,0,0.05);">${h}</th>`).join('')}</tr>`;
+    prevBody.innerHTML = previewRows.map(r => `<tr>${headers.map((_, idx) => `<td>${r[idx] !== undefined ? r[idx] : ''}</td>`).join('')}</tr>`).join('');
+
+    document.getElementById('mapping-modal').classList.remove('hidden');
+};
+
+window.closeMappingModal = function() {
+    document.getElementById('mapping-modal').classList.add('hidden');
+    tempSpreadsheetRows = [];
+};
+
+window.confirmColumnMapping = function() {
+    const dateIdx = parseInt(document.getElementById('map-col-date').value);
+    const descIdx = parseInt(document.getElementById('map-col-desc').value);
+    const amtIdx = parseInt(document.getElementById('map-col-amount').value);
+    const defaultType = document.getElementById('map-default-type').value;
+
+    let importCount = 0;
+
+    tempSpreadsheetRows.forEach(row => {
+        const rawDate = row[dateIdx];
+        const rawDesc = String(row[descIdx] || 'Unspecified Transaction').trim();
+        let rawAmt = String(row[amtIdx] || '0').replace(/,/g, '').replace(/[^-0-9.]/g, '');
+        let amount = Math.abs(parseFloat(rawAmt) || 0);
+
+        if (amount > 0 && rawDate) {
+            // Smart Date formatting fallback to YYYY-MM-DD
+            let formattedDate = new Date().toISOString().split('T')[0];
+            try {
+                const parsedDate = new Date(rawDate);
+                if (!isNaN(parsedDate.getTime())) formattedDate = parsedDate.toISOString().split('T')[0];
+            } catch (e) {}
+
+            pendingInbox.push({
+                id: Date.now() + Math.floor(Math.random() * 100000),
+                date: formattedDate,
+                name: window.normalizeCase ? window.normalizeCase('Name', rawDesc) : rawDesc,
+                amount: amount,
+                type: defaultType,
+                category: 'Uncategorized'
+            });
+            importCount++;
+        }
+    });
+
+    window.closeMappingModal();
+    window.saveInbox();
+    alert(`🎉 Successfully staged ${importCount} transactions into your Inbox! Review and assign categories below.`);
+};
+
+// 4. PDF STATEMENT PARSER (M-PESA & BANK STATEMENTS)
+window.parsePDFStatement = async function(file) {
+    if (typeof pdfjsLib === 'undefined') {
+        return alert("PDF library is still loading. Please check your internet connection or try again in a few seconds.");
+    }
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const arrayBuffer = await file.arrayBuffer();
+    
+    try {
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const pdf = await loadingTask.promise;
+        let fullText = "";
+
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            const page = await pdf.getPage(pageNum);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map(item => item.str).join(" ");
+            fullText += " " + pageText;
+        }
+
+        // Regex patterns to hunt for dates (DD/MM/YYYY or YYYY-MM-DD) and amounts (Ksh X,XXX.XX or X,XXX.XX)
+        const lines = fullText.split(/(?=\d{2}[\/\--]\d{2}[\/\--]\d{2,4})/g);
+        let importCount = 0;
+
+        lines.forEach(line => {
+            const dateMatch = line.match(/(\d{2}[\/\--]\d{2}[\/\--]\d{2,4})/);
+            // Matches amounts with optional KES/Ksh prefix and comma decimals
+            const amountMatches = line.match(/(?:KES|Ksh|Kshs)?\s*([0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2})/gi);
+
+            if (dateMatch && amountMatches && amountMatches.length > 0) {
+                // Grab the largest currency value found on that line as the transaction amount
+                let bestAmount = 0;
+                amountMatches.forEach(amtStr => {
+                    let val = parseFloat(amtStr.replace(/[^0-9.]/g, ''));
+                    if (val > bestAmount && val < 10000000) bestAmount = val;
+                });
+
+                if (bestAmount > 0) {
+                    // Clean description by stripping out the date and amount numbers
+                    let desc = line.replace(dateMatch[0], '')
+                                   .replace(/(?:KES|Ksh|Kshs)?\s*[0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2}/gi, '')
+                                   .replace(/completed|confirmed|balance|paid to|sent to/gi, '')
+                                   .trim().substring(0, 40) || "PDF Extracted Transaction";
+
+                    let formattedDate = new Date().toISOString().split('T')[0];
+                    try {
+                        let parts = dateMatch[1].split(/[\/\--]/);
+                        if (parts[0].length === 4) formattedDate = `${parts[0]}-${parts[1]}-${parts[2]}`;
+                        else formattedDate = `${parts[2].length===2 ? '20'+parts[2] : parts[2]}-${parts[1]}-${parts[0]}`;
+                    } catch(e){}
+
+                    pendingInbox.push({
+                        id: Date.now() + Math.floor(Math.random() * 100000),
+                        date: formattedDate,
+                        name: window.normalizeCase ? window.normalizeCase('Name', desc) : desc,
+                        amount: bestAmount,
+                        type: 'Expense',
+                        category: 'Uncategorized'
+                    });
+                    importCount++;
+                }
+            }
+        });
+
+        if (importCount === 0) {
+            alert("We could not extract structured transactions from this PDF. If this is a password-protected M-Pesa statement, please unlock/export it to CSV first or use our Smart Paste box!");
+        } else {
+            window.saveInbox();
+            alert(`🎉 Successfully extracted and staged ${importCount} transactions from your PDF!`);
+        }
+    } catch (err) {
+        console.error(err);
+        if (err.name === 'PasswordException') {
+            alert("🔒 This PDF statement is password protected! Please unlock it or export as CSV to import.");
+        } else {
+            alert("Error parsing PDF statement: " + err.message);
+        }
+    }
+};
+
+// 5. INBOX UI RENDERING & ACTIONS
+window.renderInbox = function() {
+    const container = document.getElementById('inbox-container');
+    const body = document.getElementById('inbox-body');
+    const countSpan = document.getElementById('inbox-count');
+    if (!container || !body) return;
+
+    if (pendingInbox.length === 0) {
+        container.classList.add('hidden');
+        return;
+    }
+
+    container.classList.remove('hidden');
+    countSpan.innerText = pendingInbox.length;
+    body.innerHTML = '';
+
+    // Build category dropdown options based on current memory
+    let allCats = new Set(['Uncategorized']);
+    Object.keys(categories).forEach(t => categories[t].forEach(c => allCats.add(c)));
+    if (customMem.Expense) customMem.Expense.forEach(c => allCats.add(c));
+    const catOptions = [...allCats].sort().map(c => `<option value="${c}">${c}</option>`).join('');
+
+    pendingInbox.forEach(item => {
+        body.innerHTML += `
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="white-space: nowrap;">${item.date}</td>
+                <td style="font-weight: bold; color: var(--text-main);">${item.name}</td>
+                <td style="font-weight: 800; color: var(--primary);">KES ${item.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                <td>
+                    <select onchange="window.updateInboxItem(${item.id}, 'type', this.value)" style="padding: 4px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border);">
+                        <option value="Expense" ${item.type==='Expense'?'selected':''}>Expense</option>
+                        <option value="Income" ${item.type==='Income'?'selected':''}>Income</option>
+                    </select>
+                </td>
+                <td>
+                    <select onchange="window.updateInboxItem(${item.id}, 'category', this.value)" style="padding: 4px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border); max-width: 130px;">
+                        <option value="${item.category}" selected hidden>${item.category}</option>
+                        ${catOptions}
+                    </select>
+                </td>
+                <td style="white-space: nowrap;">
+                    <button onclick="window.approveInboxItem(${item.id})" title="Approve & Save" style="background: rgba(16,185,129,0.1); color: var(--success); border: 1px solid var(--success); padding: 4px 8px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-right: 4px;">✓</button>
+                    <button onclick="window.discardInboxItem(${item.id})" title="Discard" style="background: rgba(239,68,68,0.1); color: var(--danger); border: 1px solid var(--danger); padding: 4px 8px; border-radius: 6px; cursor: pointer; font-weight: bold;">✕</button>
+                </td>
+            </tr>`;
+    });
+};
+
+window.updateInboxItem = function(id, field, val) {
+    const idx = pendingInbox.findIndex(i => i.id === id);
+    if (idx !== -1) {
+        pendingInbox[idx][field] = val;
+        localStorage.setItem('suppa_pending_inbox', JSON.stringify(pendingInbox));
+    }
+};
+
+window.approveInboxItem = function(id) {
+    const idx = pendingInbox.findIndex(i => i.id === id);
+    if (idx === -1) return;
+    
+    const item = pendingInbox[idx];
+    transactions.push({
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        name: item.name,
+        type: item.type,
+        category: item.category === 'Uncategorized' ? 'General' : item.category,
+        date: item.date,
+        actual: item.amount,
+        qty: 1, fx: 1, kes: item.amount, notes: 'Staged via Statement Upload'
+    });
+
+    pendingInbox.splice(idx, 1);
+    window.saveInbox();
+    window.saveData(); // Save to main ledger
+    window.updateUI(); // Refresh charts and summaries
+};
+
+window.discardInboxItem = function(id) {
+    pendingInbox = pendingInbox.filter(i => i.id !== id);
+    window.saveInbox();
+};
+
+window.approveAllInbox = function() {
+    if (pendingInbox.length === 0) return;
+    if (!confirm(`Are you sure you want to approve all ${pendingInbox.length} pending transactions into your active ledger?`)) return;
+
+    pendingInbox.forEach(item => {
+        transactions.push({
+            id: Date.now() + Math.floor(Math.random() * 100000),
+            name: item.name,
+            type: item.type,
+            category: item.category === 'Uncategorized' ? 'General' : item.category,
+            date: item.date,
+            actual: item.amount,
+            qty: 1, fx: 1, kes: item.amount, notes: 'Staged via Statement Upload'
+        });
+    });
+
+    pendingInbox = [];
+    window.saveInbox();
+    window.saveData();
+    window.updateUI();
+    alert("✅ All pending statements have been saved to your ledger!");
+};
+
+window.discardAllInbox = function() {
+    if (!confirm("Are you sure you want to clear and discard all pending transactions in your Inbox?")) return;
+    pendingInbox = [];
+    window.saveInbox();
+};
+
 // ==========================================
 // 4. EVENT LISTENERS
 // ==========================================
@@ -1897,6 +2236,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.updateUI();
     window.initAutocompletes();
    window.loadShoppingData();
+    window.renderInbox();
 window.renderShoppingTabs();
 window.renderActiveShoppingList();
 
