@@ -1938,7 +1938,8 @@ window.requestPDFPassword = function(reason) {
 window.confirmPDFPassword = function(e) {
     if (e) e.preventDefault();
     const input = document.getElementById('pdf-password-input');
-    const pwd = input ? input.value.trim() : '';
+    // Keep exact string even if empty, so users can submit blank passwords to bypass permission locks
+    const pwd = input ? input.value : '';
     
     document.getElementById('pdf-password-modal').classList.add('hidden');
     if (activePasswordResolve) activePasswordResolve(pwd);
@@ -1950,7 +1951,7 @@ window.cancelPDFPassword = function() {
 };
 
 // ==========================================
-// 4. PDF STATEMENT PARSER (WITH ENCRYPTION SUPPORT)
+// UPGRADED PDF PARSER (WITH CMAP & PERMISSION BYPASS)
 // ==========================================
 window.parsePDFStatement = async function(file) {
     if (typeof pdfjsLib === 'undefined') {
@@ -1962,15 +1963,24 @@ window.parsePDFStatement = async function(file) {
     const arrayBuffer = await file.arrayBuffer();
     
     try {
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        // We add CMap parameters and stopAtErrors:false to prevent font decoding bugs from triggering false encryption errors
+        const loadingTask = pdfjsLib.getDocument({ 
+            data: arrayBuffer,
+            password: '', // Explicitly try empty password first for permission-locked files
+            stopAtErrors: false,
+            cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+            cMapPacked: true
+        });
         
         // Intercept encryption and trigger custom modal
         loadingTask.onPassword = async function(updatePassword, reason) {
             const userPwd = await window.requestPDFPassword(reason);
-            if (userPwd !== null && userPwd !== "") {
-                updatePassword(userPwd); // Feed password back to PDF.js engine
+            if (userPwd !== null) {
+                // If user clicked Unlock (even if box was blank), pass it to PDF.js to attempt bypass
+                updatePassword(userPwd); 
             } else {
-                updatePassword(""); // Will trigger clean cancellation rejection
+                // User explicitly clicked Cancel
+                updatePassword(new Error("Password entry cancelled by user."));
             }
         };
 
@@ -2026,15 +2036,15 @@ window.parsePDFStatement = async function(file) {
         });
 
         if (importCount === 0) {
-            alert("We opened the PDF, but could not extract structured transaction rows. Please ensure it is a valid financial statement.");
+            alert("We opened the PDF, but could not extract structured transaction rows. Try saving/printing the statement as a new PDF and re-uploading!");
         } else {
             window.saveInbox();
-            alert(`🎉 Successfully unlocked, extracted, and staged ${importCount} transactions into your Inbox!`);
+            alert(`🎉 Successfully extracted and staged ${importCount} transactions into your Inbox!`);
         }
     } catch (err) {
         console.error(err);
         if (err.name === 'PasswordException') {
-            alert("⚠️ Password entry was cancelled or failed. Statement could not be imported.");
+            alert("⚠️ This file is permission-locked or encrypted. Tip: Open the PDF on your device, choose 'Print -> Save as PDF', and upload the new saved copy!");
         } else {
             alert("Error parsing PDF statement: " + err.message);
         }
