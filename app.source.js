@@ -2056,47 +2056,78 @@ window.parsePDFStatement = async function(file) {
         }
     }
 
-    // ==========================================
-    // TEXT EXTRACTION & PATTERN MATCHING
+   // ==========================================
+    // UPGRADED TEXT EXTRACTION & PATTERN MATCHING
     // ==========================================
     try {
         let fullText = "";
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
             const page = await pdf.getPage(pageNum);
             const textContent = await page.getTextContent();
-            const pageText = textContent.items.map(item => item.str).join(" ");
-            fullText += " " + pageText;
+            // Join with double spaces to prevent table columns from gluing together
+            const pageText = textContent.items.map(item => item.str).join("  ");
+            fullText += "  " + pageText;
         }
 
-        // Expanded Regex: Catches dates formatted as DD/MM/YYYY, DD-MM-YYYY, or DD.MM.YYYY
-        const lines = fullText.split(/(?=\d{2}[\/\--\.]\d{2}[\/\--\.]\d{2,4})/g);
+        // DEBUGGING: Print raw text to browser console (F12) so you can inspect bank layouts!
+        console.log("🔍 RAW PDF TEXT LAYER:", fullText);
+
+        // 1. Universal Date Pattern:
+        // Matches numeric (06/07/2026, 06.07.26) AND text months (06 Jul 2026, Jul 06 2026, 06-Jul-2026)
+        const dateRegexStr = `(?:\\d{1,2}[\\/\\-\\.]\\d{1,2}[\\/\\-\\.]\\d{2,4}|\\d{1,2}\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\s+\\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\s+\\d{1,2}[,\\s]+\\d{2,4})`;
+        
+        // Split the entire document into transaction chunks wherever a date appears
+        const chunkRegex = new RegExp(`(?=${dateRegexStr})`, 'gi');
+        const lines = fullText.split(chunkRegex);
+        
         let importCount = 0;
 
         lines.forEach(line => {
-            const dateMatch = line.match(/(\d{2}[\/\--\.]\d{2}[\/\--\.]\d{2,4})/);
-            // Catches amounts with KES, Ksh, or standalone numbers with decimal points
-            const amountMatches = line.match(/(?:KES|Ksh|Kshs)?\s*([0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2})/gi);
+            const dateMatch = line.match(new RegExp(dateRegexStr, 'i'));
+            
+            // 2. Universal Amount Pattern:
+            // Matches numbers like 1,500.00 | 1500 | KES 5,000 | 2,500.50 CR | -1,200.00
+            const amountMatches = line.match(/(?:KES|Ksh|Kshs)?\s*(-?[\d]{1,3}(?:,[\d]{3})*(?:\.\d{2})?)\s*(?:CR|DR)?/gi);
 
             if (dateMatch && amountMatches && amountMatches.length > 0) {
                 let bestAmount = 0;
+                
                 amountMatches.forEach(amtStr => {
-                    let val = parseFloat(amtStr.replace(/[^0-9.]/g, ''));
-                    // Filter out massive reference/account numbers that accidentally match decimals
-                    if (val > bestAmount && val < 10000000) bestAmount = val;
+                    // Strip out currency words, commas, and letters to evaluate the pure number
+                    let cleanNumStr = amtStr.replace(/[^0-9.]/g, '');
+                    let val = parseFloat(cleanNumStr);
+                    
+                    // Ignore years (like 2026) or massive account numbers if they get caught
+                    if (!isNaN(val) && val > bestAmount && val < 10000000 && val !== 2024 && val !== 2025 && val !== 2026) {
+                        bestAmount = val;
+                    }
                 });
 
                 if (bestAmount > 0) {
+                    // Clean up vendor description by removing the date, amount, and banking boilerplate
                     let desc = line.replace(dateMatch[0], '')
-                                   .replace(/(?:KES|Ksh|Kshs)?\s*[0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2}/gi, '')
-                                   .replace(/completed|confirmed|balance|paid to|sent to|transfer/gi, '')
+                                   .replace(/(?:KES|Ksh|Kshs)?\s*-?[\d]{1,3}(?:,[\d]{3})*(?:\.\d{2})?\s*(?:CR|DR)?/gi, '')
+                                   .replace(/completed|confirmed|balance|paid to|sent to|transfer|withdrawal|deposit|available/gi, '')
                                    .replace(/\s+/g, ' ')
-                                   .trim().substring(0, 45) || "PDF Extracted Transaction";
+                                   .trim().substring(0, 45);
+                    
+                    if (!desc || desc.length < 2) desc = "PDF Extracted Transaction";
 
+                    // Normalize Date to YYYY-MM-DD for standard ledger formatting
                     let formattedDate = new Date().toISOString().split('T')[0];
                     try {
-                        let parts = dateMatch[1].split(/[\/\--\.]/);
-                        if (parts[0].length === 4) formattedDate = `${parts[0]}-${parts[1]}-${parts[2]}`;
-                        else formattedDate = `${parts[2].length===2 ? '20'+parts[2] : parts[2]}-${parts[1]}-${parts[0]}`;
+                        let dStr = dateMatch[0].replace(/,/g, '').trim();
+                        let parsedDate = new Date(dStr);
+                        if (!isNaN(parsedDate.getTime())) {
+                            formattedDate = parsedDate.toISOString().split('T')[0];
+                        } else {
+                            // Fallback manual parse for DD/MM/YYYY
+                            let parts = dStr.split(/[\/\-\.]/);
+                            if (parts.length === 3 && parts[0].length <= 2 && !isNaN(parts[1])) {
+                                let yr = parts[2].length === 2 ? '20' + parts[2] : parts[2];
+                                formattedDate = `${yr}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+                            }
+                        }
                     } catch(e){}
 
                     pendingInbox.push({
@@ -2113,7 +2144,7 @@ window.parsePDFStatement = async function(file) {
         });
 
         if (importCount === 0) {
-            alert("We opened your statement successfully, but could not detect structured transaction rows (Dates + Amounts). Tip: Try exporting your statement as a CSV/Excel file for 100% precision!");
+            alert("We opened your statement, but could not detect valid transactions. Open your browser console (F12) to see the 'RAW PDF TEXT LAYER' and check how dates are formatted!");
         } else {
             window.saveInbox();
             alert(`🎉 Successfully extracted and staged ${importCount} transactions into your Inbox!`);
@@ -2122,8 +2153,7 @@ window.parsePDFStatement = async function(file) {
         console.error("Extraction Error:", err);
         alert("Error analyzing PDF text: " + err.message);
     }
-};
-
+    
 // 3. COLUMN MAPPING MODAL LOGIC
 window.openColumnMappingModal = function(headers, previewRows) {
     const dateSel = document.getElementById('map-col-date');
