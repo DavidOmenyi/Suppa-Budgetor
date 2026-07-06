@@ -1083,6 +1083,27 @@ input, select, textarea, datalist, option {
         </form>
     </div>
 </div>
+<div id="pdf-password-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 420px; text-align: center;">
+        <button class="modal-close" onclick="window.cancelPDFPassword()">Close</button>
+        <div style="font-size: 45px; margin-bottom: 10px;">🔒</div>
+        <h2 id="pdf-pwd-title" style="color: var(--primary); margin-bottom: 8px;">Enter Statement Password</h2>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
+            This statement is encrypted. For official M-Pesa statements, this is typically your <b>National ID number</b> or Passport number.
+        </p>
+
+        <form onsubmit="window.confirmPDFPassword(event)">
+            <div class="form-group" style="margin-bottom: 20px; text-align: left;">
+                <label>Password / ID Number <span style="color:var(--danger)">*</span></label>
+                <input type="password" id="pdf-password-input" required placeholder="e.g. 12345678" style="text-align: center; font-size: 16px; letter-spacing: 2px;">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button type="button" onclick="window.cancelPDFPassword()" class="btn-primary negative" style="margin: 0; flex: 1;">Cancel</button>
+                <button type="submit" class="btn-primary" style="margin: 0; flex: 2;">Unlock & Import ➡</button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <script src="app.js"></script>
 
