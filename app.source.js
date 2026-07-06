@@ -2016,7 +2016,6 @@ window.parsePDFStatement = async function(file) {
             cMapPacked: true
         };
         
-        // Only attach password if explicitly provided during Stage 2
         if (passwordValue !== null) {
             options.password = passwordValue;
         }
@@ -2055,9 +2054,8 @@ window.parsePDFStatement = async function(file) {
             return alert("Error reading PDF document: " + err.message);
         }
     }
-};
 
-   // ==========================================
+    // ==========================================
     // UPGRADED TEXT EXTRACTION & PATTERN MATCHING
     // ==========================================
     try {
@@ -2070,14 +2068,9 @@ window.parsePDFStatement = async function(file) {
             fullText += "  " + pageText;
         }
 
-        // DEBUGGING: Print raw text to browser console (F12) so you can inspect bank layouts!
         console.log("🔍 RAW PDF TEXT LAYER:", fullText);
 
-        // 1. Universal Date Pattern:
-        // Matches numeric (06/07/2026, 06.07.26) AND text months (06 Jul 2026, Jul 06 2026, 06-Jul-2026)
         const dateRegexStr = `(?:\\d{1,2}[\\/\\-\\.]\\d{1,2}[\\/\\-\\.]\\d{2,4}|\\d{1,2}\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\s+\\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\s+\\d{1,2}[,\\s]+\\d{2,4})`;
-        
-        // Split the entire document into transaction chunks wherever a date appears
         const chunkRegex = new RegExp(`(?=${dateRegexStr})`, 'gi');
         const lines = fullText.split(chunkRegex);
         
@@ -2085,27 +2078,19 @@ window.parsePDFStatement = async function(file) {
 
         lines.forEach(line => {
             const dateMatch = line.match(new RegExp(dateRegexStr, 'i'));
-            
-            // 2. Universal Amount Pattern:
-            // Matches numbers like 1,500.00 | 1500 | KES 5,000 | 2,500.50 CR | -1,200.00
             const amountMatches = line.match(/(?:KES|Ksh|Kshs)?\s*(-?[\d]{1,3}(?:,[\d]{3})*(?:\.\d{2})?)\s*(?:CR|DR)?/gi);
 
             if (dateMatch && amountMatches && amountMatches.length > 0) {
                 let bestAmount = 0;
-                
                 amountMatches.forEach(amtStr => {
-                    // Strip out currency words, commas, and letters to evaluate the pure number
                     let cleanNumStr = amtStr.replace(/[^0-9.]/g, '');
                     let val = parseFloat(cleanNumStr);
-                    
-                    // Ignore years (like 2026) or massive account numbers if they get caught
                     if (!isNaN(val) && val > bestAmount && val < 10000000 && val !== 2024 && val !== 2025 && val !== 2026) {
                         bestAmount = val;
                     }
                 });
 
                 if (bestAmount > 0) {
-                    // Clean up vendor description by removing the date, amount, and banking boilerplate
                     let desc = line.replace(dateMatch[0], '')
                                    .replace(/(?:KES|Ksh|Kshs)?\s*-?[\d]{1,3}(?:,[\d]{3})*(?:\.\d{2})?\s*(?:CR|DR)?/gi, '')
                                    .replace(/completed|confirmed|balance|paid to|sent to|transfer|withdrawal|deposit|available/gi, '')
@@ -2114,7 +2099,6 @@ window.parsePDFStatement = async function(file) {
                     
                     if (!desc || desc.length < 2) desc = "PDF Extracted Transaction";
 
-                    // Normalize Date to YYYY-MM-DD for standard ledger formatting
                     let formattedDate = new Date().toISOString().split('T')[0];
                     try {
                         let dStr = dateMatch[0].replace(/,/g, '').trim();
@@ -2122,7 +2106,6 @@ window.parsePDFStatement = async function(file) {
                         if (!isNaN(parsedDate.getTime())) {
                             formattedDate = parsedDate.toISOString().split('T')[0];
                         } else {
-                            // Fallback manual parse for DD/MM/YYYY
                             let parts = dStr.split(/[\/\-\.]/);
                             if (parts.length === 3 && parts[0].length <= 2 && !isNaN(parts[1])) {
                                 let yr = parts[2].length === 2 ? '20' + parts[2] : parts[2];
@@ -2154,7 +2137,7 @@ window.parsePDFStatement = async function(file) {
         console.error("Extraction Error:", err);
         alert("Error analyzing PDF text: " + err.message);
     }
-    };
+};
 
 // 3. COLUMN MAPPING MODAL LOGIC
 window.openColumnMappingModal = function(headers, previewRows) {
