@@ -50,7 +50,10 @@
             -webkit-user-select: none;
             user-select: none;
         }
-        
+        /* Hide default accordion arrow for modern styling */
+summary::-webkit-details-marker {
+    display: none;
+}
         /* Paywall Lock Screen Vault */
         #lockedScreen { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--bg-color); z-index: 999999; padding: 15px; overflow-y: auto; }
         .paywall-center-wrapper { min-height: 95vh; display: flex; justify-content: center; align-items: center; }
@@ -215,17 +218,15 @@ input, select, textarea, datalist, option {
         </header>
 
         <nav>
-    <button class="active" onclick="window.switchTab('home')">Overview</button>
-    <button onclick="window.switchTab('summaries')">Summaries</button>
+    <button class="active" onclick="window.switchTab('home')">Home</button>
     <button onclick="window.switchTab('budget')">Budget</button>
-    <button onclick="window.switchTab('entry')">Log Entry</button>
-    <!-- Add this line -->
-    <button onclick="window.switchTab('shopping')">Lists 🛒</button> 
-    <button onclick="window.switchTab('analytics')">Analytics</button>
+    <button onclick="window.switchTab('entry')">+ Add</button>
+    <button onclick="window.switchTab('shopping')">Lists 🛒</button>
+    <button onclick="window.switchTab('summaries')">Records 📁</button>
     <button onclick="window.switchTab('savings')">Portfolio</button>
+    <button onclick="window.switchTab('analytics')">Analytics</button>
     <button onclick="window.switchTab('utilities')">Utilities 🛠️</button>
     <button onclick="window.switchTab('help')">Help 📞</button>
-    <button onclick="window.switchTab('instructions')">Instructions 💡</button>
 </nav>
 
         <div id="home" class="tab-content active">
@@ -288,7 +289,7 @@ input, select, textarea, datalist, option {
 
         <div id="summaries" class="tab-content">
             <div class="flex-between" style="margin-bottom: 15px;">
-                <h2>Detailed Summaries</h2>
+                <h2>Detailed Records</h2>
                 <div style="display: flex; gap: 10px; align-items: center;">
                     <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="window.changeMonth(-1)">⬅</button>
                     <span id="current-month-display-summaries" style="font-weight: 800; font-size: 18px; min-width: 150px; text-align: center; color: var(--primary);"></span>
@@ -779,42 +780,44 @@ input, select, textarea, datalist, option {
         </div>
 
         <div id="help" class="tab-content">
-            <div class="flex-between" style="margin-bottom: 15px;">
-                <h2>Help & Support 📞</h2>
-            </div>
-            <div class="summary-cards" style="grid-template-columns: 1fr;">
-                <div class="card">
-                    <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">Contact Us</h3>
-                    <p style="color: var(--text-main); font-size: 14px; line-height: 1.6; margin-bottom: 10px;">
-                        If you encounter any issues, have feature requests, or need assistance recovering data, please reach out to our dedicated support channel:
-                    </p>
-                    <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.8;">
-                        <li><b>Developer:</b> Realsur Global</li>
-                        <li><b>Phone Support:</b> <a href="tel:+254701275111" style="color: var(--primary); font-weight: bold; text-decoration: none;">+254 701 275 111</a></li>
-                        <li><b>Email Support:</b> <a href="mailto:realsurglobal@gmail.com" style="color: var(--primary); font-weight: bold; text-decoration: none;">realsurglobal@gmail.com</a></li>
-                    </ul>
-                </div>
-                
-                <div class="card" style="border-top-color: var(--accent);">
-                    <h3 style="color: var(--accent); font-size: 16px; margin-bottom: 10px;">Legal & Privacy</h3>
-                    <p style="color: var(--text-main); font-size: 14px; line-height: 1.6;">
-                        We take your data security seriously. Your financial information is stored entirely locally on your device. 
-                        Read our complete <a href="privacy.html" target="_blank" style="color: var(--primary); font-weight: bold; text-decoration: underline;">Privacy Policy</a> to understand how we protect your data and handle your account information.
-                    </p>
-                </div>
-            </div>
+    <div class="flex-between" style="margin-bottom: 15px;">
+        <h2>Help & Support 📞</h2>
+    </div>
+    
+    <div class="summary-cards" style="grid-template-columns: 1fr; margin-bottom: 20px;">
+        <div class="card">
+            <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">Contact Us</h3>
+            <p style="color: var(--text-main); font-size: 14px; line-height: 1.6; margin-bottom: 10px;">
+                If you encounter any issues, have feature requests, or need assistance recovering data, please reach out to our dedicated support channel:
+            </p>
+            <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.8;">
+                <li><b>Developer:</b> Realsur Global</li>
+                <li><b>Phone Support:</b> <a href="tel:+254701275111" style="color: var(--primary); font-weight: bold; text-decoration: none;">+254 701 275 111</a></li>
+                <li><b>Email Support:</b> <a href="mailto:realsurglobal@gmail.com" style="color: var(--primary); font-weight: bold; text-decoration: none;">realsurglobal@gmail.com</a></li>
+            </ul>
         </div>
+        
+        <div class="card" style="border-top-color: var(--accent);">
+            <h3 style="color: var(--accent); font-size: 16px; margin-bottom: 10px;">Legal & Privacy</h3>
+            <p style="color: var(--text-main); font-size: 14px; line-height: 1.6;">
+                We take your data security seriously. Your financial information is stored entirely locally on your device. 
+                Read our complete <a href="privacy.html" target="_blank" style="color: var(--primary); font-weight: bold; text-decoration: underline;">Privacy Policy</a> to understand how we protect your data and handle your account information.
+            </p>
+        </div>
+    </div>
 
-        <div id="instructions" class="tab-content">
-            <div class="flex-between" style="margin-bottom: 15px;">
-                <h2>How to Use Suppa Budgetor</h2>
-            </div>
+    <details style="background: var(--surface-color); border: 2px solid var(--border); border-radius: var(--radius); padding: 15px; box-shadow: var(--shadow); transition: 0.3s;">
+        <summary style="font-weight: 800; font-size: 16px; color: var(--primary); cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; padding: 5px;">
+            <span>💡 How to Use Suppa Budgetor (Click to Expand)</span>
+            <span style="font-size: 12px; background: rgba(5, 150, 105, 0.1); padding: 4px 10px; border-radius: 20px;">View Guide ▼</span>
+        </summary>
+        
+        <div style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
             <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
                 Welcome to your personal, fully offline financial tracker. Because this app runs entirely inside your device's browser, your data is 100% private.
             </p>
 
             <div class="summary-cards" style="grid-template-columns: 1fr;">
-                
                 <div class="card">
                     <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">1. Setting Budgets</h3>
                     <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
@@ -827,7 +830,7 @@ input, select, textarea, datalist, option {
                 <div class="card" style="border-top-color: var(--accent);">
                     <h3 style="color: var(--accent); font-size: 16px; margin-bottom: 10px;">2. Smart Log Entry</h3>
                     <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
-                        <li>In the <b>Log Entry</b> tab, you can manually type transactions, or use the <b>🤖 Smart Message Paste</b> box.</li>
+                        <li>In the <b>+ Add</b> tab, you can manually type transactions, or use the <b>🤖 Smart Message Paste</b> box.</li>
                         <li>Simply copy an SMS from M-Pesa, Airtel Money, or your Bank and paste it into the box. The app will automatically extract the vendor, amount, and date!</li>
                         <li>If the app detects a transaction fee in the SMS, it will ask if you want to automatically log that as a separate expense.</li>
                     </ul>
@@ -845,7 +848,7 @@ input, select, textarea, datalist, option {
                 <div class="card" style="border-top-color: #3b82f6;">
                     <h3 style="color: #3b82f6; font-size: 16px; margin-bottom: 10px;">4. Portfolio & Savings Tracking</h3>
                     <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
-                        <li><b>Initial Funds:</b> In the <i>Log Entry</i> tab, select Type: <b>Savings (Portfolio)</b> > Action: <b>Opening Account Balance</b>. Type your account name. This safely establishes your initial portfolio balance.</li>
+                        <li><b>Initial Funds:</b> In the <i>+ Add</i> tab, select Type: <b>Savings (Portfolio)</b> > Action: <b>Opening Account Balance</b>. Type your account name. This safely establishes your initial portfolio balance.</li>
                         <li><b>Saving Money:</b> Log a <b>Deposit</b>. This registers as an expense (reducing unassigned cash) and adds money to the Portfolio!</li>
                         <li><b>Spending Savings:</b> When you spend saved money, first log a <b>Withdrawal</b> (moves money from portfolio back to cash), then log your actual purchase as a standard <b>Expense</b>.</li>
                     </ul>
@@ -854,8 +857,8 @@ input, select, textarea, datalist, option {
                 <div class="card">
                     <h3 style="color: var(--primary); font-size: 16px; margin-bottom: 10px;">5. Viewing & Editing Data</h3>
                     <ul style="padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6;">
-                        <li>The <b>Summaries</b> tab breaks down your performance with dynamic filters.</li>
-                        <li><b>To Edit or Delete:</b> In the Summaries tab, scroll down to the <i>Transactions Log</i> or click any Expense Name to open the detailed ledger. Click <b>Edit</b> or <b>Del</b> to modify records.</li>
+                        <li>The <b>Records 📁</b> tab breaks down your performance with dynamic filters.</li>
+                        <li><b>To Edit or Delete:</b> In the Records tab, scroll down to the <i>Transactions Log</i> or click any Expense Name to open the detailed ledger. Click <b>Edit</b> or <b>Del</b> to modify records.</li>
                     </ul>
                 </div>
 
@@ -868,9 +871,10 @@ input, select, textarea, datalist, option {
                         <li>To restore your data on a new device or browser, simply click the <b>Import (📥)</b> buttons and select your saved CSV files.</li>
                     </ul>
                 </div>
-                
             </div>
         </div>
+    </details>
+</div>
 
     </div>
 </div> 
