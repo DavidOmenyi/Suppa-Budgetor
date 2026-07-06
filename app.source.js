@@ -417,6 +417,30 @@ window.calcKES = function(prefix) {
     kesEl.value = (actual * fx * qty).toFixed(2);
 };
 
+// Helper to remove case sensitivity by adopting existing memory casing
+window.normalizeCase = function(inputType, str) {
+    if (!str) return '';
+    if (str === '(General)' || str === 'Uncategorized') return str;
+    
+    let trimmed = str.trim();
+    let lower = trimmed.toLowerCase();
+    
+    let existingOpts = [];
+    if (inputType === 'Category') {
+        Object.keys(categories).forEach(type => categories[type].forEach(c => existingOpts.push(c)));
+        if (customMem.Expense) existingOpts.push(...customMem.Expense);
+        if (customMem.Income) existingOpts.push(...customMem.Income);
+        if (customMem.Savings) existingOpts.push(...customMem.Savings);
+        transactions.forEach(t => existingOpts.push(t.category));
+    } else if (inputType === 'Name') {
+        if (customMem.Names) existingOpts.push(...customMem.Names);
+        transactions.forEach(t => existingOpts.push(t.name));
+    }
+    
+    let match = existingOpts.find(opt => opt && opt.toLowerCase() === lower);
+    return match ? match : (trimmed.charAt(0).toUpperCase() + trimmed.slice(1));
+};
+
 window.saveTransaction = function(e) {
     e.preventDefault(); window.saveState();
 
@@ -424,8 +448,13 @@ window.saveTransaction = function(e) {
     const txIdInput = document.getElementById('tx-id') ? document.getElementById('tx-id').value : '';
     const isUpdate = !!txIdInput;
 
-    const rawName = document.getElementById('tx-name').value.trim();
-    const rawCat = document.getElementById('tx-category').value.trim();
+    let rawName = document.getElementById('tx-name').value.trim();
+    let rawCat = document.getElementById('tx-category').value.trim();
+    
+    // Normalize case to prevent duplicates
+    rawName = window.normalizeCase('Name', rawName) || '(General)';
+    rawCat = window.normalizeCase('Category', rawCat) || 'Uncategorized';
+    
     const chosenIcon = document.getElementById('tx-category-icon').value;
     
     let finalType = document.getElementById('tx-type').value;
@@ -537,11 +566,18 @@ window.updateTransaction = function(e) {
     const iconEl = document.getElementById('edit-tx-category-icon');
     const chosenIcon = iconEl ? iconEl.value : '🏷️';
 
+    let editName = document.getElementById('edit-tx-name') ? document.getElementById('edit-tx-name').value.trim() : '';
+    let editCat = document.getElementById('edit-tx-category') ? document.getElementById('edit-tx-category').value.trim() : '';
+
+    // Normalize case to prevent duplicates
+    editName = window.normalizeCase('Name', editName) || '(General)';
+    editCat = window.normalizeCase('Category', editCat) || 'Uncategorized';
+
     const newTx = {
         id: transactions[index].id, 
-        name: document.getElementById('edit-tx-name') ? document.getElementById('edit-tx-name').value.trim() || '(General)' : '(General)',
+        name: editName,
         type: finalType, 
-        category: document.getElementById('edit-tx-category') ? document.getElementById('edit-tx-category').value.trim() || 'Uncategorized' : 'Uncategorized',
+        category: editCat,
         date: document.getElementById('edit-tx-date') ? document.getElementById('edit-tx-date').value : '',
         actual: Math.abs(parseFloat(document.getElementById('edit-tx-actual') ? document.getElementById('edit-tx-actual').value : 0) || 0),
         qty: parseFloat(document.getElementById('edit-tx-qty') ? document.getElementById('edit-tx-qty').value : 1) || 1, 
@@ -819,6 +855,10 @@ window.saveSingleBudget = function(e) {
         if (match && match.category) { name = cat; cat = match.category; } else { name = '(General)'; }
     } else if (!name) { name = '(General)'; }
     if (!cat) cat = 'Uncategorized';
+
+    // Normalize case to prevent budget disconnects
+    cat = window.normalizeCase('Category', cat);
+    name = window.normalizeCase('Name', name);
 
     let inferredType = 'Expense';
     if (categories.Savings.includes(cat) || customMem.Savings.includes(cat) || transactions.some(t => t.category === cat && t.type.includes('Savings'))) inferredType = 'Savings';
@@ -2016,6 +2056,8 @@ window.renderActiveShoppingList();
                 
                 // 3. Set Vendor Name and trigger Memory
                 if (vendor && document.getElementById('tx-name')) {
+                    vendor = window.normalizeCase('Name', vendor); // Normalize instantly
+                    
                     const nameInput = document.getElementById('tx-name');
                     nameInput.value = vendor;
                     
