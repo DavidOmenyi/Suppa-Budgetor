@@ -1920,8 +1920,8 @@ window.requestPDFPassword = function(reason) {
         const input = document.getElementById('pdf-password-input');
         const title = document.getElementById('pdf-pwd-title');
         
-        // Reason 1 = First attempt, Reason 2 = Incorrect password
-        if (reason === 2) {
+        // Reason 1 = First attempt, Reason > 1 = Incorrect password
+        if (reason > 1) {
             title.innerHTML = "❌ Incorrect Password - Try Again";
             title.style.color = "var(--danger)";
         } else {
@@ -1929,24 +1929,29 @@ window.requestPDFPassword = function(reason) {
             title.style.color = "var(--primary)";
         }
         
-        input.value = '';
-        modal.classList.remove('hidden');
-        setTimeout(() => input.focus(), 100);
+        if (input) input.value = '';
+        if (modal) modal.classList.remove('hidden');
+        setTimeout(() => { if (input) input.focus(); }, 100);
     });
 };
 
 window.confirmPDFPassword = function(e) {
     if (e) e.preventDefault();
     const input = document.getElementById('pdf-password-input');
-    // Keep exact string even if empty, so users can submit blank passwords to bypass permission locks
     const pwd = input ? input.value : '';
     
-    document.getElementById('pdf-password-modal').classList.add('hidden');
+    const modal = document.getElementById('pdf-password-modal');
+    if (modal) modal.classList.add('hidden');
+    
     if (activePasswordResolve) activePasswordResolve(pwd);
 };
 
+// THIS IS THE CANCEL FUNCTION:
 window.cancelPDFPassword = function() {
-    document.getElementById('pdf-password-modal').classList.add('hidden');
+    const modal = document.getElementById('pdf-password-modal');
+    if (modal) modal.classList.add('hidden');
+    
+    // Resolving with null tells the 2-Stage parser that the user explicitly aborted
     if (activePasswordResolve) activePasswordResolve(null);
 };
 
@@ -1962,31 +1967,60 @@ window.parsePDFStatement = async function(file) {
 
     const arrayBuffer = await file.arrayBuffer();
     
-    try {
-        // We add CMap parameters and stopAtErrors:false to prevent font decoding bugs from triggering false encryption errors
-        const loadingTask = pdfjsLib.getDocument({ 
-            data: arrayBuffer,
-            password: '', // Explicitly try empty password first for permission-locked files
+    // Helper function to attempt loading the PDF document
+    const attemptLoad = async (passwordValue = null) => {
+        const options = { 
+            data: arrayBuffer.slice(0), // Use slice so buffer isn't detached on retry
             stopAtErrors: false,
             cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
             cMapPacked: true
-        });
-        
-        // Intercept encryption and trigger custom modal
-        loadingTask.onPassword = async function(updatePassword, reason) {
-            const userPwd = await window.requestPDFPassword(reason);
-            if (userPwd !== null) {
-                // If user clicked Unlock (even if box was blank), pass it to PDF.js to attempt bypass
-                updatePassword(userPwd); 
-            } else {
-                // User explicitly clicked Cancel
-                updatePassword(new Error("Password entry cancelled by user."));
-            }
         };
+        
+        // Only attach password if explicitly provided during Stage 2
+        if (passwordValue !== null) {
+            options.password = passwordValue;
+        }
 
-        const pdf = await loadingTask.promise;
+        const loadingTask = pdfjsLib.getDocument(options);
+        return await loadingTask.promise;
+    };
+
+    let pdf = null;
+
+    try {
+        // STAGE 1: Silent auto-load (will open unencrypted & read-only bank PDFs instantly)
+        pdf = await attemptLoad('');
+    } catch (err) {
+        // STAGE 2: If Stage 1 fails with a genuine Password exception, launch the modal
+        if (err.name === 'PasswordException' || err.message.toLowerCase().includes('password')) {
+            let attempt = 1;
+            while (!pdf && attempt <= 3) {
+                const userPwd = await window.requestPDFPassword(attempt);
+                if (userPwd === null) {
+                    return; // User clicked Cancel
+                }
+                try {
+                    pdf = await attemptLoad(userPwd);
+                } catch (retryErr) {
+                    if (retryErr.name === 'PasswordException' || retryErr.message.toLowerCase().includes('password')) {
+                        attempt++;
+                    } else {
+                        throw retryErr;
+                    }
+                }
+            }
+            if (!pdf) return alert("❌ Too many incorrect password attempts. Import cancelled.");
+        } else {
+            console.error("PDF Load Error:", err);
+            return alert("Error reading PDF document: " + err.message);
+        }
+    }
+
+    // ==========================================
+    // TEXT EXTRACTION & PATTERN MATCHING
+    // ==========================================
+    try {
         let fullText = "";
-
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
             const page = await pdf.getPage(pageNum);
             const textContent = await page.getTextContent();
@@ -1994,30 +2028,33 @@ window.parsePDFStatement = async function(file) {
             fullText += " " + pageText;
         }
 
-        // Regex patterns to hunt for dates (DD/MM/YYYY or YYYY-MM-DD) and amounts
-        const lines = fullText.split(/(?=\d{2}[\/\--]\d{2}[\/\--]\d{2,4})/g);
+        // Expanded Regex: Catches dates formatted as DD/MM/YYYY, DD-MM-YYYY, or DD.MM.YYYY
+        const lines = fullText.split(/(?=\d{2}[\/\--\.]\d{2}[\/\--\.]\d{2,4})/g);
         let importCount = 0;
 
         lines.forEach(line => {
-            const dateMatch = line.match(/(\d{2}[\/\--]\d{2}[\/\--]\d{2,4})/);
+            const dateMatch = line.match(/(\d{2}[\/\--\.]\d{2}[\/\--\.]\d{2,4})/);
+            // Catches amounts with KES, Ksh, or standalone numbers with decimal points
             const amountMatches = line.match(/(?:KES|Ksh|Kshs)?\s*([0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2})/gi);
 
             if (dateMatch && amountMatches && amountMatches.length > 0) {
                 let bestAmount = 0;
                 amountMatches.forEach(amtStr => {
                     let val = parseFloat(amtStr.replace(/[^0-9.]/g, ''));
+                    // Filter out massive reference/account numbers that accidentally match decimals
                     if (val > bestAmount && val < 10000000) bestAmount = val;
                 });
 
                 if (bestAmount > 0) {
                     let desc = line.replace(dateMatch[0], '')
                                    .replace(/(?:KES|Ksh|Kshs)?\s*[0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2}/gi, '')
-                                   .replace(/completed|confirmed|balance|paid to|sent to/gi, '')
-                                   .trim().substring(0, 40) || "PDF Extracted Transaction";
+                                   .replace(/completed|confirmed|balance|paid to|sent to|transfer/gi, '')
+                                   .replace(/\s+/g, ' ')
+                                   .trim().substring(0, 45) || "PDF Extracted Transaction";
 
                     let formattedDate = new Date().toISOString().split('T')[0];
                     try {
-                        let parts = dateMatch[1].split(/[\/\--]/);
+                        let parts = dateMatch[1].split(/[\/\--\.]/);
                         if (parts[0].length === 4) formattedDate = `${parts[0]}-${parts[1]}-${parts[2]}`;
                         else formattedDate = `${parts[2].length===2 ? '20'+parts[2] : parts[2]}-${parts[1]}-${parts[0]}`;
                     } catch(e){}
@@ -2036,20 +2073,17 @@ window.parsePDFStatement = async function(file) {
         });
 
         if (importCount === 0) {
-            alert("We opened the PDF, but could not extract structured transaction rows. Try saving/printing the statement as a new PDF and re-uploading!");
+            alert("We opened your statement successfully, but could not detect structured transaction rows (Dates + Amounts). Tip: Try exporting your statement as a CSV/Excel file for 100% precision!");
         } else {
             window.saveInbox();
             alert(`🎉 Successfully extracted and staged ${importCount} transactions into your Inbox!`);
         }
     } catch (err) {
-        console.error(err);
-        if (err.name === 'PasswordException') {
-            alert("⚠️ This file is permission-locked or encrypted. Tip: Open the PDF on your device, choose 'Print -> Save as PDF', and upload the new saved copy!");
-        } else {
-            alert("Error parsing PDF statement: " + err.message);
-        }
+        console.error("Extraction Error:", err);
+        alert("Error analyzing PDF text: " + err.message);
     }
 };
+
 // 3. COLUMN MAPPING MODAL LOGIC
 window.openColumnMappingModal = function(headers, previewRows) {
     const dateSel = document.getElementById('map-col-date');
