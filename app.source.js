@@ -1075,10 +1075,21 @@ window.updateUI = function() {
         let rawTotalBudget = 0;
         Object.values(itemsMap).forEach(item => { rawTotalBudget += window.getBudget(item.cat, item.name, monthStr); });
 
+        // UPGRADED EXPENSE VS SAVINGS ROUTING
         currentMonthTxs.forEach(t => {
-            if (t.type === 'Savings-Withdrawal') totalSavingsWithdrawn += t.kes;
-            if (t.type === 'Expense') totalSpent += t.kes;
-            if (t.type === 'Savings-Deposit') totalSaved += t.kes;
+            const isSavingsCat = categories.Savings.includes(t.category) || (customMem.Savings && customMem.Savings.includes(t.category));
+            
+            if (t.type === 'Savings-Withdrawal') {
+                totalSavingsWithdrawn += t.kes;
+            } else if (t.type === 'Savings-Deposit' || isSavingsCat) {
+                // Route to Savings if explicitly a deposit OR if logged under any Savings category
+                if (t.type !== 'Starting-Balance') {
+                    totalSaved += t.kes;
+                }
+            } else if (t.type === 'Expense') {
+                // Strictly pure expenses only!
+                totalSpent += t.kes;
+            }
         });
 
         let totalAvailable = totalIncome + rollover + totalSavingsWithdrawn;
@@ -1092,8 +1103,11 @@ window.updateUI = function() {
         if(topRollEl) topRollEl.innerText = `Includes ${rollover >= 0 ? '+':''}${rollover.toLocaleString(undefined, {minimumFractionDigits: 2})} rollover`;
         const topBudgEl = document.getElementById('top-budget');
         if(topBudgEl) topBudgEl.innerText = `KES ${rawTotalBudget.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+        
+        // Populate the two separated cards cleanly
         const topSpentEl = document.getElementById('top-spent');
-        if(topSpentEl) topSpentEl.innerText = `KES ${actualOutgoing.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+        if(topSpentEl) topSpentEl.innerText = `KES ${totalSpent.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+        
         const topSavedEl = document.getElementById('top-saved');
         if(topSavedEl) topSavedEl.innerText = `KES ${totalSaved.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
         
