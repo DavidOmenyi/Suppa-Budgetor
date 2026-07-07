@@ -246,7 +246,7 @@ input, select, textarea, datalist, option {
             </button>
         </nav>
 
-        <div id="home" class="tab-content active">
+       <div id="home" class="tab-content active">
             <div class="flex-between" style="margin-bottom: 15px;">
                 <h2>Financial Overview</h2>
                 <div style="display: flex; gap: 10px; align-items: center;">
@@ -255,8 +255,8 @@ input, select, textarea, datalist, option {
                     <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="window.changeMonth(1)">➡</button>
                 </div>
             </div>
+
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; background: rgba(5, 150, 105, 0.04); padding: 10px; border-radius: var(--radius); border: 1px dashed var(--border);">
-                
                 <button onclick="window.switchTab('entry')" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--surface-color); border: 1px solid var(--border); padding: 10px 5px; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.02); transition: 0.2s;" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
                     <span style="font-size: 24px; margin-bottom: 4px;">➕</span>
                     <span style="font-size: 12px; font-weight: 800; color: var(--primary);">Add Entry</span>
@@ -267,11 +267,10 @@ input, select, textarea, datalist, option {
                     <span style="font-size: 12px; font-weight: 800; color: #8b5cf6;">Lists</span>
                 </button>
 
-                <button onclick="window.switchTab('summaries')" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--surface-color); border: 1px solid var(--border); padding: 10px 5px; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.02); transition: 0.2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-                    <span style="font-size: 24px; margin-bottom: 4px;">📁</span>
-                    <span style="font-size: 12px; font-weight: 800; color: var(--accent);">Records</span>
+                <button onclick="window.switchTab('utilities')" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--surface-color); border: 1px solid var(--border); padding: 10px 5px; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.02); transition: 0.2s;" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
+                    <span style="font-size: 24px; margin-bottom: 4px;">🛠️</span>
+                    <span style="font-size: 12px; font-weight: 800; color: var(--primary);">Utilities</span>
                 </button>
-
             </div>
             <div class="summary-cards">
                 <div class="card">
@@ -301,29 +300,8 @@ input, select, textarea, datalist, option {
                 <div class="card" style="border-top-color: var(--success);">
                     <h3>Amount Unassigned</h3>
                     <div class="value" id="top-unassigned">KES 0.00</div>
-                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">(Available Cash - Actual Spent & Saved)</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">(Available Cash - Actual Outgoing)</div>
                 </div>
-            </div>
-
-            <div class="flex-between" style="margin-top: 25px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
-                <h3 style="color: var(--primary); margin: 0;">Income Summary</h3>
-            </div>
-            <div style="overflow-x: auto;">
-                <table id="income-table">
-                    <thead>
-                        <tr>
-                            <th>Category</th>
-                            <th>Actual Received (KES)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="income-body"></tbody>
-                    <tfoot>
-                        <tr>
-                            <th style="font-size: 14px;">Total Income</th>
-                            <th id="bottom-line-income" style="font-size: 14px; color: var(--primary);">KES 0.00</th>
-                        </tr>
-                    </tfoot>
-                </table>
             </div>
         </div>
 
@@ -337,6 +315,30 @@ input, select, textarea, datalist, option {
                 </div>
             </div>
 
+            <details style="margin-top: 15px; margin-bottom: 25px; background: var(--surface-color); border: 2px solid var(--border); border-radius: var(--radius); padding: 15px; box-shadow: var(--shadow); transition: 0.3s;">
+                <summary style="font-weight: 800; font-size: 15px; color: var(--primary); cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; padding: 5px;">
+                    <span>💵 Monthly Income Breakdown (Click to Expand)</span>
+                    <span style="font-size: 12px; background: rgba(5, 150, 105, 0.1); padding: 4px 10px; border-radius: 20px;">View Income ▼</span>
+                </summary>
+                
+                <div style="overflow-x: auto; margin-top: 15px; border-top: 1px solid var(--border); padding-top: 10px;">
+                    <table id="income-table" style="min-width: 100%;">
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Actual Received (KES)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="income-body"></tbody>
+                        tfoot>
+                            <tr>
+                                <th style="font-size: 14px;">Total Income</th>
+                                <th id="bottom-line-income" style="font-size: 14px; color: var(--primary);">KES 0.00</th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </details>
             <div class="flex-between" style="margin-top: 25px; border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
                 <h3 style="color: var(--primary); margin: 0;">Category Performance</h3>
                 <button class="btn-primary" onclick="window.toggleCategoryPerformance()" style="width: auto; padding: 6px 12px; margin: 0; font-size: 13px;">👁️ View Performance Data</button>
