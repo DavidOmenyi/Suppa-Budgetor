@@ -1094,6 +1094,8 @@ window.updateUI = function() {
         if(topBudgEl) topBudgEl.innerText = `KES ${rawTotalBudget.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
         const topSpentEl = document.getElementById('top-spent');
         if(topSpentEl) topSpentEl.innerText = `KES ${actualOutgoing.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+        const topSavedEl = document.getElementById('top-saved');
+        if(topSavedEl) topSavedEl.innerText = `KES ${totalSaved.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
         
         const topSurpEl = document.getElementById('top-surplus');
         if(topSurpEl) {
@@ -2098,161 +2100,100 @@ window.parsePDFStatement = async function(file) {
     }
 
     // ==========================================
-    // UPGRADED Y-COORDINATE PHYSICAL ROW PARSER
+    // UPGRADED PDF TABLE GENERATOR & MODAL FEEDER
     // ==========================================
     try {
-        let physicalRows = [];
+        let pageLines = [];
         const yTolerance = 3; // Vertical pixel tolerance for items on the same visual line
 
-        // 1. Extract physical rows page-by-page using visual XY coordinates
+        // 1. Group words by physical line height (Y-coordinate) and horizontal position (X-coordinate)
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
             const page = await pdf.getPage(pageNum);
             const textContent = await page.getTextContent();
             
-            let pageLines = [];
-            
             textContent.items.forEach(item => {
                 if (!item.str || !item.str.trim()) return;
-                
-                // transform[5] is the Y coordinate (vertical height on page)
-                // transform[4] is the X coordinate (horizontal position)
                 const y = Math.round(item.transform[5]);
                 const x = Math.round(item.transform[4]);
                 
-                // Find an existing line group within our Y-tolerance
                 let lineGroup = pageLines.find(l => Math.abs(l.y - y) <= yTolerance);
-                
                 if (!lineGroup) {
                     lineGroup = { y: y, items: [] };
                     pageLines.push(lineGroup);
                 }
                 lineGroup.items.push({ x: x, text: item.str.trim() });
             });
-
-            // Sort lines top-to-bottom (PDF Y-coordinates start from bottom-left = 0, so higher Y is higher on page)
-            pageLines.sort((a, b) => b.y - a.y);
-
-            // Sort items in each line left-to-right by X coordinate and join with clean spacing
-            pageLines.forEach(line => {
-                line.items.sort((a, b) => a.x - b.x);
-                const rowString = line.items.map(i => i.text).join("  ");
-                if (rowString.length > 3) {
-                    physicalRows.push(rowString);
-                }
-            });
         }
 
-        console.log("🔍 RECONSTRUCTED PHYSICAL ROWS:", physicalRows);
-
-        // 2. Universal Date & Amount Regex Patterns
-        const dateRegex = /(?:\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}[,\s]+\d{2,4})/i;
-        const amountRegex = /(?:KES|Ksh|Kshs)?\s*(-?[\d]{1,3}(?:,[\d]{3})*(?:\.\d{2})?)\s*(?:CR|DR)?/gi;
-
-        let importCount = 0;
-        let currentTransaction = null;
-
-        // 3. Process rows with Multi-Line Wrapping support
-        physicalRows.forEach(rowStr => {
-            const dateMatch = rowStr.match(dateRegex);
-            const amountMatches = rowStr.match(amountRegex);
-
-            // Check if this row has both a valid date and at least one potential amount
-            if (dateMatch && amountMatches && amountMatches.length > 0) {
-                let bestAmount = 0;
-                
-                amountMatches.forEach(amtStr => {
-                    let cleanNumStr = amtStr.replace(/[^0-9.]/g, '');
-                    let val = parseFloat(cleanNumStr);
-                    // Filter out years (2024-2026) or massive account/reference numbers
-                    if (!isNaN(val) && val > bestAmount && val < 10000000 && val !== 2024 && val !== 2025 && val !== 2026) {
-                        bestAmount = val;
-                    }
-                });
-
-                if (bestAmount > 0) {
-                    // If we were building a previous transaction, push it to the inbox before starting the new one
-                    if (currentTransaction) {
-                        pendingInbox.push(currentTransaction);
-                        importCount++;
-                    }
-
-                    // Clean vendor description
-                    let desc = rowStr.replace(dateMatch[0], '')
-                                     .replace(/(?:KES|Ksh|Kshs)?\s*-?[\d]{1,3}(?:,[\d]{3})*(?:\.\d{2})?\s*(?:CR|DR)?/gi, '')
-                                     .replace(/completed|confirmed|balance|paid to|sent to|transfer|withdrawal|deposit|available|reference|ref/gi, '')
-                                     .replace(/\s+/g, ' ')
-                                     .trim();
-                    
-                    if (!desc || desc.length < 2) desc = "PDF Extracted Transaction";
-
-                    // Format Date to YYYY-MM-DD
-                    let formattedDate = new Date().toISOString().split('T')[0];
-                    try {
-                        let dStr = dateMatch[0].replace(/,/g, '').trim();
-                        let parsedDate = new Date(dStr);
-                        if (!isNaN(parsedDate.getTime())) {
-                            formattedDate = parsedDate.toISOString().split('T')[0];
-                        } else {
-                            let parts = dStr.split(/[\/\-\.]/);
-                            if (parts.length === 3 && parts[0].length <= 2 && !isNaN(parts[1])) {
-                                let yr = parts[2].length === 2 ? '20' + parts[2] : parts[2];
-                                formattedDate = `${yr}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
-                            }
-                        }
-                    } catch(e){}
-
-                    currentTransaction = {
-                        id: Date.now() + Math.floor(Math.random() * 100000),
-                        date: formattedDate,
-                        name: desc,
-                        amount: bestAmount,
-                        type: 'Expense',
-                        category: 'Uncategorized'
-                    };
-                    return; // Move to next row
-                }
-            }
-
-            // 4. MULTI-LINE WRAP CATCHER:
-            // If this row does NOT have a date/amount, but we have an active transaction building,
-            // this line is almost certainly a wrapped description line from the vendor!
-            if (currentTransaction && !dateMatch) {
-                // Ignore page footers/headers or repeated table column titles
-                const lowerRow = rowStr.toLowerCase();
-                const isBoilerplate = ['page ', 'statement of', 'account no', 'opening balance', 'closing balance', 'date', 'description', 'debit', 'credit'].some(term => lowerRow.includes(term));
-                
-                if (!isBoilerplate && rowStr.trim().length > 2) {
-                    let cleanContinuation = rowStr.replace(/\s+/g, ' ').trim();
-                    // Append continuation text up to a sane max length of 55 characters
-                    if ((currentTransaction.name.length + cleanContinuation.length) < 55) {
-                        currentTransaction.name += " " + cleanContinuation;
-                        // Apply normalizer if available
-                        if (window.normalizeCase) {
-                            currentTransaction.name = window.normalizeCase('Name', currentTransaction.name);
-                        }
-                    }
-                }
+        // 2. Sort lines top-to-bottom and words left-to-right
+        pageLines.sort((a, b) => b.y - a.y);
+        
+        let structuredRows = [];
+        
+        pageLines.forEach(line => {
+            line.items.sort((a, b) => a.x - b.x);
+            // Join words on the same line with double spaces
+            const rawLineStr = line.items.map(i => i.text).join("  ");
+            
+            // Slice the line into columns wherever there is a gap of 2+ spaces or tabs
+            const columns = rawLineStr.split(/\s{2,}|\t+/).map(col => col.trim()).filter(col => col.length > 0);
+            
+            // Only keep rows that have at least 2 columns (filters out stray page headers/footers)
+            if (columns.length >= 2) {
+                structuredRows.push(columns);
             }
         });
 
-        // Push the final built transaction in the loop
-        if (currentTransaction) {
-            if (window.normalizeCase) {
-                currentTransaction.name = window.normalizeCase('Name', currentTransaction.name);
-            }
-            pendingInbox.push(currentTransaction);
-            importCount++;
+        console.log("🔍 PDF CONVERTED TO STRUCTURED TABLE:", structuredRows);
+
+        if (structuredRows.length === 0) {
+            return alert("We opened the PDF, but could not detect multi-column table rows. Tip: Try exporting your statement as a CSV/Excel file!");
         }
 
-        if (importCount === 0) {
-            alert("We opened your statement, but could not detect valid transactions. Open your browser console (F12) to see the 'RECONSTRUCTED PHYSICAL ROWS' and check how dates are formatted!");
-        } else {
-            window.saveInbox();
-            alert(`🎉 Successfully extracted and staged ${importCount} transactions into your Inbox!`);
+        // 3. Smart Header Detection (Scans first 30 rows for financial column keywords)
+        let headerIdx = 0;
+        let bestScore = -1;
+        const maxScan = Math.min(structuredRows.length, 30);
+        const headerKeywords = ['date', 'time', 'description', 'details', 'narration', 'particulars', 'vendor', 'amount', 'debit', 'credit', 'balance', 'paid', 'received', 'reference', 'channel', 'kes', 'ksh'];
+
+        for (let i = 0; i < maxScan; i++) {
+            const row = structuredRows[i];
+            let currentScore = 0;
+            
+            row.forEach(cell => {
+                const cellLower = String(cell).toLowerCase();
+                if (headerKeywords.some(kw => cellLower.includes(kw))) {
+                    currentScore += 2;
+                }
+            });
+
+            if (row.length >= 3) currentScore += 1;
+
+            if (currentScore > bestScore) {
+                bestScore = currentScore;
+                headerIdx = i;
+            }
         }
+
+        // Fallback if no text header matched: create generic column names based on the widest row
+        let headers = [];
+        if (bestScore < 2) {
+            headerIdx = 0;
+            const maxCols = Math.max(...structuredRows.slice(0, 10).map(r => r.length));
+            for (let c = 1; c <= maxCols; c++) headers.push(`Column ${c}`);
+        } else {
+            headers = structuredRows[headerIdx].map((h, idx) => String(h || `Column ${idx + 1}`).trim());
+            // Remove the header row from the data rows
+            structuredRows = structuredRows.slice(headerIdx + 1);
+        }
+
+        // 4. Feed the converted PDF rows directly into the universal Column Mapping Modal!
+        tempSpreadsheetRows = structuredRows;
+        window.openColumnMappingModal(headers, tempSpreadsheetRows.slice(0, 3));
+
     } catch (err) {
-        console.error("Extraction Error:", err);
-        alert("Error analyzing PDF text: " + err.message);
+        console.error("PDF Table Generation Error:", err);
+        alert("Error analyzing PDF structure: " + err.message);
     }
 };
 
@@ -2305,15 +2246,27 @@ window.confirmColumnMapping = function() {
     tempSpreadsheetRows.forEach(row => {
         const rawDate = row[dateIdx];
         const rawDesc = String(row[descIdx] || 'Unspecified Transaction').trim();
+        // Strips KES, CR, DR, commas, and letters to isolate the clean numeric amount
         let rawAmt = String(row[amtIdx] || '0').replace(/,/g, '').replace(/[^-0-9.]/g, '');
         let amount = Math.abs(parseFloat(rawAmt) || 0);
 
         if (amount > 0 && rawDate) {
-            // Smart Date formatting fallback to YYYY-MM-DD
+            // Universal Date formatting (Handles YYYY-MM-DD, DD/MM/YYYY, DD.MM.YYYY, and Text Months)
             let formattedDate = new Date().toISOString().split('T')[0];
             try {
-                const parsedDate = new Date(rawDate);
-                if (!isNaN(parsedDate.getTime())) formattedDate = parsedDate.toISOString().split('T')[0];
+                let cleanDateStr = String(rawDate).replace(/,/g, '').trim();
+                const parsedDate = new Date(cleanDateStr);
+                
+                if (!isNaN(parsedDate.getTime())) {
+                    formattedDate = parsedDate.toISOString().split('T')[0];
+                } else {
+                    // Fallback manual parse for DD/MM/YYYY or DD.MM.YYYY
+                    let parts = cleanDateStr.split(/[\/\-\.]/);
+                    if (parts.length === 3 && parts[0].length <= 2 && !isNaN(parts[1])) {
+                        let yr = parts[2].length === 2 ? '20' + parts[2] : parts[2];
+                        formattedDate = `${yr}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+                    }
+                }
             } catch (e) {}
 
             pendingInbox.push({
