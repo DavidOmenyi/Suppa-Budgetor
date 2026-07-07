@@ -2398,6 +2398,60 @@ window.discardAllInbox = function() {
 };
 
 // ==========================================
+// BIOMETRIC AUTHENTICATION BRIDGE
+// ==========================================
+window.registerBiometrics = async function() {
+    if (!window.PublicKeyCredential) return alert("Biometry is not supported on this device/browser.");
+    try {
+        const publicKey = {
+            challenge: new Uint8Array(32), // In local-first mode, a random local buffer suffices
+            rp: { name: "Suppa Budgetor Pro", id: window.location.hostname || "localhost" },
+            user: {
+                id: new Uint8Array(16),
+                name: currentUser ? (currentUser.email || currentUser.phone) : "Local User",
+                displayName: "Suppa Budgetor User"
+            },
+            pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+            authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
+            timeout: 60000
+        };
+        const credential = await navigator.credentials.create({ publicKey });
+        if (credential) {
+            localStorage.setItem('suppa_biometry_enabled', 'true');
+            alert("✅ Biometrics registered successfully! You can now use your fingerprint to unlock the app.");
+        }
+    } catch (err) {
+        console.error("Biometric registration failed:", err);
+        alert("Could not register biometrics: " + err.message);
+    }
+};
+
+window.authenticateBiometrics = async function() {
+    if (localStorage.getItem('suppa_biometry_enabled') !== 'true') return;
+    try {
+        const publicKey = {
+            challenge: new Uint8Array(32),
+            userVerification: "required",
+            timeout: 60000
+        };
+        const assertion = await navigator.credentials.get({ publicKey });
+        if (assertion) {
+            // Biometric verified by OS! Unlock app immediately
+            window.unlockApp();
+        }
+    } catch (err) {
+        console.warn("Biometric unlock cancelled or failed:", err);
+    }
+};
+
+// Check on startup if biometry button should be visible
+document.addEventListener('DOMContentLoaded', () => {
+    if (localStorage.getItem('suppa_biometry_enabled') === 'true' && document.getElementById('biometricBtn')) {
+        document.getElementById('biometricBtn').style.display = 'block';
+    }
+});
+
+// ==========================================
 // 4. EVENT LISTENERS
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
