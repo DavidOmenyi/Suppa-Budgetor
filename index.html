@@ -176,6 +176,9 @@ input, select, textarea, datalist, option {
                 <div style="display: flex; flex-direction: column; gap: 12px; max-width: 280px; margin: 0 auto;">
                     <input type="text" id="phoneInput" placeholder="M-Pesa Phone (07... / 01...)" style="text-align: center; font-weight: 800; letter-spacing: 1px; font-size: 15px;">
                     <button id="payButton" class="btn-primary" style="margin: 0; padding: 14px;">Pay KES 1,700.00 to Unlock</button>
+                    <button id="biometricBtn" onclick="window.authenticateBiometrics()" class="btn-primary" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8); margin-bottom: 10px; display: none;">
+                        👆 Unlock with Fingerprint / Face
+                    </button>
                     <div id="paymentStatus" style="font-size: 12px; font-weight: bold; min-height: 36px; margin-top: 5px;"></div>
                 </div>
             </div>
@@ -221,17 +224,27 @@ input, select, textarea, datalist, option {
             </div>
         </header>
 
-        <nav>
-    <button class="active" onclick="window.switchTab('home')">Home</button>
-    <button onclick="window.switchTab('budget')">Budget</button>
-    <button onclick="window.switchTab('entry')">+ Add</button>
-    <button onclick="window.switchTab('shopping')">Lists 🛒</button>
-    <button onclick="window.switchTab('summaries')">Records 📁</button>
-    <button onclick="window.switchTab('savings')">Portfolio</button>
-    <button onclick="window.switchTab('analytics')">Analytics</button>
-    <button onclick="window.switchTab('utilities')">Utilities 🛠️</button>
-    <button onclick="window.switchTab('help')">Help 📞</button>
-</nav>
+        <nav style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; background: var(--surface-color); padding: 8px; border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border);">
+            <button class="active" onclick="window.switchTab('home')" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 2px; line-height: 1.2;">
+                <span style="font-size: 20px;">🏠</span>
+                <span style="font-size: 11px; margin-top: 3px; font-weight: 700;">Home</span>
+            </button>
+            
+            <button onclick="window.switchTab('budget')" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 2px; line-height: 1.2;">
+                <span style="font-size: 20px;">🎯</span>
+                <span style="font-size: 11px; margin-top: 3px; font-weight: 700;">Budget</span>
+            </button>
+            
+            <button onclick="window.switchTab('summaries')" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 2px; line-height: 1.2;">
+                <span style="font-size: 20px;">📁</span>
+                <span style="font-size: 11px; margin-top: 3px; font-weight: 700;">Records</span>
+            </button>
+            
+            <button onclick="window.switchTab('more')" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 2px; line-height: 1.2;">
+                <span style="font-size: 20px;">☰</span>
+                <span style="font-size: 11px; margin-top: 3px; font-weight: 700;">More</span>
+            </button>
+        </nav>
 
         <div id="home" class="tab-content active">
             <div class="flex-between" style="margin-bottom: 15px;">
@@ -242,7 +255,24 @@ input, select, textarea, datalist, option {
                     <button class="btn-primary" style="margin:0; padding:6px 12px; width:auto;" onclick="window.changeMonth(1)">➡</button>
                 </div>
             </div>
-            
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; background: rgba(5, 150, 105, 0.04); padding: 10px; border-radius: var(--radius); border: 1px dashed var(--border);">
+                
+                <button onclick="window.switchTab('entry')" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--surface-color); border: 1px solid var(--border); padding: 10px 5px; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.02); transition: 0.2s;" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
+                    <span style="font-size: 24px; margin-bottom: 4px;">➕</span>
+                    <span style="font-size: 12px; font-weight: 800; color: var(--primary);">Add Entry</span>
+                </button>
+
+                <button onclick="window.switchTab('shopping')" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--surface-color); border: 1px solid var(--border); padding: 10px 5px; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.02); transition: 0.2s;" onmouseover="this.style.borderColor='#8b5cf6'" onmouseout="this.style.borderColor='var(--border)'">
+                    <span style="font-size: 24px; margin-bottom: 4px;">🛒</span>
+                    <span style="font-size: 12px; font-weight: 800; color: #8b5cf6;">Lists</span>
+                </button>
+
+                <button onclick="window.switchTab('summaries')" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--surface-color); border: 1px solid var(--border); padding: 10px 5px; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.02); transition: 0.2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+                    <span style="font-size: 24px; margin-bottom: 4px;">📁</span>
+                    <span style="font-size: 12px; font-weight: 800; color: var(--accent);">Records</span>
+                </button>
+
+            </div>
             <div class="summary-cards">
                 <div class="card">
                     <h3>Total Income + Rollover</h3>
@@ -253,9 +283,15 @@ input, select, textarea, datalist, option {
                     <h3>Target Budget</h3>
                     <div class="value" id="top-budget">KES 0.00</div>
                 </div>
-                <div class="card">
-                    <h3>Actual Spent & Saved</h3>
-                    <div class="value" id="top-spent">KES 0.00</div>
+                <div class="card" style="border-top-color: var(--danger);">
+                    <h3>Actual Expenses</h3>
+                    <div class="value" id="top-spent" style="color: var(--danger);">KES 0.00</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">Pure outflows & bills</div>
+                </div>
+                <div class="card" style="border-top-color: #3b82f6;">
+                    <h3>Actual Savings</h3>
+                    <div class="value" id="top-saved" style="color: #3b82f6;">KES 0.00</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">Portfolio deposits</div>
                 </div>
                 <div class="card">
                     <h3>Surplus / Deficit</h3>
@@ -775,7 +811,42 @@ input, select, textarea, datalist, option {
                 </table>
             </div>
         </div>
-        
+        <div id="more" class="tab-content">
+            <h2 style="margin-bottom: 20px;">More Features & Tools</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 15px;">
+                
+                <div onclick="window.switchTab('analytics')" class="card" style="text-align: center; cursor: pointer; padding: 20px 10px; transition: 0.2s; border-top: 4px solid var(--accent);" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='none'">
+                    <div style="font-size: 32px; margin-bottom: 8px;">📊</div>
+                    <div style="font-weight: 800; font-size: 14px; color: var(--text-main);">Analytics</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Charts & Inflation</div>
+                </div>
+
+                <div onclick="window.switchTab('savings')" class="card" style="text-align: center; cursor: pointer; padding: 20px 10px; transition: 0.2s; border-top: 4px solid #3b82f6;" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='none'">
+                    <div style="font-size: 32px; margin-bottom: 8px;">💎</div>
+                    <div style="font-weight: 800; font-size: 14px; color: var(--text-main);">Portfolio</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Savings & Reserves</div>
+                </div>
+
+                <div onclick="window.switchTab('shopping')" class="card" style="text-align: center; cursor: pointer; padding: 20px 10px; transition: 0.2s; border-top: 4px solid #8b5cf6;" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='none'">
+                    <div style="font-size: 32px; margin-bottom: 8px;">🛒</div>
+                    <div style="font-weight: 800; font-size: 14px; color: var(--text-main);">Lists</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Shopping Planners</div>
+                </div>
+
+                <div onclick="window.switchTab('utilities')" class="card" style="text-align: center; cursor: pointer; padding: 20px 10px; transition: 0.2s; border-top: 4px solid var(--primary);" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='none'">
+                    <div style="font-size: 32px; margin-bottom: 8px;">🛠️</div>
+                    <div style="font-weight: 800; font-size: 14px; color: var(--text-main);">Utilities</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Backups & Reset</div>
+                </div>
+
+                <div onclick="window.switchTab('help')" class="card" style="text-align: center; cursor: pointer; padding: 20px 10px; transition: 0.2s; border-top: 4px solid var(--danger);" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='none'">
+                    <div style="font-size: 32px; margin-bottom: 8px;">📞</div>
+                    <div style="font-weight: 800; font-size: 14px; color: var(--text-main);">Help</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Guide & Support</div>
+                </div>
+
+            </div>
+        </div>
         <div id="utilities" class="tab-content">
             <div class="flex-between" style="margin-bottom: 15px;">
                 <h2>Utilities & Data Management</h2>
