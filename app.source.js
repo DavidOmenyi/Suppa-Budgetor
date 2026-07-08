@@ -2054,7 +2054,7 @@ window.cancelPDFPassword = function() {
 };
 
 // ==========================================
-// UPGRADED PDF PARSER (WITH CMAP & PERMISSION BYPASS)
+// DIRECT PDF PARSER (BYPASSES MAPPING MODAL)
 // ==========================================
 window.parsePDFStatement = async function(file) {
     if (typeof pdfjsLib === 'undefined') {
@@ -2065,7 +2065,7 @@ window.parsePDFStatement = async function(file) {
 
     const arrayBuffer = await file.arrayBuffer();
     
-    // Helper function to attempt loading the PDF document
+    // 1. Helper function to attempt loading the PDF document
     const attemptLoad = async (passwordValue = null) => {
         const options = { 
             data: arrayBuffer.slice(0), // Use slice so buffer isn't detached on retry
@@ -2094,7 +2094,7 @@ window.parsePDFStatement = async function(file) {
             while (!pdf && attempt <= 3) {
                 const userPwd = await window.requestPDFPassword(attempt);
                 if (userPwd === null) {
-                    return; // User clicked Cancel
+                    return; // User explicitly clicked Cancel
                 }
                 try {
                     pdf = await attemptLoad(userPwd);
@@ -2114,16 +2114,17 @@ window.parsePDFStatement = async function(file) {
     }
 
     // ==========================================
-    // UPGRADED PDF TABLE GENERATOR & MODAL FEEDER
+    // Y-COORDINATE PHYSICAL ROW EXTRACTION
     // ==========================================
     try {
-        let pageLines = [];
-        const yTolerance = 3; // Vertical pixel tolerance for items on the same visual line
+        let physicalRows = [];
+        const yTolerance = 3; // Vertical pixel tolerance for words on the same visual line
 
-        // 1. Group words by physical line height (Y-coordinate) and horizontal position (X-coordinate)
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
             const page = await pdf.getPage(pageNum);
             const textContent = await page.getTextContent();
+            
+            let pageLines = [];
             
             textContent.items.forEach(item => {
                 if (!item.str || !item.str.trim()) return;
@@ -2137,77 +2138,123 @@ window.parsePDFStatement = async function(file) {
                 }
                 lineGroup.items.push({ x: x, text: item.str.trim() });
             });
+
+            // Sort lines top-to-bottom
+            pageLines.sort((a, b) => b.y - a.y);
+
+            // Sort words left-to-right and join cleanly
+            pageLines.forEach(line => {
+                line.items.sort((a, b) => a.x - b.x);
+                const rowString = line.items.map(i => i.text).join("  ");
+                if (rowString.length > 3) {
+                    physicalRows.push(rowString);
+                }
+            });
         }
 
-        // 2. Sort lines top-to-bottom and words left-to-right
-        pageLines.sort((a, b) => b.y - a.y);
-        
-        let structuredRows = [];
-        
-        pageLines.forEach(line => {
-            line.items.sort((a, b) => a.x - b.x);
-            // Join words on the same line with double spaces
-            const rawLineStr = line.items.map(i => i.text).join("  ");
-            
-            // Slice the line into columns wherever there is a gap of 2+ spaces or tabs
-            const columns = rawLineStr.split(/\s{2,}|\t+/).map(col => col.trim()).filter(col => col.length > 0);
-            
-            // Only keep rows that have at least 2 columns (filters out stray page headers/footers)
-            if (columns.length >= 2) {
-                structuredRows.push(columns);
+        console.log("🔍 RECONSTRUCTED PDF ROWS:", physicalRows);
+
+        // Universal Date & Amount Regex Patterns
+        const dateRegex = /(?:\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}[,\s]+\d{2,4})/i;
+        const amountRegex = /(?:KES|Ksh|Kshs)?\s*(-?[\d]{1,3}(?:,[\d]{3})*(?:\.\d{2})?)\s*(?:CR|DR)?/gi;
+
+        let importCount = 0;
+        let currentTransaction = null;
+
+        // Process rows directly into the inbox without modal mapping
+        physicalRows.forEach(rowStr => {
+            const dateMatch = rowStr.match(dateRegex);
+            const amountMatches = rowStr.match(amountRegex);
+
+            if (dateMatch && amountMatches && amountMatches.length > 0) {
+                let bestAmount = 0;
+                
+                amountMatches.forEach(amtStr => {
+                    let cleanNumStr = amtStr.replace(/[^0-9.]/g, '');
+                    let val = parseFloat(cleanNumStr);
+                    // Filter out years or massive account numbers
+                    if (!isNaN(val) && val > bestAmount && val < 10000000 && val !== 2024 && val !== 2025 && val !== 2026) {
+                        bestAmount = val;
+                    }
+                });
+
+                if (bestAmount > 0) {
+                    if (currentTransaction) {
+                        pendingInbox.push(currentTransaction);
+                        importCount++;
+                    }
+
+                    // Clean vendor description
+                    let desc = rowStr.replace(dateMatch[0], '')
+                                     .replace(/(?:KES|Ksh|Kshs)?\s*-?[\d]{1,3}(?:,[\d]{3})*(?:\.\d{2})?\s*(?:CR|DR)?/gi, '')
+                                     .replace(/completed|confirmed|balance|paid to|sent to|transfer|withdrawal|deposit|available|reference|ref/gi, '')
+                                     .replace(/\s+/g, ' ')
+                                     .trim();
+                    
+                    if (!desc || desc.length < 2) desc = "PDF Extracted Transaction";
+
+                    let formattedDate = new Date().toISOString().split('T')[0];
+                    try {
+                        let dStr = dateMatch[0].replace(/,/g, '').trim();
+                        let parsedDate = new Date(dStr);
+                        if (!isNaN(parsedDate.getTime())) {
+                            formattedDate = parsedDate.toISOString().split('T')[0];
+                        } else {
+                            let parts = dStr.split(/[\/\-\.]/);
+                            if (parts.length === 3 && parts[0].length <= 2 && !isNaN(parts[1])) {
+                                let yr = parts[2].length === 2 ? '20' + parts[2] : parts[2];
+                                formattedDate = `${yr}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+                            }
+                        }
+                    } catch(e){}
+
+                    currentTransaction = {
+                        id: Date.now() + Math.floor(Math.random() * 100000),
+                        date: formattedDate,
+                        name: desc,
+                        amount: bestAmount,
+                        type: 'Expense',
+                        category: 'Uncategorized'
+                    };
+                    return; 
+                }
+            }
+
+            // Multi-Line Wrap Catcher for long M-Pesa vendor descriptions
+            if (currentTransaction && !dateMatch) {
+                const lowerRow = rowStr.toLowerCase();
+                const isBoilerplate = ['page ', 'statement of', 'account no', 'opening balance', 'closing balance', 'date', 'description', 'debit', 'credit'].some(term => lowerRow.includes(term));
+                
+                if (!isBoilerplate && rowStr.trim().length > 2) {
+                    let cleanContinuation = rowStr.replace(/\s+/g, ' ').trim();
+                    if ((currentTransaction.name.length + cleanContinuation.length) < 55) {
+                        currentTransaction.name += " " + cleanContinuation;
+                        if (window.normalizeCase) {
+                            currentTransaction.name = window.normalizeCase('Name', currentTransaction.name);
+                        }
+                    }
+                }
             }
         });
 
-        console.log("🔍 PDF CONVERTED TO STRUCTURED TABLE:", structuredRows);
-
-        if (structuredRows.length === 0) {
-            return alert("We opened the PDF, but could not detect multi-column table rows. Tip: Try exporting your statement as a CSV/Excel file!");
-        }
-
-        // 3. Smart Header Detection (Scans first 30 rows for financial column keywords)
-        let headerIdx = 0;
-        let bestScore = -1;
-        const maxScan = Math.min(structuredRows.length, 30);
-        const headerKeywords = ['date', 'time', 'description', 'details', 'narration', 'particulars', 'vendor', 'amount', 'debit', 'credit', 'balance', 'paid', 'received', 'reference', 'channel', 'kes', 'ksh'];
-
-        for (let i = 0; i < maxScan; i++) {
-            const row = structuredRows[i];
-            let currentScore = 0;
-            
-            row.forEach(cell => {
-                const cellLower = String(cell).toLowerCase();
-                if (headerKeywords.some(kw => cellLower.includes(kw))) {
-                    currentScore += 2;
-                }
-            });
-
-            if (row.length >= 3) currentScore += 1;
-
-            if (currentScore > bestScore) {
-                bestScore = currentScore;
-                headerIdx = i;
+        if (currentTransaction) {
+            if (window.normalizeCase) {
+                currentTransaction.name = window.normalizeCase('Name', currentTransaction.name);
             }
+            pendingInbox.push(currentTransaction);
+            importCount++;
         }
 
-        // Fallback if no text header matched: create generic column names based on the widest row
-        let headers = [];
-        if (bestScore < 2) {
-            headerIdx = 0;
-            const maxCols = Math.max(...structuredRows.slice(0, 10).map(r => r.length));
-            for (let c = 1; c <= maxCols; c++) headers.push(`Column ${c}`);
+        if (importCount === 0) {
+            alert("We opened your statement, but could not detect valid transactions. Open your browser console (F12) to inspect the 'RECONSTRUCTED PDF ROWS' output.");
         } else {
-            headers = structuredRows[headerIdx].map((h, idx) => String(h || `Column ${idx + 1}`).trim());
-            // Remove the header row from the data rows
-            structuredRows = structuredRows.slice(headerIdx + 1);
+            // Directly save and show the inbox without triggering the mapping modal
+            window.saveInbox();
+            alert(`🎉 Successfully extracted and staged ${importCount} transactions directly into your Inbox!`);
         }
-
-        // 4. Feed the converted PDF rows directly into the universal Column Mapping Modal!
-        tempSpreadsheetRows = structuredRows;
-        window.openColumnMappingModal(headers, tempSpreadsheetRows.slice(0, 3));
-
     } catch (err) {
-        console.error("PDF Table Generation Error:", err);
-        alert("Error analyzing PDF structure: " + err.message);
+        console.error("Extraction Error:", err);
+        alert("Error analyzing PDF text: " + err.message);
     }
 };
 
