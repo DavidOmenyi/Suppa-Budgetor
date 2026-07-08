@@ -2095,19 +2095,14 @@ window.parsePDFStatement = async function(file) {
 
     const arrayBuffer = await file.arrayBuffer();
     
-    // 1. Helper function to attempt loading the PDF document
     const attemptLoad = async (passwordValue = null) => {
         const options = { 
-            data: arrayBuffer.slice(0), // Use slice so buffer isn't detached on retry
+            data: arrayBuffer.slice(0),
             stopAtErrors: false,
             cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
             cMapPacked: true
         };
-        
-        if (passwordValue !== null) {
-            options.password = passwordValue;
-        }
-
+        if (passwordValue !== null) options.password = passwordValue;
         const loadingTask = pdfjsLib.getDocument(options);
         return await loadingTask.promise;
     };
@@ -2115,25 +2110,19 @@ window.parsePDFStatement = async function(file) {
     let pdf = null;
 
     try {
-        // STAGE 1: Silent auto-load (will open unencrypted & read-only bank PDFs instantly)
         pdf = await attemptLoad('');
     } catch (err) {
-        // STAGE 2: If Stage 1 fails with a genuine Password exception, launch the modal
         if (err.name === 'PasswordException' || err.message.toLowerCase().includes('password')) {
             let attempt = 1;
             while (!pdf && attempt <= 3) {
                 const userPwd = await window.requestPDFPassword(attempt);
-                if (userPwd === null) {
-                    return; // User explicitly clicked Cancel
-                }
+                if (userPwd === null) return; 
                 try {
                     pdf = await attemptLoad(userPwd);
                 } catch (retryErr) {
                     if (retryErr.name === 'PasswordException' || retryErr.message.toLowerCase().includes('password')) {
                         attempt++;
-                    } else {
-                        throw retryErr;
-                    }
+                    } else throw retryErr;
                 }
             }
             if (!pdf) return alert("❌ Too many incorrect password attempts. Import cancelled.");
@@ -2148,7 +2137,7 @@ window.parsePDFStatement = async function(file) {
     // ==========================================
     try {
         let physicalRows = [];
-        const yTolerance = 3; // Vertical pixel tolerance for words on the same visual line
+        const yTolerance = 3; 
 
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
             const page = await pdf.getPage(pageNum);
@@ -2169,29 +2158,23 @@ window.parsePDFStatement = async function(file) {
                 lineGroup.items.push({ x: x, text: item.str.trim() });
             });
 
-            // Sort lines top-to-bottom
             pageLines.sort((a, b) => b.y - a.y);
 
-            // Sort words left-to-right and join cleanly
             pageLines.forEach(line => {
                 line.items.sort((a, b) => a.x - b.x);
                 const rowString = line.items.map(i => i.text).join("  ");
-                if (rowString.length > 3) {
-                    physicalRows.push(rowString);
-                }
+                if (rowString.length > 3) physicalRows.push(rowString);
             });
         }
 
         console.log("🔍 RECONSTRUCTED PDF ROWS:", physicalRows);
 
-        // Universal Date & Amount Regex Patterns
         const dateRegex = /(?:\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}[,\s]+\d{2,4})/i;
         const amountRegex = /(?:KES|Ksh|Kshs)?\s*(-?[\d]{1,3}(?:,[\d]{3})*(?:\.\d{2})?)\s*(?:CR|DR)?/gi;
 
         let importCount = 0;
         let currentTransaction = null;
 
-        // Process rows directly into the inbox without modal mapping
         physicalRows.forEach(rowStr => {
             const dateMatch = rowStr.match(dateRegex);
             const amountMatches = rowStr.match(amountRegex);
@@ -2202,7 +2185,6 @@ window.parsePDFStatement = async function(file) {
                 amountMatches.forEach(amtStr => {
                     let cleanNumStr = amtStr.replace(/[^0-9.]/g, '');
                     let val = parseFloat(cleanNumStr);
-                    // Filter out years or massive account numbers
                     if (!isNaN(val) && val > bestAmount && val < 10000000 && val !== 2024 && val !== 2025 && val !== 2026) {
                         bestAmount = val;
                     }
@@ -2214,7 +2196,6 @@ window.parsePDFStatement = async function(file) {
                         importCount++;
                     }
 
-                    // Clean vendor description
                     let desc = rowStr.replace(dateMatch[0], '')
                                      .replace(/(?:KES|Ksh|Kshs)?\s*-?[\d]{1,3}(?:,[\d]{3})*(?:\.\d{2})?\s*(?:CR|DR)?/gi, '')
                                      .replace(/completed|confirmed|balance|paid to|sent to|transfer|withdrawal|deposit|available|reference|ref/gi, '')
@@ -2250,7 +2231,6 @@ window.parsePDFStatement = async function(file) {
                 }
             }
 
-            // Multi-Line Wrap Catcher for long M-Pesa vendor descriptions
             if (currentTransaction && !dateMatch) {
                 const lowerRow = rowStr.toLowerCase();
                 const isBoilerplate = ['page ', 'statement of', 'account no', 'opening balance', 'closing balance', 'date', 'description', 'debit', 'credit'].some(term => lowerRow.includes(term));
@@ -2278,7 +2258,6 @@ window.parsePDFStatement = async function(file) {
         if (importCount === 0) {
             alert("We opened your statement, but could not detect valid transactions. Open your browser console (F12) to inspect the 'RECONSTRUCTED PDF ROWS' output.");
         } else {
-            // Directly save and show the inbox without triggering the mapping modal
             window.saveInbox();
             alert(`🎉 Successfully extracted and staged ${importCount} transactions directly into your Inbox!`);
         }
@@ -2754,6 +2733,21 @@ window.renderActiveShoppingList();
                 window.calcKES('tx');
                 setTimeout(() => e.target.value = '', 500);
                 
+                // NEW: Show confirmation banner for 4 seconds, then fade out
+                const banner = document.getElementById('paste-success-banner');
+                if (banner) {
+                    banner.style.display = 'block';
+                    setTimeout(() => { banner.style.display = 'none'; }, 4000);
+                }
+                
+                // NEW: Highlight the transaction form briefly so the user sees the changes
+                const txForm = document.getElementById('tx-form');
+                if (txForm) {
+                    txForm.style.transition = 'box-shadow 0.3s ease';
+                    txForm.style.boxShadow = '0 0 0 3px var(--success)';
+                    setTimeout(() => { txForm.style.boxShadow = 'none'; }, 2000);
+                }
+
                 // Log M-Pesa fees automatically
                 if (txCost !== null && txCost > 0 && confirm(`Also log KES ${txCost} as a Transaction Cost?`)) {
                     transactions.push({
