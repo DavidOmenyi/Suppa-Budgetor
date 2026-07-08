@@ -2169,52 +2169,96 @@ window.parsePDFStatement = async function(file) {
 
         console.log("🔍 RECONSTRUCTED PDF ROWS:", physicalRows);
 
-        const dateRegex = /(?:\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}[,\s]+\d{2,4})/i;
+        // ==========================================
+        // 1. SMART SUMMARY BYPASS
+        // ==========================================
+        let detailedStartIndex = 0;
+        for (let i = 0; i < physicalRows.length; i++) {
+            let rLower = physicalRows[i].toLowerCase();
+            // Look for M-Pesa or Bank transaction table headers to safely skip the top summary block
+            if (rLower.includes('receipt no') || rLower.includes('detailed statement') || rLower.includes('completion time') || rLower.includes('transaction date') || rLower.includes('details')) {
+                detailedStartIndex = i;
+                break;
+            }
+        }
+        
+        // Slice off the summary section entirely
+        let targetRows = physicalRows.slice(detailedStartIndex);
+
+        // ==========================================
+        // UPGRADED UNIVERSAL REGEX (CAUGHT YYYY-MM-DD)
+        // ==========================================
+        // Added \d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2} to natively catch 2026-06-30 format!
+        const dateRegex = /(?:\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}|\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}[,\s]+\d{2,4})/i;
         const amountRegex = /(?:KES|Ksh|Kshs)?\s*(-?[\d]{1,3}(?:,[\d]{3})*(?:\.\d{2})?)\s*(?:CR|DR)?/gi;
 
         let importCount = 0;
         let currentTransaction = null;
 
-        physicalRows.forEach(rowStr => {
+        // Process only the detailed transaction rows
+        targetRows.forEach(rowStr => {
             const dateMatch = rowStr.match(dateRegex);
             const amountMatches = rowStr.match(amountRegex);
 
             if (dateMatch && amountMatches && amountMatches.length > 0) {
-                let bestAmount = 0;
+                let validAmounts = [];
                 
                 amountMatches.forEach(amtStr => {
                     let cleanNumStr = amtStr.replace(/[^0-9.]/g, '');
                     let val = parseFloat(cleanNumStr);
-                    if (!isNaN(val) && val > bestAmount && val < 10000000 && val !== 2024 && val !== 2025 && val !== 2026) {
-                        bestAmount = val;
+                    // Filter out years or invalid trailing digits
+                    if (!isNaN(val) && val > 0 && val < 10000000 && val !== 2024 && val !== 2025 && val !== 2026) {
+                        validAmounts.push(val);
                     }
                 });
 
-                if (bestAmount > 0) {
+                // M-Pesa Amount vs Balance Fix (First valid number = Transaction Amount)
+                if (validAmounts.length > 0) {
+                    let transactionAmount = validAmounts[0]; 
+
                     if (currentTransaction) {
                         pendingInbox.push(currentTransaction);
                         importCount++;
                     }
 
+                    // Clean vendor description
                     let desc = rowStr.replace(dateMatch[0], '')
                                      .replace(/(?:KES|Ksh|Kshs)?\s*-?[\d]{1,3}(?:,[\d]{3})*(?:\.\d{2})?\s*(?:CR|DR)?/gi, '')
                                      .replace(/completed|confirmed|balance|paid to|sent to|transfer|withdrawal|deposit|available|reference|ref/gi, '')
+                                     .replace(/\b[A-Z0-9]{10}\b/g, '') // Scrubs 10-char M-Pesa receipt codes
                                      .replace(/\s+/g, ' ')
                                      .trim();
                     
                     if (!desc || desc.length < 2) desc = "PDF Extracted Transaction";
 
+                    let detectedType = 'Expense';
+                    let descLower = desc.toLowerCase();
+                    if (descLower.includes('received from') || descLower.includes('deposit') || descLower.includes('incoming')) {
+                        detectedType = 'Income';
+                    }
+
+                    // ==========================================
+                    // SMART DATE NORMALIZER (YYYY-MM-DD SUPPORT)
+                    // ==========================================
                     let formattedDate = new Date().toISOString().split('T')[0];
                     try {
                         let dStr = dateMatch[0].replace(/,/g, '').trim();
-                        let parsedDate = new Date(dStr);
-                        if (!isNaN(parsedDate.getTime())) {
-                            formattedDate = parsedDate.toISOString().split('T')[0];
-                        } else {
-                            let parts = dStr.split(/[\/\-\.]/);
-                            if (parts.length === 3 && parts[0].length <= 2 && !isNaN(parts[1])) {
+                        let parts = dStr.split(/[\/\-\.]/);
+                        
+                        if (parts.length === 3) {
+                            if (parts[0].length === 4) {
+                                // It is already formatted as YYYY-MM-DD (e.g., 2026-06-30)
+                                formattedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                            } else if (parts[0].length <= 2 && !isNaN(parts[1])) {
+                                // It is formatted as DD/MM/YYYY or DD-MM-YY
                                 let yr = parts[2].length === 2 ? '20' + parts[2] : parts[2];
-                                formattedDate = `${yr}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+                                formattedDate = `${yr}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                            }
+                        } else {
+                            // Fallback for text month dates (e.g., "30 Jun 2026")
+                            let parsedDate = new Date(dStr);
+                            if (!isNaN(parsedDate.getTime())) {
+                                formattedDate = parsedDate.toISOString().split('T')[0];
                             }
                         }
                     } catch(e){}
@@ -2223,14 +2267,15 @@ window.parsePDFStatement = async function(file) {
                         id: Date.now() + Math.floor(Math.random() * 100000),
                         date: formattedDate,
                         name: desc,
-                        amount: bestAmount,
-                        type: 'Expense',
+                        amount: transactionAmount,
+                        type: detectedType,
                         category: 'Uncategorized'
                     };
                     return; 
                 }
             }
 
+            // Multi-Line Wrap Catcher for long M-Pesa vendor descriptions
             if (currentTransaction && !dateMatch) {
                 const lowerRow = rowStr.toLowerCase();
                 const isBoilerplate = ['page ', 'statement of', 'account no', 'opening balance', 'closing balance', 'date', 'description', 'debit', 'credit'].some(term => lowerRow.includes(term));
@@ -2258,6 +2303,7 @@ window.parsePDFStatement = async function(file) {
         if (importCount === 0) {
             alert("We opened your statement, but could not detect valid transactions. Open your browser console (F12) to inspect the 'RECONSTRUCTED PDF ROWS' output.");
         } else {
+            // Directly save and show the inbox without triggering the mapping modal
             window.saveInbox();
             alert(`🎉 Successfully extracted and staged ${importCount} transactions directly into your Inbox!`);
         }
@@ -2265,7 +2311,7 @@ window.parsePDFStatement = async function(file) {
         console.error("Extraction Error:", err);
         alert("Error analyzing PDF text: " + err.message);
     }
-};
+}; // Ensure this is the closing bracket for window.parsePDFStatement
 
 // 3. COLUMN MAPPING MODAL LOGIC
 window.openColumnMappingModal = function(headers, previewRows) {
