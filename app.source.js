@@ -869,7 +869,20 @@ window.saveSingleBudget = function(e) {
     window.addToMemory(inferredType, cat, name, chosenIcon);
 
     if(!categoryBudgets[monthStr]) categoryBudgets[monthStr] = {};
-    categoryBudgets[monthStr][`${cat}::${name}`] = amount;
+    
+    const newBudgetKey = `${cat}::${name}`;
+    
+    // NEW: If we were editing an existing item and the name/category changed, delete the old item!
+    if (window.editingBudgetKey && window.editingBudgetKey !== newBudgetKey) {
+        delete categoryBudgets[monthStr][window.editingBudgetKey];
+    }
+    
+    // Save the new or updated amount
+    categoryBudgets[monthStr][newBudgetKey] = amount;
+    
+    // Reset the tracker now that saving is complete
+    window.editingBudgetKey = null;
+    
     localStorage.setItem('suppa_budgets_v2', JSON.stringify(categoryBudgets));
     
     if(document.getElementById('budget-category')) document.getElementById('budget-category').value = ''; 
@@ -881,15 +894,32 @@ window.saveSingleBudget = function(e) {
     const btn = document.getElementById('budget-submit-btn');
     if(btn) {
         btn.innerText = "✓ Budget Saved!"; btn.style.background = "var(--success)";
-        setTimeout(() => { btn.innerText = "Add / Update Budget"; btn.style.background = ""; }, 1500);
+        setTimeout(() => { 
+            btn.innerText = "Add / Update Budget"; 
+            btn.style.background = ""; 
+        }, 1500);
     }
 };
 
+// Global tracker for editing budgets
+window.editingBudgetKey = null;
+
 window.editBudgetForm = function(cat, name, amount) {
+    // Save the original key before the user makes any changes
+    window.editingBudgetKey = `${cat}::${name}`;
+    
     if(document.getElementById('budget-category')) document.getElementById('budget-category').value = cat;
     if(document.getElementById('budget-name')) document.getElementById('budget-name').value = name === '(General)' ? '' : name;
     const amtEl = document.getElementById('budget-amount');
     if(amtEl) { amtEl.value = amount; amtEl.focus(); }
+    
+    // Update button text to clearly show they are in "Edit Mode"
+    const btn = document.getElementById('budget-submit-btn');
+    if (btn) {
+        btn.innerText = "✎ Update Budget Item";
+        btn.style.background = "var(--accent)";
+    }
+    
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
