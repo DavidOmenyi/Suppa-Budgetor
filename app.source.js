@@ -2191,19 +2191,45 @@ window.parsePDFStatement = async function(file) {
             return alert("We opened your statement, but could not detect any tabular transaction data.");
         }
 
-        // ==========================================
-        // 2. ROUTE TO EXISTING SPREADSHEET MAPPER
-        // ==========================================
-        
-        // Find a likely header row (look for rows containing 'date', 'amount', 'details')
-        let headerIdx = 0;
-        for (let i = 0; i < Math.min(csvArray.length, 20); i++) {
-            const rowStr = csvArray[i].join(' ').toLowerCase();
-            if (rowStr.includes('date') || rowStr.includes('amount') || rowStr.includes('particulars') || rowStr.includes('description')) {
-                headerIdx = i;
-                break;
-            }
+// ==========================================
+// 2. ROUTE TO EXISTING SPREADSHEET MAPPER
+// ==========================================
+// Find the exact header row for detailed transactions (bypassing summary tables)
+let headerIdx = 0;
+let bestScore = 0;
+
+// Your exact target keywords for the detailed table
+const targetKeywords = [
+    'receipt no', 'completion time', 'details', 
+    'transaction status', 'paid in', 'withdrawn', 'balance'
+];
+
+// Scan further down (up to 50 rows) to ensure we get past any long summary blocks
+const maxRowsToScan = Math.min(csvArray.length, 50);
+
+for (let i = 0; i < maxRowsToScan; i++) {
+    // Join the row cells into a single lowercase string for easy searching
+    const rowStr = csvArray[i].join(' ').toLowerCase();
+    let currentScore = 0;
+    
+    // Count how many of our target keywords appear in this specific row
+    targetKeywords.forEach(keyword => {
+        if (rowStr.includes(keyword)) {
+            currentScore++; // +1 point for every matched keyword
         }
+    });
+
+    // If this row has more matches than any row we've seen so far, update the header index
+    if (currentScore > bestScore) {
+        bestScore = currentScore;
+        headerIdx = i;
+    }
+}
+
+// (Optional safeguard) If absolutely no keywords matched, default to row 0
+if (bestScore === 0) {
+    headerIdx = 0; 
+}
 
         // Generate headers (Fallback to 'Column 1', 'Column 2' if the header row is vague)
         const headers = csvArray[headerIdx].map((h, idx) => String(h || `Column ${idx + 1}`).trim());
