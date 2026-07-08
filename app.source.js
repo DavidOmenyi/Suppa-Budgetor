@@ -2284,54 +2284,75 @@ window.closeMappingModal = function() {
 };
 
 window.confirmColumnMapping = function() {
-    const dateIdx = parseInt(document.getElementById('map-col-date').value);
-    const descIdx = parseInt(document.getElementById('map-col-desc').value);
-    const amtIdx = parseInt(document.getElementById('map-col-amount').value);
-    const defaultType = document.getElementById('map-default-type').value;
+    // 1. Instantly update the UI to show the loading state
+    const btn = document.getElementById('import-mapping-btn');
+    if (btn) {
+        btn.innerHTML = '⏳ Processing... Please wait';
+        btn.disabled = true;
+        btn.style.opacity = '0.7';
+    }
 
-    let importCount = 0;
+    // 2. Use setTimeout to give the browser 50 milliseconds to paint the "Loading" text on screen 
+    // before the heavy processing freezes the main thread.
+    setTimeout(() => {
+        const dateIdx = parseInt(document.getElementById('map-col-date').value);
+        const descIdx = parseInt(document.getElementById('map-col-desc').value);
+        const amtIdx = parseInt(document.getElementById('map-col-amount').value);
+        const defaultType = document.getElementById('map-default-type').value;
 
-    tempSpreadsheetRows.forEach(row => {
-        const rawDate = row[dateIdx];
-        const rawDesc = String(row[descIdx] || 'Unspecified Transaction').trim();
-        // Strips KES, CR, DR, commas, and letters to isolate the clean numeric amount
-        let rawAmt = String(row[amtIdx] || '0').replace(/,/g, '').replace(/[^-0-9.]/g, '');
-        let amount = Math.abs(parseFloat(rawAmt) || 0);
+        let importCount = 0;
 
-        if (amount > 0 && rawDate) {
-            // Universal Date formatting (Handles YYYY-MM-DD, DD/MM/YYYY, DD.MM.YYYY, and Text Months)
-            let formattedDate = new Date().toISOString().split('T')[0];
-            try {
-                let cleanDateStr = String(rawDate).replace(/,/g, '').trim();
-                const parsedDate = new Date(cleanDateStr);
-                
-                if (!isNaN(parsedDate.getTime())) {
-                    formattedDate = parsedDate.toISOString().split('T')[0];
-                } else {
-                    // Fallback manual parse for DD/MM/YYYY or DD.MM.YYYY
-                    let parts = cleanDateStr.split(/[\/\-\.]/);
-                    if (parts.length === 3 && parts[0].length <= 2 && !isNaN(parts[1])) {
-                        let yr = parts[2].length === 2 ? '20' + parts[2] : parts[2];
-                        formattedDate = `${yr}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+        tempSpreadsheetRows.forEach(row => {
+            const rawDate = row[dateIdx];
+            const rawDesc = String(row[descIdx] || 'Unspecified Transaction').trim();
+            // Strips KES, CR, DR, commas, and letters to isolate the clean numeric amount
+            let rawAmt = String(row[amtIdx] || '0').replace(/,/g, '').replace(/[^-0-9.]/g, '');
+            let amount = Math.abs(parseFloat(rawAmt) || 0);
+
+            if (amount > 0 && rawDate) {
+                // Universal Date formatting (Handles YYYY-MM-DD, DD/MM/YYYY, DD.MM.YYYY, and Text Months)
+                let formattedDate = new Date().toISOString().split('T')[0];
+                try {
+                    let cleanDateStr = String(rawDate).replace(/,/g, '').trim();
+                    const parsedDate = new Date(cleanDateStr);
+                    
+                    if (!isNaN(parsedDate.getTime())) {
+                        formattedDate = parsedDate.toISOString().split('T')[0];
+                    } else {
+                        // Fallback manual parse for DD/MM/YYYY or DD.MM.YYYY
+                        let parts = cleanDateStr.split(/[\/\-\.]/);
+                        if (parts.length === 3 && parts[0].length <= 2 && !isNaN(parts[1])) {
+                            let yr = parts[2].length === 2 ? '20' + parts[2] : parts[2];
+                            formattedDate = `${yr}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+                        }
                     }
-                }
-            } catch (e) {}
+                } catch (e) {}
 
-            pendingInbox.push({
-                id: Date.now() + Math.floor(Math.random() * 100000),
-                date: formattedDate,
-                name: window.normalizeCase ? window.normalizeCase('Name', rawDesc) : rawDesc,
-                amount: amount,
-                type: defaultType,
-                category: 'Uncategorized'
-            });
-            importCount++;
+                pendingInbox.push({
+                    id: Date.now() + Math.floor(Math.random() * 100000),
+                    date: formattedDate,
+                    name: window.normalizeCase ? window.normalizeCase('Name', rawDesc) : rawDesc,
+                    amount: amount,
+                    type: defaultType,
+                    category: 'Uncategorized'
+                });
+                importCount++;
+            }
+        });
+
+        // 3. Clean up the UI after processing finishes
+        window.closeMappingModal();
+        window.saveInbox();
+        
+        // Restore button back to normal state for next time
+        if (btn) {
+            btn.innerHTML = 'Import to Inbox ➡';
+            btn.disabled = false;
+            btn.style.opacity = '1';
         }
-    });
 
-    window.closeMappingModal();
-    window.saveInbox();
-    alert(`🎉 Successfully staged ${importCount} transactions into your Inbox! Review and assign categories below.`);
+        alert(`🎉 Successfully staged ${importCount} transactions into your Inbox! Review and assign categories below.`);
+    }, 50); // The critical 50ms delay
 };
 
 // 5. INBOX UI RENDERING & ACTIONS
