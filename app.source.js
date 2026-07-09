@@ -1684,29 +1684,7 @@ window.deleteActiveList = function() {
     window.renderActiveShoppingList();
 };
 
-window.editingShoppingItemId = null; // NEW: Global tracker for edits
-
-window.addShoppingItem = function(e) {
-    e.preventDefault();
-    if (!activeShoppingListKey) return;
-
-    const nameEl = document.getElementById('shop-item-name');
-    const priceEl = document.getElementById('shop-item-price');
-    const qtyEl = document.getElementById('shop-item-qty');
-
-    const newName = nameEl.value.trim();
-    const newPrice = Math.abs(parseFloat(priceEl.value) || 0);
-    const newQty = Math.abs(parseInt(qtyEl.value) || 1);
-
-    // If we are editing an existing item
-    if (window.editingShoppingItemId) {
-        const itemIndex = shoppingLists[activeShoppingListKey].findIndex(i => i.id === window.editingShoppingItemId);
-        if (itemIndex > -1) {
-            shoppingLists[activeShoppingListKey][itemIndex].name = newName;
-            shoppingLists[activeShoppingListKey][itemIndex].price = newPrice;
-            shoppingLists[activeShoppingListKey][itemIndex].qty = newQty;
-        }
-        window.editingShoppingItemId = null; // Global tracker for edits
+window.editingShoppingItemId = null; // Global tracker for edits
 
 window.addShoppingItem = function(e) {
     e.preventDefault();
