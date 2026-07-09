@@ -1060,45 +1060,88 @@ window.updateUI = function() {
             itemsMap[k].actual += t.kes;
         });
 
+        // 1. Group items by Category
+        let catGroups = {};
+        Object.values(itemsMap).forEach(item => {
+            if (!catGroups[item.cat]) {
+                catGroups[item.cat] = { cat: item.cat, type: item.type, items: [] };
+            }
+            catGroups[item.cat].items.push({
+                name: item.name,
+                budget: window.getBudget(item.cat, item.name, monthStr),
+                actual: item.actual
+            });
+        });
+
+        // 2. Populate Category Filter Dropdown safely
         if (catFilterEl) {
             catFilterEl.innerHTML = '<option value="ALL">All Categories</option>';
-            let distinctCats = [...new Set(Object.values(itemsMap).map(i => i.cat))].sort();
+            let distinctCats = Object.keys(catGroups).sort();
             distinctCats.forEach(c => catFilterEl.innerHTML += `<option value="${c}">${window.getIcon(c)} ${c}</option>`);
             catFilterEl.value = distinctCats.includes(catFilter) ? catFilter : 'ALL';
         }
 
         let tableBudget = 0; let tableSpent = 0;
+        let rawTotalBudget = 0;
         
-        Object.values(itemsMap).sort((a,b) => {
-            const cA = a.cat || ''; const cB = b.cat || '';
-            const nA = a.name || ''; const nB = b.name || '';
-            return cA.localeCompare(cB) || nA.localeCompare(nB);
-        }).forEach(item => {
-            let bAmt = window.getBudget(item.cat, item.name, monthStr);
-            let aAmt = item.actual;
+        // 3. Render the Main Category Rows and Hidden Breakdown Rows
+        Object.values(catGroups).sort((a,b) => a.cat.localeCompare(b.cat)).forEach((group, index) => {
+            let catTotalActual = group.items.reduce((s, i) => s + i.actual, 0);
+            
+            // SMART BUDGET LOGIC: Category ceiling vs Specific Item Sum
+            let genBudget = window.getBudget(group.cat, '(General)', monthStr);
+            let specBudgetSum = group.items.filter(i => i.name !== '(General)').reduce((s, i) => s + i.budget, 0);
+            let catTotalBudget = Math.max(genBudget, specBudgetSum);
+            
+            rawTotalBudget += catTotalBudget; // Accumulate for Top Summary Cards
 
-            if (catFilter !== 'ALL' && catFilter !== item.cat) return;
-            if (spentFilter === 'ZERO' && aAmt !== 0) return;
-            if (spentFilter === 'NON_ZERO' && aAmt === 0) return;
-            if (spentFilter === 'UNDER_BUDGET' && (bAmt === 0 || aAmt >= bAmt)) return;
+            // Apply Filters at the Category level
+            if (catFilter !== 'ALL' && catFilter !== group.cat) return;
+            if (spentFilter === 'ZERO' && catTotalActual !== 0) return;
+            if (spentFilter === 'NON_ZERO' && catTotalActual === 0) return;
+            if (spentFilter === 'UNDER_BUDGET' && (catTotalBudget === 0 || catTotalActual >= catTotalBudget)) return;
 
-            tableBudget += bAmt; tableSpent += aAmt;
+            tableBudget += catTotalBudget; 
+            tableSpent += catTotalActual;
 
-            let variance = bAmt - aAmt; let isPositive = variance >= 0;
-            const varPct = bAmt ? ((variance / bAmt) * 100).toFixed(1) : 0;
+            let catVariance = catTotalBudget - catTotalActual; 
+            let catIsPositive = catVariance >= 0;
+            let catVarPct = catTotalBudget ? ((catVariance / catTotalBudget) * 100).toFixed(1) : 0;
+            
+            let rowId = `cat-group-${index}`;
 
             if(perfBody) {
+                // Render Parent Category Row (Clickable Accordion)
                 perfBody.innerHTML += `
-                    <tr>
-                        <td>${window.getIcon(item.cat)} ${item.cat}</td>
-                        <td><a class="ledger-link" onclick="window.openLedger('${item.cat.replace(/'/g, "\\'")}', '${item.name.replace(/'/g, "\\'")}', false)">${item.name === '(General)' ? 'Category Target' : item.name}</a></td>
-                        <td><span style="background:var(--border); padding:2px 8px; border-radius:10px; font-size:0.8em; color:var(--primary);">${item.type}</span></td>
-                        <td>${bAmt.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                        <td>${aAmt.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                        <td class="${isPositive ? 'positive' : 'negative'}">${variance > 0 ? '+':''}${variance.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                        <td class="${isPositive ? 'positive' : 'negative'}">${varPct}%</td>
+                    <tr style="cursor: pointer; background: rgba(5,150,105,0.05); transition: 0.2s;" onclick="document.querySelectorAll('.${rowId}').forEach(el => el.classList.toggle('hidden'))" onmouseover="this.style.background='rgba(5,150,105,0.1)'" onmouseout="this.style.background='rgba(5,150,105,0.05)'">
+                        <td style="font-weight: bold; border-left: 3px solid var(--primary);">${window.getIcon(group.cat)} ${group.cat}</td>
+                        <td style="color: var(--primary); font-size: 12px; font-weight: bold;">View Breakdown ▼</td>
+                        <td><span style="background:var(--border); padding:2px 8px; border-radius:10px; font-size:0.8em; color:var(--primary);">${group.type}</span></td>
+                        <td style="font-weight: bold;">${catTotalBudget.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                        <td style="font-weight: bold;">${catTotalActual.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                        <td class="${catIsPositive ? 'positive' : 'negative'}" style="font-weight: bold;">${catVariance > 0 ? '+':''}${catVariance.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                        <td class="${catIsPositive ? 'positive' : 'negative'}" style="font-weight: bold;">${catVarPct}%</td>
                     </tr>
                 `;
+
+                // Render Child Item Breakdowns (Hidden by default)
+                group.items.sort((a,b) => a.name.localeCompare(b.name)).forEach(item => {
+                    let itemVar = item.budget - item.actual; 
+                    let itemPos = itemVar >= 0;
+                    let itemPct = item.budget ? ((itemVar / item.budget) * 100).toFixed(1) : 0;
+
+                    perfBody.innerHTML += `
+                        <tr class="${rowId} hidden" style="background: var(--surface-color); border-bottom: 1px dashed var(--border);">
+                            <td style="padding-left: 20px; font-size: 0.9em; color: var(--text-muted);">↳</td>
+                            <td style="font-size: 0.9em;"><a class="ledger-link" onclick="window.openLedger('${group.cat.replace(/'/g, "\\'")}', '${item.name.replace(/'/g, "\\'")}', false)">${item.name === '(General)' ? 'General Allocation' : item.name}</a></td>
+                            <td></td>
+                            <td style="font-size: 0.9em; color: var(--text-muted);">${item.budget.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                            <td style="font-size: 0.9em; color: var(--text-muted);">${item.actual.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                            <td class="${itemPos ? 'positive' : 'negative'}" style="font-size: 0.9em;">${itemVar > 0 ? '+':''}${itemVar.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                            <td class="${itemPos ? 'positive' : 'negative'}" style="font-size: 0.9em;">${itemPct}%</td>
+                        </tr>
+                    `;
+                });
             }
         });
 
@@ -1114,23 +1157,19 @@ window.updateUI = function() {
         const perfVar = document.getElementById('perf-bottom-line-variance');
         if(perfVar) { perfVar.innerText = varStr; perfVar.className = varClass; }
 
-        let rawTotalBudget = 0;
-        Object.values(itemsMap).forEach(item => { rawTotalBudget += window.getBudget(item.cat, item.name, monthStr); });
-
-        // UPGRADED EXPENSE VS SAVINGS ROUTING
+        // EXPENSE VS SAVINGS ROUTING
         currentMonthTxs.forEach(t => {
-            const isSavingsCat = categories.Savings.includes(t.category) || (customMem.Savings && customMem.Savings.includes(t.category));
+            const txAmt = Math.abs(parseFloat(t.kes || t.actual) || 0);
+            const catLower = String(t.category || '').trim().toLowerCase();
+            const isSavingsCat = categories.Savings.some(c => c.toLowerCase() === catLower) || 
+                                 (customMem.Savings && customMem.Savings.some(c => c.toLowerCase() === catLower));
             
             if (t.type === 'Savings-Withdrawal') {
-                totalSavingsWithdrawn += t.kes;
-            } else if (t.type === 'Savings-Deposit' || isSavingsCat) {
-                // Route to Savings if explicitly a deposit OR if logged under any Savings category
-                if (t.type !== 'Starting-Balance') {
-                    totalSaved += t.kes;
-                }
+                totalSavingsWithdrawn += txAmt;
+            } else if (t.type === 'Savings-Deposit' || isSavingsCat || String(t.type).includes('Savings')) {
+                if (t.type !== 'Starting-Balance') totalSaved += txAmt;
             } else if (t.type === 'Expense') {
-                // Strictly pure expenses only!
-                totalSpent += t.kes;
+                totalSpent += txAmt;
             }
         });
 
@@ -1143,10 +1182,11 @@ window.updateUI = function() {
         if(topIncEl) topIncEl.innerText = `KES ${(totalIncome + rollover).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
         const topRollEl = document.getElementById('top-rollover-text');
         if(topRollEl) topRollEl.innerText = `Includes ${rollover >= 0 ? '+':''}${rollover.toLocaleString(undefined, {minimumFractionDigits: 2})} rollover`;
+        
+        // Updates based on the new synchronized Math.max budget variable
         const topBudgEl = document.getElementById('top-budget');
         if(topBudgEl) topBudgEl.innerText = `KES ${rawTotalBudget.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
         
-        // Populate the two separated cards cleanly
         const topSpentEl = document.getElementById('top-spent');
         if(topSpentEl) topSpentEl.innerText = `KES ${totalSpent.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
         
@@ -1443,18 +1483,43 @@ window.drawCharts = function(expenses, catFilter, nameFilter) {
     });
 
     Object.keys(monthlyData).forEach(m => {
-        let mBudget = 0; let items = new Set();
+        let mBudget = 0; 
+        let items = new Set();
+        
         Object.keys(categoryBudgets).forEach(bm => {
             if(bm <= m && categoryBudgets[bm]) Object.keys(categoryBudgets[bm]).forEach(k => items.add(k));
         });
         transactions.filter(t => t.date && t.date.startsWith(m) && (t.type === 'Expense' || t.type === 'Savings-Deposit')).forEach(t => items.add(`${t.category}::${t.name}`));
         
+        // Group items by category to apply the exact same Math.max logic from updateUI
+        let catGroupsChart = {};
         items.forEach(k => {
             let parts = k.split('::'); let c = parts[0]; let n = parts[1];
-            if (catFilter === 'ALL' || catFilter === c) {
-                if (nameFilter === 'ALL' || nameFilter === n) { mBudget += window.getBudget(c, n, m); }
+            if (!catGroupsChart[c]) catGroupsChart[c] = { gen: 0, specSum: 0 };
+            
+            let bAmt = window.getBudget(c, n, m);
+            if (n === '(General)') {
+                catGroupsChart[c].gen = bAmt;
+            } else {
+                // If a specific Name filter is applied, only aggregate that specific item
+                if (nameFilter === 'ALL' || nameFilter === n) {
+                    catGroupsChart[c].specSum += bAmt;
+                }
             }
         });
+
+        Object.keys(catGroupsChart).forEach(c => {
+            if (catFilter === 'ALL' || catFilter === c) {
+                if (nameFilter !== 'ALL') {
+                    // Specific name filter active: ignore the general ceiling entirely
+                    mBudget += catGroupsChart[c].specSum;
+                } else {
+                    // No name filter: use the safe ceiling logic
+                    mBudget += Math.max(catGroupsChart[c].gen, catGroupsChart[c].specSum);
+                }
+            }
+        });
+
         monthlyData[m].budget = mBudget;
     });
 
