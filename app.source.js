@@ -590,6 +590,13 @@ window.updateTransaction = function(e) {
     transactions[index] = newTx;
     window.saveData(); window.updateDatalists(); window.updateUI(); window.updateCharts(); window.updateInflationChart();
     window.closeEditModal();
+    
+    // If we are currently inside the full-page ledger view, refresh it instantly!
+    if (document.getElementById('ledger-view') && document.getElementById('ledger-view').classList.contains('active')) {
+        if (window.currentLedgerParams) {
+            window.openLedger(window.currentLedgerParams.cat, window.currentLedgerParams.name, window.currentLedgerParams.isIncome);
+        }
+    }
 };
 
 window.deleteEditTx = function() {
@@ -686,59 +693,80 @@ window.exportFilteredTransactions = function() {
     XLSX.writeFile(wb, `Filtered_Transactions_${new Date().toISOString().split('T')[0]}.xlsx`);
 };
 
+// Global memory to track active ledger parameters for auto-refreshing
+window.currentLedgerParams = null;
+
 window.openLedger = function(cat, name, isIncome = false) {
+    window.currentLedgerParams = { cat, name, isIncome };
     const monthStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2, '0')}`;
     let txs = transactions.filter(t => t.date && t.date.substring(0,7) === monthStr);
     
+    let titleText = "";
     if (isIncome) {
         txs = txs.filter(t => t.type === 'Income' && t.category === cat);
-        const titleEl = document.getElementById('ledger-title');
-        if(titleEl) titleEl.innerText = `Income Ledger: ${window.getIcon(cat)} ${cat} (${monthStr})`;
+        titleText = `Income Ledger: ${window.getIcon(cat)} ${cat} (${monthStr})`;
     } else {
         txs = txs.filter(t => (t.type === 'Expense' || t.type === 'Savings-Deposit') && t.category === cat && t.name === name);
-        const titleEl = document.getElementById('ledger-title');
-        if(titleEl) titleEl.innerText = `Ledger: ${name === '(General)' ? cat : name} (${monthStr})`;
+        titleText = `Ledger: ${name === '(General)' ? cat : name} (${monthStr})`;
     }
     
     txs.sort((a,b) => new Date(b.date) - new Date(a.date));
-    const tbody = document.getElementById('ledger-body'); 
+    
+    const titleEl = document.getElementById('ledger-view-title');
+    if(titleEl) titleEl.innerText = titleText;
+
+    const tbody = document.getElementById('ledger-view-body'); 
     if(!tbody) return;
     tbody.innerHTML = '';
     
     if (txs.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No records found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 30px; color:var(--text-muted);">No records found for this period.</td></tr>`;
     } else {
         txs.forEach(tx => {
             tbody.innerHTML += `
-                <tr>
-                    <td>${tx.date}</td>
-                    <td>${tx.name}</td>
-                    <td style="font-weight:bold;">${tx.kes.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                    <td style="font-size:0.9em; color:var(--text-muted);">${tx.notes || '-'}</td>
-                    <td>
-                        <button onclick="window.editTxFromLedger('${tx.id}')" style="background:var(--accent); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; margin-right:4px; font-size:12px;">Edit</button>
-                        <button onclick="window.deleteTxFromLedger('${tx.id}')" style="background:var(--danger); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer; font-size:12px;">Del</button>
+                <tr style="border-bottom: 1px solid var(--border);">
+                    <td style="white-space: nowrap; font-size: 0.9em; color:var(--text-muted);">${tx.date}</td>
+                    <td style="font-weight: bold; color: var(--text-main);">${tx.name}</td>
+                    <td style="font-weight: 800; color: var(--primary);">KES ${tx.kes.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                    <td style="font-size: 0.9em; color: var(--text-muted); min-width: 150px;">${tx.notes || '-'}</td>
+                    <td style="white-space: nowrap;">
+                        <button onclick="window.editTxFromLedger('${tx.id}')" style="background:var(--accent); color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; margin-right:4px; font-size:12px; font-weight: bold;">Edit</button>
+                        <button onclick="window.deleteTxFromLedger('${tx.id}')" style="background:var(--danger); color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight: bold;">Del</button>
                     </td>
                 </tr>`;
         });
     }
-    const modal = document.getElementById('ledger-modal');
-    if(modal) modal.classList.remove('hidden');
+    
+    // Switch to the Full-Page view and scroll to top!
+    window.switchTab('ledger-view');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
 window.closeLedger = function() { 
-    const modal = document.getElementById('ledger-modal');
-    if(modal) modal.classList.add('hidden'); 
+    // Navigates cleanly back to the Records tab
+    window.switchTab('summaries');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
-window.editTxFromLedger = function(id) { window.closeLedger(); window.openEditModal(id); };
+window.editTxFromLedger = function(id) { 
+    // Opens the edit modal directly over the full page without leaving it!
+    window.openEditModal(id); 
+};
 
 window.deleteTxFromLedger = function(id) {
     if(!confirm("Are you sure you want to completely delete this transaction?")) return;
     window.saveState();
     transactions = transactions.filter(t => String(t.id) !== String(id));
-    window.saveData(); window.updateDatalists(); window.updateUI(); window.updateCharts(); window.updateInflationChart();
-    window.closeLedger();
+    window.saveData(); 
+    window.updateDatalists(); 
+    window.updateUI(); 
+    window.updateCharts(); 
+    window.updateInflationChart();
+    
+    // Auto-refreshes the current full page so you can keep auditing remaining items!
+    if (window.currentLedgerParams) {
+        window.openLedger(window.currentLedgerParams.cat, window.currentLedgerParams.name, window.currentLedgerParams.isIncome);
+    }
 };
 
 // 1. The custom autocomplete builder
