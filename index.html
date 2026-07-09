@@ -828,6 +828,13 @@ input, select, textarea, datalist, option {
             <h2 style="margin-bottom: 20px;">More Features & Tools</h2>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 15px;">
                 
+                <!-- NEW: Duplicate Add Entry Button -->
+                <div onclick="window.switchTab('entry')" class="card" style="text-align: center; cursor: pointer; padding: 20px 10px; transition: 0.2s; border-top: 4px solid var(--success);" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='none'">
+                    <div style="font-size: 32px; margin-bottom: 8px;">➕</div>
+                    <div style="font-weight: 800; font-size: 14px; color: var(--text-main);">Add Entry</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Log Transactions</div>
+                </div>
+
                 <div onclick="window.switchTab('analytics')" class="card" style="text-align: center; cursor: pointer; padding: 20px 10px; transition: 0.2s; border-top: 4px solid var(--accent);" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='none'">
                     <div style="font-size: 32px; margin-bottom: 8px;">📊</div>
                     <div style="font-weight: 800; font-size: 14px; color: var(--text-main);">Analytics</div>
