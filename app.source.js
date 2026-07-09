@@ -832,6 +832,7 @@ window.initAutocompletes = function() {
 
     // NEW: Attach custom autocomplete memory to the Shopping List form
     window.setupCustomAutocomplete('shop-item-name', getShoppingNames);
+    window.setupCustomAutocomplete('shop-item-category', getCats);
 };
 
 // 3. Override the old function so it doesn't clash
@@ -1705,6 +1706,32 @@ window.addShoppingItem = function(e) {
             shoppingLists[activeShoppingListKey][itemIndex].price = newPrice;
             shoppingLists[activeShoppingListKey][itemIndex].qty = newQty;
         }
+        window.editingShoppingItemId = null; // Global tracker for edits
+
+window.addShoppingItem = function(e) {
+    e.preventDefault();
+    if (!activeShoppingListKey) return;
+
+    const nameEl = document.getElementById('shop-item-name');
+    const catEl = document.getElementById('shop-item-category');
+    const priceEl = document.getElementById('shop-item-price');
+    const qtyEl = document.getElementById('shop-item-qty');
+
+    const newName = nameEl.value.trim();
+    // Normalize case and default to 'Groceries' if left blank
+    const newCat = window.normalizeCase('Category', catEl.value.trim()) || 'Groceries'; 
+    const newPrice = Math.abs(parseFloat(priceEl.value) || 0);
+    const newQty = Math.abs(parseInt(qtyEl.value) || 1);
+
+    // If we are editing an existing item
+    if (window.editingShoppingItemId) {
+        const itemIndex = shoppingLists[activeShoppingListKey].findIndex(i => i.id === window.editingShoppingItemId);
+        if (itemIndex > -1) {
+            shoppingLists[activeShoppingListKey][itemIndex].name = newName;
+            shoppingLists[activeShoppingListKey][itemIndex].category = newCat;
+            shoppingLists[activeShoppingListKey][itemIndex].price = newPrice;
+            shoppingLists[activeShoppingListKey][itemIndex].qty = newQty;
+        }
         window.editingShoppingItemId = null;
         
         // Reset the button
@@ -1718,6 +1745,7 @@ window.addShoppingItem = function(e) {
         const item = {
             id: Date.now(),
             name: newName,
+            category: newCat,
             price: newPrice,
             qty: newQty
         };
@@ -1725,9 +1753,10 @@ window.addShoppingItem = function(e) {
     }
     
     // Normalize memory for autocomplete
-    window.addToMemory('Expense', 'Groceries', newName, '🛒');
+    window.addToMemory('Expense', newCat, newName, window.getIcon(newCat));
     
     nameEl.value = '';
+    catEl.value = '';
     priceEl.value = '';
     qtyEl.value = '1';
     nameEl.focus();
@@ -1743,6 +1772,7 @@ window.editShoppingItem = function(itemId) {
 
     window.editingShoppingItemId = itemId;
     document.getElementById('shop-item-name').value = item.name;
+    document.getElementById('shop-item-category').value = item.category || 'Groceries';
     document.getElementById('shop-item-price').value = item.price;
     document.getElementById('shop-item-qty').value = item.qty;
 
@@ -1775,20 +1805,21 @@ window.buyShoppingItem = function(itemId) {
     
     const item = list[itemIndex];
     const totalCost = item.price * item.qty;
+    const itemCategory = item.category || 'Groceries';
     
-    if (!confirm(`Log "${item.name}" as an Expense of KES ${totalCost.toLocaleString(undefined, {minimumFractionDigits: 2})}? \n\n(The item will be kept on your list for next time.)`)) {
+    if (!confirm(`Log "${item.name}" as an Expense of KES ${totalCost.toLocaleString(undefined, {minimumFractionDigits: 2})} under [${itemCategory}]? \n\n(The item will be kept on your list for next time.)`)) {
         return;
     }
     
     // 1. Save state for History Undo/Redo support
     window.saveState();
     
-    // 2. Create the new Expense transaction
+    // 2. Create the new Expense transaction dynamically linked to the category
     const newTx = {
         id: Date.now(),
         name: item.name || '(General)',
         type: 'Expense',
-        category: 'Groceries', // Default category for shopping list items
+        category: itemCategory, 
         date: new Date().toISOString().split('T')[0],
         actual: item.price,
         qty: item.qty,
@@ -1799,11 +1830,9 @@ window.buyShoppingItem = function(itemId) {
     
     // Push to main ledger and save to custom memory
     transactions.push(newTx);
-    window.addToMemory('Expense', 'Groceries', item.name, '🛒');
+    window.addToMemory('Expense', itemCategory, item.name, window.getIcon(itemCategory));
     
-    // 3. (REMOVED: We no longer splice/delete the item so it is permanently retained!)
-    
-    // 4. Save all changes and update UI across all tabs
+    // 3. Save all changes and update UI across all tabs
     window.saveData();
     window.saveShoppingData();
     window.updateDatalists();
@@ -1885,15 +1914,19 @@ window.renderActiveShoppingList = function() {
         return;
     }
 
-    // Render spacious cards for each item (Now includes EDIT button!)
+    // Render spacious cards for each item showing the new Category tag
     items.forEach(item => {
         const itemRowTotal = item.price * item.qty;
+        const itemCategory = item.category || 'Groceries';
         totalAccumulator += itemRowTotal;
 
         listEl.innerHTML += `
             <div style="background: var(--surface-color); border: 1px solid var(--border); border-radius: 10px; padding: 15px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                    <div style="font-weight: 800; font-size: 16px; color: var(--text-main);">${item.name}</div>
+                    <div>
+                        <div style="font-weight: 800; font-size: 16px; color: var(--text-main);">${item.name}</div>
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">${window.getIcon(itemCategory)} ${itemCategory}</div>
+                    </div>
                     <div style="font-weight: 800; color: var(--primary); font-size: 15px;">KES ${itemRowTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
                 </div>
                 
@@ -1913,25 +1946,26 @@ window.renderActiveShoppingList = function() {
 
     totalEl.innerText = `KES ${totalAccumulator.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
 };
-// Export Shopping Lists to CSV
+
+// Export Shopping Lists to CSV (Updated to include Category)
 window.exportShoppingCSV = function() {
     if(Object.keys(shoppingLists).length === 0) return alert("No shopping list data to export!");
     
-    let csvContent = "List_Name,Item_ID,Item_Name,Estimated_Price,Quantity\n";
+    let csvContent = "List_Name,Item_ID,Item_Name,Category,Estimated_Price,Quantity\n";
     
     Object.keys(shoppingLists).sort().forEach(listName => {
         shoppingLists[listName].forEach(item => {
-            // Escape quotes to prevent CSV breakage
             const safeListName = listName.replace(/"/g, '""');
             const safeItemName = (item.name || '').replace(/"/g, '""');
-            csvContent += `"${safeListName}",${item.id},"${safeItemName}",${item.price},${item.qty}\n`;
+            const safeCategory = (item.category || 'Groceries').replace(/"/g, '""');
+            csvContent += `"${safeListName}",${item.id},"${safeItemName}","${safeCategory}",${item.price},${item.qty}\n`;
         });
     });
     
     window.triggerDownload(csvContent, `Suppa_Shopping_Lists_Backup_${new Date().toISOString().split('T')[0]}.csv`);
 };
 
-// Import Shopping Lists from CSV
+// Import Shopping Lists from CSV (Supports both Old and New formats)
 window.importShoppingCSV = function(e) {
     const file = e.target.files[0]; 
     if(!file) return;
@@ -1942,29 +1976,39 @@ window.importShoppingCSV = function(e) {
         let importedCount = 0;
         
         rows.forEach((row, i) => {
-            if(i === 0 || !row.trim()) return; // Skip header row or empty rows
+            if(i === 0 || !row.trim()) return; 
             
-            // Parse CSV safely handling commas inside quotes
             const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(s => s.replace(/(^"|"$)/g, '').trim());
             
             if(cols.length >= 5 && cols[0] !== 'List_Name') {
                 const listName = cols[0];
                 const itemId = parseInt(cols[1]) || Date.now() + Math.floor(Math.random() * 1000);
                 const itemName = cols[2];
-                const itemPrice = parseFloat(cols[3]) || 0;
-                const itemQty = parseInt(cols[4]) || 1;
                 
-                // Create list if it doesn't exist
+                let itemCategory = 'Groceries';
+                let itemPrice = 0;
+                let itemQty = 1;
+
+                // Seamlessly handle old 5-column backups vs new 6-column backups
+                if (cols.length === 5) {
+                    itemPrice = parseFloat(cols[3]) || 0;
+                    itemQty = parseInt(cols[4]) || 1;
+                } else if (cols.length >= 6) {
+                    itemCategory = cols[3] || 'Groceries';
+                    itemPrice = parseFloat(cols[4]) || 0;
+                    itemQty = parseInt(cols[5]) || 1;
+                }
+                
                 if(!shoppingLists[listName]) {
                     shoppingLists[listName] = [];
                 }
                 
-                // Prevent duplicate imports based on item ID
                 const exists = shoppingLists[listName].some(i => String(i.id) === String(itemId));
                 if(!exists) {
                     shoppingLists[listName].push({
                         id: itemId,
                         name: itemName,
+                        category: itemCategory,
                         price: itemPrice,
                         qty: itemQty
                     });
@@ -1978,7 +2022,7 @@ window.importShoppingCSV = function(e) {
         window.renderActiveShoppingList();
         
         alert(`Successfully imported ${importedCount} shopping list items!`);
-        e.target.value = ''; // Reset input so you can re-import the same file if needed
+        e.target.value = ''; 
     };
     reader.readAsText(file);
 };
