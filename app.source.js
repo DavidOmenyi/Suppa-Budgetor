@@ -1701,6 +1701,15 @@ window.importBudgetCSV = function(e) {
     reader.readAsText(file);
 };
 // Load shopping features safely from localStorage
+// ==========================================
+// CUSTOM SHOPPING & DEPLOYMENT PLANNERS
+// ==========================================
+
+// Global Trackers for Shopping Lists
+window.editingShoppingItemId = null;
+window.sessionBoughtItems = new Set();
+
+// 1. Storage & Initialization
 window.loadShoppingData = function() {
     try {
         shoppingLists = JSON.parse(localStorage.getItem('suppa_shopping_lists')) || {};
@@ -1714,6 +1723,7 @@ window.saveShoppingData = function() {
     localStorage.setItem('suppa_shopping_lists', JSON.stringify(shoppingLists));
 };
 
+// 2. List Management (Create, Select, Delete)
 window.createShoppingList = function() {
     const nameInput = document.getElementById('new-list-name');
     if (!nameInput) return;
@@ -1731,18 +1741,115 @@ window.createShoppingList = function() {
     window.renderActiveShoppingList();
 };
 
-// NEW: Temporary memory tracker to hold checkmarks during an active shopping session
-window.sessionBoughtItems = new Set();
-
 window.selectShoppingList = function(key) {
     activeShoppingListKey = key;
-    // Clears the temporary checkmarks so the list refreshes completely clean
-    window.sessionBoughtItems.clear(); 
+    // Clears temporary checkmarks so tapping the ribbon refreshes the list cleanly
+    if (window.sessionBoughtItems) window.sessionBoughtItems.clear(); 
     window.renderShoppingTabs();
     window.renderActiveShoppingList();
 };
 
-// One-click conversion from Shopping List to Ledger Expense
+window.deleteActiveList = function() {
+    if (!activeShoppingListKey) return;
+    if (!confirm(`Permanently remove list "${activeShoppingListKey}"?`)) return;
+    
+    delete shoppingLists[activeShoppingListKey];
+    activeShoppingListKey = Object.keys(shoppingLists)[0] || null;
+    
+    window.saveShoppingData();
+    window.renderShoppingTabs();
+    window.renderActiveShoppingList();
+};
+
+// 3. Item Management (Add, Edit, Delete, Buy)
+window.addShoppingItem = function(e) {
+    e.preventDefault();
+    if (!activeShoppingListKey) return;
+
+    const nameEl = document.getElementById('shop-item-name');
+    const catEl = document.getElementById('shop-item-category');
+    const priceEl = document.getElementById('shop-item-price');
+    const qtyEl = document.getElementById('shop-item-qty');
+
+    const newName = nameEl.value.trim();
+    // Normalize case and default to 'Groceries' if left blank
+    const newCat = window.normalizeCase('Category', catEl ? catEl.value.trim() : '') || 'Groceries'; 
+    const newPrice = Math.abs(parseFloat(priceEl.value) || 0);
+    const newQty = Math.abs(parseInt(qtyEl.value) || 1);
+
+    // If we are editing an existing item in place
+    if (window.editingShoppingItemId) {
+        const itemIndex = shoppingLists[activeShoppingListKey].findIndex(i => i.id === window.editingShoppingItemId);
+        if (itemIndex > -1) {
+            shoppingLists[activeShoppingListKey][itemIndex].name = newName;
+            shoppingLists[activeShoppingListKey][itemIndex].category = newCat;
+            shoppingLists[activeShoppingListKey][itemIndex].price = newPrice;
+            shoppingLists[activeShoppingListKey][itemIndex].qty = newQty;
+        }
+        window.editingShoppingItemId = null;
+        
+        const btn = document.querySelector('#shopping-item-form button[type="submit"]');
+        if (btn) {
+            btn.innerText = "Add Item";
+            btn.style.background = ""; 
+        }
+    } else {
+        // Adding a brand new item
+        const item = {
+            id: Date.now(),
+            name: newName,
+            category: newCat,
+            price: newPrice,
+            qty: newQty
+        };
+        shoppingLists[activeShoppingListKey].push(item);
+    }
+    
+    // Feed into autocomplete memory
+    window.addToMemory('Expense', newCat, newName, window.getIcon(newCat));
+    
+    nameEl.value = '';
+    if (catEl) catEl.value = '';
+    priceEl.value = '';
+    qtyEl.value = '1';
+    nameEl.focus();
+
+    window.saveShoppingData();
+    window.renderActiveShoppingList();
+};
+
+window.editShoppingItem = function(itemId) {
+    if (!activeShoppingListKey) return;
+    const item = shoppingLists[activeShoppingListKey].find(i => i.id === itemId);
+    if (!item) return;
+
+    window.editingShoppingItemId = itemId;
+    document.getElementById('shop-item-name').value = item.name;
+    if (document.getElementById('shop-item-category')) {
+        document.getElementById('shop-item-category').value = item.category || 'Groceries';
+    }
+    document.getElementById('shop-item-price').value = item.price;
+    document.getElementById('shop-item-qty').value = item.qty;
+
+    // Visual indicator that the user is in Edit Mode
+    const btn = document.querySelector('#shopping-item-form button[type="submit"]');
+    if (btn) {
+        btn.innerText = "✎ Update Item";
+        btn.style.background = "var(--accent)";
+    }
+    
+    const formEl = document.getElementById('shopping-item-form');
+    if (formEl) window.scrollTo({ top: formEl.offsetTop - 20, behavior: 'smooth' });
+};
+
+window.deleteShoppingItem = function(itemId) {
+    if (!activeShoppingListKey) return;
+    shoppingLists[activeShoppingListKey] = shoppingLists[activeShoppingListKey].filter(item => item.id !== itemId);
+    window.saveShoppingData();
+    window.renderActiveShoppingList();
+};
+
+// One-Click Ledger Checkout with Session Checkoff
 window.buyShoppingItem = function(itemId) {
     if (!activeShoppingListKey) return;
     
@@ -1776,7 +1883,8 @@ window.buyShoppingItem = function(itemId) {
     transactions.push(newTx);
     window.addToMemory('Expense', itemCategory, item.name, window.getIcon(itemCategory));
     
-    // NEW: Mark this item as temporarily "bought" for the current session
+    // Mark as temporarily bought for the current store visit
+    if (!window.sessionBoughtItems) window.sessionBoughtItems = new Set();
     window.sessionBoughtItems.add(itemId);
     
     window.saveData();
@@ -1786,6 +1894,34 @@ window.buyShoppingItem = function(itemId) {
     window.updateCharts();
     window.updateInflationChart();
     window.renderActiveShoppingList();
+};
+
+// 4. UI Rendering Pipeline
+window.renderShoppingTabs = function() {
+    const sidebar = document.getElementById('shopping-lists-sidebar');
+    if (!sidebar) return;
+    sidebar.innerHTML = '';
+
+    const listKeys = Object.keys(shoppingLists);
+    if (listKeys.length === 0) {
+        sidebar.innerHTML = `<li style="font-size: 13px; color: var(--text-muted); padding: 5px 0;">No lists compiled yet.</li>`;
+        return;
+    }
+
+    listKeys.sort().forEach(key => {
+        const isActive = key === activeShoppingListKey;
+        const bg = isActive ? 'var(--primary)' : 'var(--bg-color)';
+        const color = isActive ? '#ffffff' : 'var(--text-main)';
+        const weight = isActive ? 'bold' : '600';
+        const shadow = isActive ? 'var(--shadow)' : 'none';
+
+        sidebar.innerHTML += `
+            <li style="flex: 0 0 auto;">
+                <button onclick="window.selectShoppingList('${key.replace(/'/g, "\\'")}')" style="white-space: nowrap; padding: 8px 16px; background: ${bg}; color: ${color}; border: 1px solid var(--border); border-radius: 25px; cursor: pointer; font-weight: ${weight}; font-size: 13px; transition: 0.2s; box-shadow: ${shadow};">
+                    📋 ${key}
+                </button>
+            </li>`;
+    });
 };
 
 window.renderActiveShoppingList = function() {
@@ -1826,14 +1962,10 @@ window.renderActiveShoppingList = function() {
         const itemCategory = item.category || 'Groceries';
         totalAccumulator += itemRowTotal;
 
-        // Check if the item has been bought during this active session
         const isBought = window.sessionBoughtItems && window.sessionBoughtItems.has(item.id);
-        
-        // Apply visual dimming and strikethrough if bought
         const cardOpacity = isBought ? '0.5' : '1';
         const nameStyle = isBought ? 'text-decoration: line-through; color: var(--text-muted);' : 'color: var(--text-main);';
         
-        // Swap the active Buy button for a disabled "✅ Bought" badge
         const buyButtonHtml = isBought 
             ? `<button disabled style="background: rgba(16,185,129,0.05); color: var(--success); border: 1px solid var(--border); padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: bold; opacity: 0.6; cursor: not-allowed;">✅ Bought</button>`
             : `<button onclick="window.buyShoppingItem(${item.id})" style="background: rgba(16,185,129,0.1); color: var(--success); border: 1px solid var(--success); padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: bold; transition: 0.2s;" onmouseover="this.style.background='var(--success)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(16,185,129,0.1)'; this.style.color='var(--success)';">✓ Buy</button>`;
@@ -1865,7 +1997,7 @@ window.renderActiveShoppingList = function() {
     totalEl.innerText = `KES ${totalAccumulator.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
 };
 
-// Export Shopping Lists to CSV (Updated to include Category)
+// 5. Data Export & Import (Supports 5-column and 6-column CSV formats)
 window.exportShoppingCSV = function() {
     if(Object.keys(shoppingLists).length === 0) return alert("No shopping list data to export!");
     
@@ -1883,7 +2015,6 @@ window.exportShoppingCSV = function() {
     window.triggerDownload(csvContent, `Suppa_Shopping_Lists_Backup_${new Date().toISOString().split('T')[0]}.csv`);
 };
 
-// Import Shopping Lists from CSV (Supports both Old and New formats)
 window.importShoppingCSV = function(e) {
     const file = e.target.files[0]; 
     if(!file) return;
@@ -1907,7 +2038,6 @@ window.importShoppingCSV = function(e) {
                 let itemPrice = 0;
                 let itemQty = 1;
 
-                // Seamlessly handle old 5-column backups vs new 6-column backups
                 if (cols.length === 5) {
                     itemPrice = parseFloat(cols[3]) || 0;
                     itemQty = parseInt(cols[4]) || 1;
