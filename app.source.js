@@ -813,6 +813,14 @@ window.initAutocompletes = function() {
         return [...allCats].sort();
     };
 
+    // UPGRADED: Aggregate all historical names + current shopping items for memory
+    const getShoppingNames = () => {
+        let shopNames = new Set([...customMem.Names]);
+        transactions.forEach(t => shopNames.add(t.name));
+        Object.values(shoppingLists).forEach(list => list.forEach(item => shopNames.add(item.name)));
+        return [...shopNames].sort().filter(n => n !== '(General)');
+    };
+
     window.setupCustomAutocomplete('tx-name', getNames);
     window.setupCustomAutocomplete('tx-category', getCats, () => window.autoSelectIcon('tx'));
     
@@ -821,6 +829,9 @@ window.initAutocompletes = function() {
     
     window.setupCustomAutocomplete('budget-name', getNames);
     window.setupCustomAutocomplete('budget-category', getCats, () => window.autoSelectIcon('budget'));
+
+    // NEW: Attach custom autocomplete memory to the Shopping List form
+    window.setupCustomAutocomplete('shop-item-name', getShoppingNames);
 };
 
 // 3. Override the old function so it doesn't clash
@@ -1672,6 +1683,8 @@ window.deleteActiveList = function() {
     window.renderActiveShoppingList();
 };
 
+window.editingShoppingItemId = null; // NEW: Global tracker for edits
+
 window.addShoppingItem = function(e) {
     e.preventDefault();
     if (!activeShoppingListKey) return;
@@ -1680,14 +1693,39 @@ window.addShoppingItem = function(e) {
     const priceEl = document.getElementById('shop-item-price');
     const qtyEl = document.getElementById('shop-item-qty');
 
-    const item = {
-        id: Date.now(),
-        name: nameEl.value.trim(),
-        price: Math.abs(parseFloat(priceEl.value) || 0),
-        qty: Math.abs(parseInt(qtyEl.value) || 1)
-    };
+    const newName = nameEl.value.trim();
+    const newPrice = Math.abs(parseFloat(priceEl.value) || 0);
+    const newQty = Math.abs(parseInt(qtyEl.value) || 1);
 
-    shoppingLists[activeShoppingListKey].push(item);
+    // If we are editing an existing item
+    if (window.editingShoppingItemId) {
+        const itemIndex = shoppingLists[activeShoppingListKey].findIndex(i => i.id === window.editingShoppingItemId);
+        if (itemIndex > -1) {
+            shoppingLists[activeShoppingListKey][itemIndex].name = newName;
+            shoppingLists[activeShoppingListKey][itemIndex].price = newPrice;
+            shoppingLists[activeShoppingListKey][itemIndex].qty = newQty;
+        }
+        window.editingShoppingItemId = null;
+        
+        // Reset the button
+        const btn = document.querySelector('#shopping-item-form button[type="submit"]');
+        if (btn) {
+            btn.innerText = "Add Item";
+            btn.style.background = ""; // Restore default primary gradient
+        }
+    } else {
+        // If we are adding a brand new item
+        const item = {
+            id: Date.now(),
+            name: newName,
+            price: newPrice,
+            qty: newQty
+        };
+        shoppingLists[activeShoppingListKey].push(item);
+    }
+    
+    // Normalize memory for autocomplete
+    window.addToMemory('Expense', 'Groceries', newName, '🛒');
     
     nameEl.value = '';
     priceEl.value = '';
@@ -1698,12 +1736,35 @@ window.addShoppingItem = function(e) {
     window.renderActiveShoppingList();
 };
 
+window.editShoppingItem = function(itemId) {
+    if (!activeShoppingListKey) return;
+    const item = shoppingLists[activeShoppingListKey].find(i => i.id === itemId);
+    if (!item) return;
+
+    window.editingShoppingItemId = itemId;
+    document.getElementById('shop-item-name').value = item.name;
+    document.getElementById('shop-item-price').value = item.price;
+    document.getElementById('shop-item-qty').value = item.qty;
+
+    // Change button appearance to indicate Edit Mode
+    const btn = document.querySelector('#shopping-item-form button[type="submit"]');
+    if (btn) {
+        btn.innerText = "✎ Update Item";
+        btn.style.background = "var(--accent)";
+    }
+    
+    // Scroll smoothly to the form
+    const formEl = document.getElementById('shopping-item-form');
+    if (formEl) window.scrollTo({ top: formEl.offsetTop - 20, behavior: 'smooth' });
+};
+
 window.deleteShoppingItem = function(itemId) {
     if (!activeShoppingListKey) return;
     shoppingLists[activeShoppingListKey] = shoppingLists[activeShoppingListKey].filter(item => item.id !== itemId);
     window.saveShoppingData();
     window.renderActiveShoppingList();
 };
+
 // One-click conversion from Shopping List to Ledger Expense
 window.buyShoppingItem = function(itemId) {
     if (!activeShoppingListKey) return;
@@ -1715,7 +1776,7 @@ window.buyShoppingItem = function(itemId) {
     const item = list[itemIndex];
     const totalCost = item.price * item.qty;
     
-    if (!confirm(`Log "${item.name}" as an Expense of KES ${totalCost.toLocaleString(undefined, {minimumFractionDigits: 2})} and remove it from your list?`)) {
+    if (!confirm(`Log "${item.name}" as an Expense of KES ${totalCost.toLocaleString(undefined, {minimumFractionDigits: 2})}? \n\n(The item will be kept on your list for next time.)`)) {
         return;
     }
     
@@ -1740,8 +1801,7 @@ window.buyShoppingItem = function(itemId) {
     transactions.push(newTx);
     window.addToMemory('Expense', 'Groceries', item.name, '🛒');
     
-    // 3. Remove the item from the shopping list
-    list.splice(itemIndex, 1);
+    // 3. (REMOVED: We no longer splice/delete the item so it is permanently retained!)
     
     // 4. Save all changes and update UI across all tabs
     window.saveData();
@@ -1761,11 +1821,10 @@ window.buyShoppingItem = function(itemId) {
         setTimeout(() => {
             btn.innerText = originalText;
             btn.style.color = "var(--primary)";
-        }, 2000);
+        }, 3000);
     }
 };
-// UI Rendering Pipeline
-// UI Rendering Pipeline
+
 window.renderShoppingTabs = function() {
     const sidebar = document.getElementById('shopping-lists-sidebar');
     if (!sidebar) return;
@@ -1784,7 +1843,6 @@ window.renderShoppingTabs = function() {
         const weight = isActive ? 'bold' : '600';
         const shadow = isActive ? 'var(--shadow)' : 'none';
 
-        // flex: 0 0 auto prevents squishing; white-space: nowrap keeps text on one line
         sidebar.innerHTML += `
             <li style="flex: 0 0 auto;">
                 <button onclick="window.selectShoppingList('${key.replace(/'/g, "\\'")}')" style="white-space: nowrap; padding: 8px 16px; background: ${bg}; color: ${color}; border: 1px solid var(--border); border-radius: 25px; cursor: pointer; font-weight: ${weight}; font-size: 13px; transition: 0.2s; box-shadow: ${shadow};">
@@ -1827,7 +1885,7 @@ window.renderActiveShoppingList = function() {
         return;
     }
 
-    // Render spacious cards for each item
+    // Render spacious cards for each item (Now includes EDIT button!)
     items.forEach(item => {
         const itemRowTotal = item.price * item.qty;
         totalAccumulator += itemRowTotal;
@@ -1846,6 +1904,7 @@ window.renderActiveShoppingList = function() {
                     
                     <div style="display: flex; gap: 8px;">
                         <button onclick="window.buyShoppingItem(${item.id})" style="background: rgba(16,185,129,0.1); color: var(--success); border: 1px solid var(--success); padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: bold; transition: 0.2s;" onmouseover="this.style.background='var(--success)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(16,185,129,0.1)'; this.style.color='var(--success)';">✓ Buy</button>
+                        <button onclick="window.editShoppingItem(${item.id})" style="background: rgba(245,158,11,0.1); color: var(--accent); border: 1px solid var(--accent); padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: bold; transition: 0.2s;" onmouseover="this.style.background='var(--accent)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(245,158,11,0.1)'; this.style.color='var(--accent)';">✎ Edit</button>
                         <button onclick="window.deleteShoppingItem(${item.id})" style="background: rgba(239,68,68,0.1); color: var(--danger); border: 1px solid var(--danger); padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: bold; transition: 0.2s;" onmouseover="this.style.background='var(--danger)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(239,68,68,0.1)'; this.style.color='var(--danger)';">✕</button>
                     </div>
                 </div>
