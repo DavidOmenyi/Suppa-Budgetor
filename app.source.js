@@ -1731,110 +1731,14 @@ window.createShoppingList = function() {
     window.renderActiveShoppingList();
 };
 
+// NEW: Temporary memory tracker to hold checkmarks during an active shopping session
+window.sessionBoughtItems = new Set();
+
 window.selectShoppingList = function(key) {
     activeShoppingListKey = key;
+    // Clears the temporary checkmarks so the list refreshes completely clean
+    window.sessionBoughtItems.clear(); 
     window.renderShoppingTabs();
-    window.renderActiveShoppingList();
-};
-
-window.deleteActiveList = function() {
-    if (!activeShoppingListKey) return;
-    if (!confirm(`Permanently remove list "${activeShoppingListKey}"?`)) return;
-    
-    delete shoppingLists[activeShoppingListKey];
-    activeShoppingListKey = Object.keys(shoppingLists)[0] || null;
-    
-    window.saveShoppingData();
-    window.renderShoppingTabs();
-    window.renderActiveShoppingList();
-};
-
-window.editingShoppingItemId = null; // Global tracker for edits
-
-window.addShoppingItem = function(e) {
-    e.preventDefault();
-    if (!activeShoppingListKey) return;
-
-    const nameEl = document.getElementById('shop-item-name');
-    const catEl = document.getElementById('shop-item-category');
-    const priceEl = document.getElementById('shop-item-price');
-    const qtyEl = document.getElementById('shop-item-qty');
-
-    const newName = nameEl.value.trim();
-    // Normalize case and default to 'Groceries' if left blank
-    const newCat = window.normalizeCase('Category', catEl.value.trim()) || 'Groceries'; 
-    const newPrice = Math.abs(parseFloat(priceEl.value) || 0);
-    const newQty = Math.abs(parseInt(qtyEl.value) || 1);
-
-    // If we are editing an existing item
-    if (window.editingShoppingItemId) {
-        const itemIndex = shoppingLists[activeShoppingListKey].findIndex(i => i.id === window.editingShoppingItemId);
-        if (itemIndex > -1) {
-            shoppingLists[activeShoppingListKey][itemIndex].name = newName;
-            shoppingLists[activeShoppingListKey][itemIndex].category = newCat;
-            shoppingLists[activeShoppingListKey][itemIndex].price = newPrice;
-            shoppingLists[activeShoppingListKey][itemIndex].qty = newQty;
-        }
-        window.editingShoppingItemId = null;
-        
-        // Reset the button
-        const btn = document.querySelector('#shopping-item-form button[type="submit"]');
-        if (btn) {
-            btn.innerText = "Add Item";
-            btn.style.background = ""; // Restore default primary gradient
-        }
-    } else {
-        // If we are adding a brand new item
-        const item = {
-            id: Date.now(),
-            name: newName,
-            category: newCat,
-            price: newPrice,
-            qty: newQty
-        };
-        shoppingLists[activeShoppingListKey].push(item);
-    }
-    
-    // Normalize memory for autocomplete
-    window.addToMemory('Expense', newCat, newName, window.getIcon(newCat));
-    
-    nameEl.value = '';
-    catEl.value = '';
-    priceEl.value = '';
-    qtyEl.value = '1';
-    nameEl.focus();
-
-    window.saveShoppingData();
-    window.renderActiveShoppingList();
-};
-
-window.editShoppingItem = function(itemId) {
-    if (!activeShoppingListKey) return;
-    const item = shoppingLists[activeShoppingListKey].find(i => i.id === itemId);
-    if (!item) return;
-
-    window.editingShoppingItemId = itemId;
-    document.getElementById('shop-item-name').value = item.name;
-    document.getElementById('shop-item-category').value = item.category || 'Groceries';
-    document.getElementById('shop-item-price').value = item.price;
-    document.getElementById('shop-item-qty').value = item.qty;
-
-    // Change button appearance to indicate Edit Mode
-    const btn = document.querySelector('#shopping-item-form button[type="submit"]');
-    if (btn) {
-        btn.innerText = "✎ Update Item";
-        btn.style.background = "var(--accent)";
-    }
-    
-    // Scroll smoothly to the form
-    const formEl = document.getElementById('shopping-item-form');
-    if (formEl) window.scrollTo({ top: formEl.offsetTop - 20, behavior: 'smooth' });
-};
-
-window.deleteShoppingItem = function(itemId) {
-    if (!activeShoppingListKey) return;
-    shoppingLists[activeShoppingListKey] = shoppingLists[activeShoppingListKey].filter(item => item.id !== itemId);
-    window.saveShoppingData();
     window.renderActiveShoppingList();
 };
 
@@ -1850,14 +1754,12 @@ window.buyShoppingItem = function(itemId) {
     const totalCost = item.price * item.qty;
     const itemCategory = item.category || 'Groceries';
     
-    if (!confirm(`Log "${item.name}" as an Expense of KES ${totalCost.toLocaleString(undefined, {minimumFractionDigits: 2})} under [${itemCategory}]? \n\n(The item will be kept on your list for next time.)`)) {
+    if (!confirm(`Log "${item.name}" as an Expense of KES ${totalCost.toLocaleString(undefined, {minimumFractionDigits: 2})} under [${itemCategory}]?`)) {
         return;
     }
     
-    // 1. Save state for History Undo/Redo support
     window.saveState();
     
-    // 2. Create the new Expense transaction dynamically linked to the category
     const newTx = {
         id: Date.now(),
         name: item.name || '(General)',
@@ -1871,11 +1773,12 @@ window.buyShoppingItem = function(itemId) {
         notes: `Bought from shopping list: ${activeShoppingListKey}`
     };
     
-    // Push to main ledger and save to custom memory
     transactions.push(newTx);
     window.addToMemory('Expense', itemCategory, item.name, window.getIcon(itemCategory));
     
-    // 3. Save all changes and update UI across all tabs
+    // NEW: Mark this item as temporarily "bought" for the current session
+    window.sessionBoughtItems.add(itemId);
+    
     window.saveData();
     window.saveShoppingData();
     window.updateDatalists();
@@ -1883,45 +1786,6 @@ window.buyShoppingItem = function(itemId) {
     window.updateCharts();
     window.updateInflationChart();
     window.renderActiveShoppingList();
-    
-    // Quick confirmation feedback
-    const btn = document.getElementById('shopping-list-total');
-    if (btn) {
-        const originalText = btn.innerText;
-        btn.innerText = `✓ "${item.name}" Logged to Ledger!`;
-        btn.style.color = "var(--success)";
-        setTimeout(() => {
-            btn.innerText = originalText;
-            btn.style.color = "var(--primary)";
-        }, 3000);
-    }
-};
-
-window.renderShoppingTabs = function() {
-    const sidebar = document.getElementById('shopping-lists-sidebar');
-    if (!sidebar) return;
-    sidebar.innerHTML = '';
-
-    const listKeys = Object.keys(shoppingLists);
-    if (listKeys.length === 0) {
-        sidebar.innerHTML = `<li style="font-size: 13px; color: var(--text-muted); padding: 5px 0;">No lists compiled yet.</li>`;
-        return;
-    }
-
-    listKeys.sort().forEach(key => {
-        const isActive = key === activeShoppingListKey;
-        const bg = isActive ? 'var(--primary)' : 'var(--bg-color)';
-        const color = isActive ? '#ffffff' : 'var(--text-main)';
-        const weight = isActive ? 'bold' : '600';
-        const shadow = isActive ? 'var(--shadow)' : 'none';
-
-        sidebar.innerHTML += `
-            <li style="flex: 0 0 auto;">
-                <button onclick="window.selectShoppingList('${key.replace(/'/g, "\\'")}')" style="white-space: nowrap; padding: 8px 16px; background: ${bg}; color: ${color}; border: 1px solid var(--border); border-radius: 25px; cursor: pointer; font-weight: ${weight}; font-size: 13px; transition: 0.2s; box-shadow: ${shadow};">
-                    📋 ${key}
-                </button>
-            </li>`;
-    });
 };
 
 window.renderActiveShoppingList = function() {
@@ -1957,17 +1821,28 @@ window.renderActiveShoppingList = function() {
         return;
     }
 
-    // Render spacious cards for each item showing the new Category tag
     items.forEach(item => {
         const itemRowTotal = item.price * item.qty;
         const itemCategory = item.category || 'Groceries';
         totalAccumulator += itemRowTotal;
 
+        // Check if the item has been bought during this active session
+        const isBought = window.sessionBoughtItems && window.sessionBoughtItems.has(item.id);
+        
+        // Apply visual dimming and strikethrough if bought
+        const cardOpacity = isBought ? '0.5' : '1';
+        const nameStyle = isBought ? 'text-decoration: line-through; color: var(--text-muted);' : 'color: var(--text-main);';
+        
+        // Swap the active Buy button for a disabled "✅ Bought" badge
+        const buyButtonHtml = isBought 
+            ? `<button disabled style="background: rgba(16,185,129,0.05); color: var(--success); border: 1px solid var(--border); padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: bold; opacity: 0.6; cursor: not-allowed;">✅ Bought</button>`
+            : `<button onclick="window.buyShoppingItem(${item.id})" style="background: rgba(16,185,129,0.1); color: var(--success); border: 1px solid var(--success); padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: bold; transition: 0.2s;" onmouseover="this.style.background='var(--success)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(16,185,129,0.1)'; this.style.color='var(--success)';">✓ Buy</button>`;
+
         listEl.innerHTML += `
-            <div style="background: var(--surface-color); border: 1px solid var(--border); border-radius: 10px; padding: 15px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
+            <div style="background: var(--surface-color); border: 1px solid var(--border); border-radius: 10px; padding: 15px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); opacity: ${cardOpacity}; transition: 0.3s;">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                     <div>
-                        <div style="font-weight: 800; font-size: 16px; color: var(--text-main);">${item.name}</div>
+                        <div style="font-weight: 800; font-size: 16px; ${nameStyle}">${item.name}</div>
                         <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">${window.getIcon(itemCategory)} ${itemCategory}</div>
                     </div>
                     <div style="font-weight: 800; color: var(--primary); font-size: 15px;">KES ${itemRowTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
@@ -1979,7 +1854,7 @@ window.renderActiveShoppingList = function() {
                     </div>
                     
                     <div style="display: flex; gap: 8px;">
-                        <button onclick="window.buyShoppingItem(${item.id})" style="background: rgba(16,185,129,0.1); color: var(--success); border: 1px solid var(--success); padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: bold; transition: 0.2s;" onmouseover="this.style.background='var(--success)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(16,185,129,0.1)'; this.style.color='var(--success)';">✓ Buy</button>
+                        ${buyButtonHtml}
                         <button onclick="window.editShoppingItem(${item.id})" style="background: rgba(245,158,11,0.1); color: var(--accent); border: 1px solid var(--accent); padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: bold; transition: 0.2s;" onmouseover="this.style.background='var(--accent)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(245,158,11,0.1)'; this.style.color='var(--accent)';">✎ Edit</button>
                         <button onclick="window.deleteShoppingItem(${item.id})" style="background: rgba(239,68,68,0.1); color: var(--danger); border: 1px solid var(--danger); padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: bold; transition: 0.2s;" onmouseover="this.style.background='var(--danger)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(239,68,68,0.1)'; this.style.color='var(--danger)';">✕</button>
                     </div>
