@@ -961,31 +961,43 @@ input, select, textarea, datalist, option {
                         <button class="btn-primary" onclick="window.exportShoppingCSV()" style="margin: 0; padding: 12px; background: linear-gradient(135deg, #8b5cf6, #7c3aed);">💾 Export Lists</button>
                     </div>
                 </div>
-                <!-- UNIFIED MASTER BACKUP ACTIONS -->
-<div class="card" style="margin-top: 20px; padding: 20px; border-top: 4px solid var(--primary);">
-    <h3 style="margin-top: 0; color: var(--primary);">📦 Master Application Backup</h3>
-    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">
-        Download or restore your entire ecosystem (Ledgers, Budgets, Custom Categories, and all Shopping Lists) in a single master file.
-    </p>
-    <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-        <button onclick="window.exportMasterBackupJSON()" class="btn-primary" style="width: auto; padding: 10px 20px;">
-            ⬇ Backup Everything (JSON)
-        </button>
-        <label class="btn-primary" style="width: auto; padding: 10px 20px; background: var(--accent); border-color: var(--accent); text-align: center; cursor: pointer;">
-            ⬆ Restore Everything
-            <input type="file" accept=".json" onchange="window.importMasterBackupJSON(event)" style="display: none;">
-        </label>
-    </div>
-</div>
-
-                <div class="card" style="border-top-color: var(--danger);">
-                    <h3 style="color: var(--danger);">Danger Zone</h3>
-                    <div style="margin-top: 15px;">
-                        <button class="btn-primary" onclick="window.resetData()" style="width: 100%; background: var(--danger); margin: 0; padding: 12px;">⚠ Factory Reset Data</button>
-                    </div>
+                <!-- ========================================== -->
+            <!-- 1. MASTER BACKUP (Constructive & Safe)     -->
+            <!-- ========================================== -->
+            <div class="card" style="margin-top: 25px; padding: 20px; border-top: 4px solid var(--primary);">
+                <h3 style="margin-top: 0; margin-bottom: 8px; color: var(--primary);">📦 Master Application Backup</h3>
+                
+                <p style="font-size: 13px; color: var(--text-muted); margin-top: 0; margin-bottom: 20px; line-height: 1.5;">
+                    Download or restore your entire ecosystem (Ledgers, Budgets, Custom Categories, and all Shopping Lists) in a single master file.
+                </p>
+                
+                <!-- Buttons stacked vertically at 100% width -->
+                <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+                    <button onclick="window.exportMasterBackupJSON()" style="background: var(--primary); color: white; border: none; padding: 14px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; text-align: center; width: 100%; box-sizing: border-box; font-size: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                        ⬇ Backup Everything (JSON)
+                    </button>
+                    
+                    <label style="background: var(--accent); color: white; border: none; padding: 14px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; text-align: center; width: 100%; box-sizing: border-box; display: block; font-size: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                        ⬆ Restore Everything
+                        <input type="file" accept=".json" onchange="window.importMasterBackupJSON(event)" style="display: none;">
+                    </label>
                 </div>
             </div>
-        </div>
+
+            <!-- ========================================== -->
+            <!-- 2. DANGER ZONE (Destructive & Rare)        -->
+            <!-- ========================================== -->
+            <div class="card" style="margin-top: 25px; padding: 20px; border-top: 4px solid var(--danger);">
+                <h3 style="margin-top: 0; margin-bottom: 8px; color: var(--danger);">⚠️ Danger Zone</h3>
+                
+                <p style="font-size: 13px; color: var(--text-muted); margin-top: 0; margin-bottom: 20px; line-height: 1.5;">
+                    Permanently delete all financial data, budgets, and settings. This action cannot be undone unless you have a backup.
+                </p>
+                
+                <button onclick="window.clearAllData()" style="background: transparent; color: var(--danger); border: 2px solid var(--danger); padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; font-size: 14px; transition: 0.2s;" onmouseover="this.style.background='var(--danger)'; this.style.color='white';" onmouseout="this.style.background='transparent'; this.style.color='var(--danger)';">
+                    🗑️ Erase All Data
+                </button>
+            </div>
 
         <div id="help" class="tab-content">
     <div class="flex-between" style="margin-bottom: 15px;">
