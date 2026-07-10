@@ -1203,7 +1203,9 @@ window.updateUI = function() {
 
         let totalAvailable = totalIncome + rollover + totalSavingsWithdrawn;
         let actualOutgoing = totalSpent + totalSaved;
-        let surplusDeficit = rawTotalBudget - actualOutgoing; 
+        
+        // NEW MATH: Surplus is strictly Budgeted Ceiling vs Pure Expenses (ignores savings)
+        let surplusDeficit = rawTotalBudget - totalSpent; 
         let amountUnassigned = totalAvailable - actualOutgoing; 
         
         const topIncEl = document.getElementById('top-income');
@@ -1505,15 +1507,37 @@ window.drawCharts = function(expenses, catFilter, nameFilter) {
         options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'bottom', labels: { color: textColor, font: {size: 11}, boxWidth: 12 } }, tooltip: { callbacks: { label: function(context) { let val = context.raw || 0; return `KES ${val.toLocaleString()}`; } } } } }
     });
 
+    // ==========================================
+    // 4. STACKED BUDGET VS ACTUAL BAR CHART (Time-Series)
+    // ==========================================
     const monthlyData = {};
+    
+    // 1. Process Actuals into Expenses vs Savings
     expenses.forEach(t => {
         const m = t.date.substring(0,7);
-        if(!monthlyData[m]) monthlyData[m] = { budget: 0, actual: 0 };
-        monthlyData[m].actual += t.kes;
+        if(!monthlyData[m]) monthlyData[m] = { budgetExp: 0, budgetSav: 0, actualExp: 0, actualSav: 0 };
+        
+        const catLower = String(t.category || '').trim().toLowerCase();
+        const isSavingsCat = categories.Savings.some(c => c.toLowerCase() === catLower) || 
+                             (customMem.Savings && customMem.Savings.some(c => c.toLowerCase() === catLower));
+        const isSavingsTx = t.type === 'Savings-Deposit' || t.type === 'Starting-Balance' || isSavingsCat;
+        
+        if (isSavingsTx) {
+            monthlyData[m].actualSav += t.kes;
+        } else {
+            monthlyData[m].actualExp += t.kes;
+        }
     });
 
-    Object.keys(monthlyData).forEach(m => {
-        let mBudget = 0; 
+    // 2. Process Budgets into Expense vs Savings Targets
+    let allMonths = new Set(Object.keys(monthlyData));
+    Object.keys(categoryBudgets).forEach(m => allMonths.add(m)); // Ensure months with budgets but no actuals still plot
+
+    allMonths.forEach(m => {
+        if(!monthlyData[m]) monthlyData[m] = { budgetExp: 0, budgetSav: 0, actualExp: 0, actualSav: 0 };
+        
+        let mBudgetExp = 0;
+        let mBudgetSav = 0;
         let items = new Set();
         
         Object.keys(categoryBudgets).forEach(bm => {
@@ -1521,7 +1545,6 @@ window.drawCharts = function(expenses, catFilter, nameFilter) {
         });
         transactions.filter(t => t.date && t.date.startsWith(m) && (t.type === 'Expense' || t.type === 'Savings-Deposit')).forEach(t => items.add(`${t.category}::${t.name}`));
         
-        // Group items by category to apply the exact same Math.max logic from updateUI
         let catGroupsChart = {};
         items.forEach(k => {
             let parts = k.split('::'); let c = parts[0]; let n = parts[1];
@@ -1531,7 +1554,6 @@ window.drawCharts = function(expenses, catFilter, nameFilter) {
             if (n === '(General)') {
                 catGroupsChart[c].gen = bAmt;
             } else {
-                // If a specific Name filter is applied, only aggregate that specific item
                 if (nameFilter === 'ALL' || nameFilter === n) {
                     catGroupsChart[c].specSum += bAmt;
                 }
@@ -1540,17 +1562,22 @@ window.drawCharts = function(expenses, catFilter, nameFilter) {
 
         Object.keys(catGroupsChart).forEach(c => {
             if (catFilter === 'ALL' || catFilter === c) {
-                if (nameFilter !== 'ALL') {
-                    // Specific name filter active: ignore the general ceiling entirely
-                    mBudget += catGroupsChart[c].specSum;
+                let catCeiling = (nameFilter !== 'ALL') ? catGroupsChart[c].specSum : Math.max(catGroupsChart[c].gen, catGroupsChart[c].specSum);
+                
+                const catLower = String(c).trim().toLowerCase();
+                const isSavingsCat = categories.Savings.some(catMatch => catMatch.toLowerCase() === catLower) || 
+                                     (customMem.Savings && customMem.Savings.some(catMatch => catMatch.toLowerCase() === catLower));
+                
+                if (isSavingsCat) {
+                    mBudgetSav += catCeiling;
                 } else {
-                    // No name filter: use the safe ceiling logic
-                    mBudget += Math.max(catGroupsChart[c].gen, catGroupsChart[c].specSum);
+                    mBudgetExp += catCeiling;
                 }
             }
         });
 
-        monthlyData[m].budget = mBudget;
+        monthlyData[m].budgetExp = mBudgetExp;
+        monthlyData[m].budgetSav = mBudgetSav;
     });
 
     const sortedMonths = Object.keys(monthlyData).sort();
@@ -1561,11 +1588,58 @@ window.drawCharts = function(expenses, catFilter, nameFilter) {
         data: {
             labels: sortedMonths,
             datasets: [
-                { label: 'Budgeted', data: sortedMonths.map(m => monthlyData[m].budget), backgroundColor: '#a7f3d0', borderRadius: 4 },
-                { label: 'Actual Spent', data: sortedMonths.map(m => monthlyData[m].actual), backgroundColor: '#059669', borderRadius: 4 }
+                // --- BAR 1: BUDGET (Stack 0) ---
+                {
+                    label: 'Budgeted Expense',
+                    data: sortedMonths.map(m => monthlyData[m].budgetExp),
+                    backgroundColor: 'rgba(5, 150, 105, 0.15)', 
+                    borderColor: '#059669', 
+                    borderWidth: 2,
+                    stack: 'Stack 0' 
+                },
+                {
+                    label: 'Target Savings',
+                    data: sortedMonths.map(m => monthlyData[m].budgetSav),
+                    backgroundColor: 'rgba(59, 130, 246, 0.15)', 
+                    borderColor: '#3b82f6', 
+                    borderWidth: 2,
+                    stack: 'Stack 0'
+                },
+                // --- BAR 2: ACTUALS (Stack 1) ---
+                {
+                    label: 'Actual Expense',
+                    data: sortedMonths.map(m => monthlyData[m].actualExp),
+                    backgroundColor: '#ef4444', 
+                    stack: 'Stack 1'
+                },
+                {
+                    label: 'Actual Savings',
+                    data: sortedMonths.map(m => monthlyData[m].actualSav),
+                    backgroundColor: '#3b82f6', 
+                    stack: 'Stack 1'
+                }
             ]
         },
-        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { position: 'bottom', labels: { color: textColor, font: {size: 11}, boxWidth: 12 } } } }
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { stacked: true },
+                y: { stacked: true, beginAtZero: true }
+            },
+            plugins: {
+                legend: { position: 'bottom', labels: { color: textColor, font: {size: 11}, boxWidth: 12 } },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let val = context.raw || 0;
+                            if (val > 0) return context.dataset.label + ': KES ' + val.toLocaleString(undefined, {minimumFractionDigits: 2});
+                            return null;
+                        }
+                    }
+                }
+            }
+        }
     });
 };
 
