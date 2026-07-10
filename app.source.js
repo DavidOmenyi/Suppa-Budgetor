@@ -1471,6 +1471,8 @@ window.updateCharts = function(txList = null) {
 
         window.drawCharts(chartExpenses, catFilter, nameFilter);
     } catch(e) { console.error("Chart Error", e); }
+    window.handleChartOrientation(); // Set initial height based on phone orientation
+    window.drawPortfolioCharts();    // Draw the new investment charts
 };
 
 window.drawCharts = function(expenses, catFilter, nameFilter) {
@@ -1564,6 +1566,158 @@ window.drawCharts = function(expenses, catFilter, nameFilter) {
             ]
         },
         options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { position: 'bottom', labels: { color: textColor, font: {size: 11}, boxWidth: 12 } } } }
+    });
+};
+
+// Global chart instance trackers so we can destroy and redraw them cleanly
+window.pfGrowthChartInstance = null;
+window.pfDistChartInstance = null;
+
+// UI Switcher for the Selector Filter
+window.switchPortfolioChart = function() {
+    const selector = document.getElementById('portfolio-chart-selector');
+    const growthContainer = document.getElementById('chart-container-growth');
+    const distContainer = document.getElementById('chart-container-distribution');
+    
+    if (!selector || !growthContainer || !distContainer) return;
+
+    if (selector.value === 'growth') {
+        growthContainer.classList.remove('hidden');
+        distContainer.classList.add('hidden');
+    } else {
+        growthContainer.classList.add('hidden');
+        distContainer.classList.remove('hidden');
+    }
+};
+
+// Smart Auto-Orientation Detector
+window.handleChartOrientation = function() {
+    const containers = document.querySelectorAll('.portfolio-chart-container');
+    // Detect if the device is currently Landscape (wider than it is tall)
+    const isLandscape = window.innerWidth > window.innerHeight;
+    
+    containers.forEach(container => {
+        // Give landscape mode 75% of the screen height for deep analysis, otherwise standard 300px
+        container.style.height = isLandscape ? '75vh' : '300px';
+    });
+};
+
+// Listen for phone rotation or window resizing
+window.addEventListener('resize', window.handleChartOrientation);
+window.addEventListener('orientationchange', window.handleChartOrientation);
+
+// Main rendering engine for Portfolio charts
+window.drawPortfolioCharts = function() {
+    const growthCanvas = document.getElementById('portfolioGrowthChart');
+    const distCanvas = document.getElementById('portfolioDistributionChart');
+    if (!growthCanvas || !distCanvas) return;
+
+    // 1. Data Extraction & Math
+    let assetBalances = {};
+    let monthlyNetFlows = {};
+
+    transactions.forEach(t => {
+        const catLower = String(t.category || '').trim().toLowerCase();
+        const isSavingsCat = categories.Savings.some(c => c.toLowerCase() === catLower) || 
+                             (customMem.Savings && customMem.Savings.some(c => c.toLowerCase() === catLower));
+        
+        const isPortfolioTx = t.type === 'Starting-Balance' || t.type === 'Savings-Deposit' || t.type === 'Savings-Withdrawal' || isSavingsCat;
+        
+        if (!isPortfolioTx) return;
+
+        let month = t.date ? t.date.substring(0, 7) : new Date().toISOString().substring(0,7);
+        let amt = Math.abs(parseFloat(t.kes || t.actual) || 0);
+        let assetName = t.category || 'Uncategorized Asset';
+        
+        if (!assetBalances[assetName]) assetBalances[assetName] = 0;
+        if (!monthlyNetFlows[month]) monthlyNetFlows[month] = 0;
+        
+        if (t.type === 'Savings-Withdrawal') {
+            assetBalances[assetName] -= amt;
+            monthlyNetFlows[month] -= amt;
+        } else {
+            assetBalances[assetName] += amt;
+            monthlyNetFlows[month] += amt;
+        }
+    });
+
+    // 2. Prepare Cumulative Growth Data
+    let sortedMonths = Object.keys(monthlyNetFlows).sort();
+    let cumulativeData = [];
+    let runningTotal = 0;
+    
+    sortedMonths.forEach(m => {
+        runningTotal += monthlyNetFlows[m];
+        cumulativeData.push(runningTotal);
+    });
+
+    // 3. Prepare Asset Distribution Data
+    let distLabels = [];
+    let distData = [];
+    let distColors = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#06b6d4', '#ec4899'];
+    let colorIndex = 0;
+
+    Object.keys(assetBalances).forEach(asset => {
+        if (assetBalances[asset] > 0) { // Only plot assets with positive value
+            distLabels.push(asset);
+            distData.push(assetBalances[asset]);
+        }
+    });
+
+    // 4. Render Cumulative Line Chart
+    if (window.pfGrowthChartInstance) window.pfGrowthChartInstance.destroy();
+    window.pfGrowthChartInstance = new Chart(growthCanvas, {
+        type: 'line',
+        data: {
+            labels: sortedMonths,
+            datasets: [{
+                label: 'Total Net Worth (KES)',
+                data: cumulativeData,
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                borderWidth: 3,
+                pointBackgroundColor: '#10b981',
+                pointRadius: 4,
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false, // Required for auto-orientation to work!
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+
+    // 5. Render Distribution Doughnut Chart
+    if (window.pfDistChartInstance) window.pfDistChartInstance.destroy();
+    window.pfDistChartInstance = new Chart(distCanvas, {
+        type: 'doughnut',
+        data: {
+            labels: distLabels,
+            datasets: [{
+                data: distData,
+                backgroundColor: distLabels.map(() => {
+                    let color = distColors[colorIndex % distColors.length];
+                    colorIndex++;
+                    return color;
+                }),
+                borderWidth: 2,
+                borderColor: '#ffffff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false, // Required for auto-orientation to work!
+            cutout: '65%',
+            plugins: {
+                legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } }
+            }
+        }
     });
 };
 
