@@ -139,6 +139,35 @@ input, select, textarea, datalist, option {
         .custom-option { padding: 12px 15px; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 14px; color: var(--text-main); font-weight: 600; }
         .custom-option:last-child { border-bottom: none; }
         .custom-option:active, .custom-option:hover { background: rgba(5,150,105,0.1); color: var(--primary); }
+        /* =========================================
+           LANDSCAPE MODE OPTIMIZATIONS
+           ========================================= */
+        @media screen and (orientation: landscape) and (max-height: 600px) {
+            /* Make the bottom nav much thinner so it doesn't block the screen */
+            .bottom-nav {
+                height: 50px;
+                padding-bottom: env(safe-area-inset-bottom, 5px);
+            }
+            .nav-item {
+                flex-direction: row;
+                gap: 8px;
+                font-size: 13px;
+            }
+            .nav-item i {
+                font-size: 18px;
+                margin-bottom: 0;
+            }
+            
+            /* Give the main content area more breathing room to scroll */
+            .app-container {
+                padding-bottom: 70px;
+            }
+
+            /* Stack summary cards side-by-side instead of vertically */
+            .summary-grid {
+                grid-template-columns: repeat(4, 1fr) !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -330,7 +359,7 @@ input, select, textarea, datalist, option {
                             </tr>
                         </thead>
                         <tbody id="income-body"></tbody>
-                        tfoot>
+                        <tfoot>
                             <tr>
                                 <th style="font-size: 14px;">Total Income</th>
                                 <th id="bottom-line-income" style="font-size: 14px; color: var(--primary);">KES 0.00</th>
