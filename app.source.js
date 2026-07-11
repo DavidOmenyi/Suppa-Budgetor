@@ -1508,21 +1508,27 @@ window.drawCharts = function(expenses, catFilter, nameFilter) {
     });
 
     // ==========================================
-    // 4. STACKED BUDGET VS ACTUAL BAR CHART (Time-Series)
+    // 4. STACKED BUDGET VS ACTUAL BAR CHART (Historical Trend)
     // ==========================================
     const monthlyData = {};
     
-    // 1. Process Actuals into Expenses vs Savings
-    expenses.forEach(t => {
+    // 1. Process Actuals (Using GLOBAL transactions so past months ALWAYS show actuals!)
+    // Note: We deliberately exclude 'Starting-Balance' so it doesn't ruin the Y-axis scale.
+    let barTxs = transactions.filter(t => t.date && (t.type === 'Expense' || t.type === 'Savings-Deposit'));
+    
+    if (catFilter !== 'ALL') barTxs = barTxs.filter(t => t.category === catFilter);
+    if (nameFilter !== 'ALL') barTxs = barTxs.filter(t => t.name === nameFilter);
+
+    barTxs.forEach(t => {
         const m = t.date.substring(0,7);
         if(!monthlyData[m]) monthlyData[m] = { budgetExp: 0, budgetSav: 0, actualExp: 0, actualSav: 0 };
         
         const catLower = String(t.category || '').trim().toLowerCase();
         const isSavingsCat = categories.Savings.some(c => c.toLowerCase() === catLower) || 
                              (customMem.Savings && customMem.Savings.some(c => c.toLowerCase() === catLower));
-        const isSavingsTx = t.type === 'Savings-Deposit' || t.type === 'Starting-Balance' || isSavingsCat;
         
-        if (isSavingsTx) {
+        // Route to Savings Bar vs Expense Bar
+        if (t.type === 'Savings-Deposit' || isSavingsCat) {
             monthlyData[m].actualSav += t.kes;
         } else {
             monthlyData[m].actualExp += t.kes;
@@ -1531,7 +1537,7 @@ window.drawCharts = function(expenses, catFilter, nameFilter) {
 
     // 2. Process Budgets into Expense vs Savings Targets
     let allMonths = new Set(Object.keys(monthlyData));
-    Object.keys(categoryBudgets).forEach(m => allMonths.add(m)); // Ensure months with budgets but no actuals still plot
+    Object.keys(categoryBudgets).forEach(m => allMonths.add(m)); // Ensure months with budgets plot
 
     allMonths.forEach(m => {
         if(!monthlyData[m]) monthlyData[m] = { budgetExp: 0, budgetSav: 0, actualExp: 0, actualSav: 0 };
@@ -1543,6 +1549,8 @@ window.drawCharts = function(expenses, catFilter, nameFilter) {
         Object.keys(categoryBudgets).forEach(bm => {
             if(bm <= m && categoryBudgets[bm]) Object.keys(categoryBudgets[bm]).forEach(k => items.add(k));
         });
+        
+        // Also check items that had actual transactions in this month
         transactions.filter(t => t.date && t.date.startsWith(m) && (t.type === 'Expense' || t.type === 'Savings-Deposit')).forEach(t => items.add(`${t.category}::${t.name}`));
         
         let catGroupsChart = {};
@@ -1633,7 +1641,9 @@ window.drawCharts = function(expenses, catFilter, nameFilter) {
                     callbacks: {
                         label: function(context) {
                             let val = context.raw || 0;
-                            if (val > 0) return context.dataset.label + ': KES ' + val.toLocaleString(undefined, {minimumFractionDigits: 2});
+                            if (val > 0) {
+                                return context.dataset.label + ': KES ' + val.toLocaleString(undefined, {minimumFractionDigits: 2});
+                            }
                             return null;
                         }
                     }
