@@ -1236,8 +1236,7 @@ window.updateUI = function() {
 
         const perfBody = document.getElementById('performance-body'); if(perfBody) perfBody.innerHTML = '';
         
-        const catFilterEl = document.getElementById('summary-cat-filter'); const catFilter = catFilterEl ? catFilterEl.value : 'ALL';
-        const spentFilterEl = document.getElementById('summary-spent-filter'); const spentFilter = spentFilterEl ? spentFilterEl.value : 'ALL';
+        let catFilterEl; // Cleanly declare this once so the new dropdown logic can use it below
 
         let itemsMap = {}; 
         Object.keys(categoryBudgets).forEach(bm => {
