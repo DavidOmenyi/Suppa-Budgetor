@@ -1269,7 +1269,7 @@ window.updateUI = function() {
         });
 
         // 2. Populate Category Filter Dropdown safely (KEEP THIS!)
-        const catFilterEl = document.getElementById('perf-cat-filter');
+        catFilterEl = document.getElementById('perf-cat-filter');
         if (catFilterEl) {
             // Remember what the user currently has selected before wiping the list
             let currentSelection = catFilterEl.value; 
