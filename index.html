@@ -366,25 +366,35 @@ input, select, textarea, datalist, option {
             </div>
 
             <!-- 2. FILTERS (ALWAYS VISIBLE) -->
-            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; margin-top: 15px; margin-bottom: 10px; padding: 15px; background: rgba(5,150,105,0.02); border: 1px solid var(--border); border-radius: var(--radius);">
-                
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <label style="font-size: 13px; font-weight: 700; color: var(--text-muted);">Category:</label>
-                    <select id="summary-cat-filter" onchange="window.updateUI()" style="padding: 6px; border-radius: 8px; border: 1px solid var(--border); width: auto; min-width: 150px;">
+            <div class="card" style="margin-bottom: 20px; padding: 15px; display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <select id="perf-period" onchange="window.updateUI()" style="padding: 8px; border-radius: 8px; border: 1px solid var(--border); flex: 1; font-weight: bold;">
+                        <option value="MTD">Current Month</option>
+                        <option value="LAST_MONTH">Last Month</option>
+                        <option value="YTD">Year to Date</option>
+                    </select>
+                    
+                    <select id="perf-cat-filter" onchange="window.updateUI()" style="padding: 8px; border-radius: 8px; border: 1px solid var(--border); flex: 1;">
                         <option value="ALL">All Categories</option>
+                        </select>
+                </div>
+
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <select id="perf-type-filter" onchange="window.updateUI()" style="padding: 8px; border-radius: 8px; border: 1px solid var(--border); flex: 1;">
+                        <option value="ALL">All Types (Exp & Sav)</option>
+                        <option value="Expense">Expenses Only</option>
+                        <option value="Savings">Savings Only</option>
+                    </select>
+
+                    <select id="perf-spent-filter" onchange="window.updateUI()" style="padding: 8px; border-radius: 8px; border: 1px solid var(--border); flex: 1;">
+                        <option value="ALL">All Items</option>
+                        <option value="NON_ZERO">Spent > 0</option>
+                        <option value="ZERO">Spent = 0</option>
+                        <option value="UNDER_BUDGET">Under Budget</option>
                     </select>
                 </div>
 
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <label style="font-size: 13px; font-weight: 700; color: var(--text-muted);">Actual Spent:</label>
-                    <select id="summary-spent-filter" onchange="window.updateUI()" style="padding: 6px; border-radius: 8px; border: 1px solid var(--border); width: auto;">
-                        <option value="ALL">All Amounts</option>
-                        <option value="ZERO">Zero Spent Only</option>
-                        <option value="NON_ZERO">Spent > 0 Only</option>
-                        <option value="UNDER_BUDGET">Not Fully Expensed</option>
-                    </select>
-                </div>
-
+                <input type="text" id="perf-search-filter" oninput="window.updateUI()" placeholder="🔍 Search by item or category name..." style="padding: 10px; border-radius: 8px; border: 1px solid var(--border); width: 100%; box-sizing: border-box; font-size: 14px;">
             </div>
 
             <!-- 3. TABLE SECTION (HIDDEN BY DEFAULT) -->
@@ -905,6 +915,16 @@ input, select, textarea, datalist, option {
                     <div style="font-weight: 800; font-size: 14px; color: var(--text-main);">Utilities</div>
                     <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Backups & Reset</div>
                 </div>
+
+                <div class="card" style="margin-bottom: 20px; padding: 15px; border-left: 4px solid var(--primary); cursor: pointer; transition: 0.2s;" onclick="window.switchTab('summaries')" onmouseover="this.style.background='rgba(5,150,105,0.05)'" onmouseout="this.style.background='white'">
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <span style="font-size: 24px;">📁</span>
+                    <div>
+                        <h4 style="margin: 0; color: var(--text-main);">Performance Reports</h4>
+                        <p style="margin: 3px 0 0 0; font-size: 12px; color: var(--text-muted);">View budgets vs actuals and search your records.</p>
+                    </div>
+                </div>
+            </div>
 
                 <div onclick="window.switchTab('help')" class="card" style="text-align: center; cursor: pointer; padding: 20px 10px; transition: 0.2s; border-top: 4px solid var(--danger);" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='none'">
                     <div style="font-size: 32px; margin-bottom: 8px;">📞</div>
