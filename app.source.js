@@ -57,6 +57,9 @@ var inflationChartInstance = null;
 // ==========================================
 // DYNAMIC UI LAYOUT MANAGER (With Sorting)
 // ==========================================
+// ==========================================
+// DYNAMIC UI LAYOUT MANAGER (With Sorting)
+// ==========================================
 const availableTabs = [
     { id: 'home', icon: '🏠', label: 'Home' },
     { id: 'budget', icon: '🎯', label: 'Budget' },
@@ -65,7 +68,9 @@ const availableTabs = [
     { id: 'savings', icon: '💎', label: 'Portfolio' },
     { id: 'shopping', icon: '🛒', label: 'Lists' },
     { id: 'utilities', icon: '🛠️', label: 'Utilities' },
-    { id: 'more', icon: '☰', label: 'More' }
+    { id: 'more', icon: '☰', label: 'More' },
+    { id: 'entry', icon: '➕', label: 'Add Entry' },
+    { id: 'help', icon: '📞', label: 'Help' }
 ];
 
 const availableActions = [
@@ -1269,34 +1274,30 @@ window.updateUI = function() {
             catFilterEl.value = distinctCats.includes(catFilter) ? catFilter : 'ALL';
         }
 
-        let tableBudget = 0; let tableSpent = 0;
+        let tableBudget = 0; 
+        let tableSpent = 0;
         let rawTotalBudget = 0;
-        let totalDeductions = 0; // NEW: Tracks strict expenses + capped savings
+        let totalDeductions = 0; // Tracks strict expenses + capped savings
         
-        
-        // 3. Render the Main Category Rows and Hidden Breakdown Rows
+        // 1. Render Category Rows and Calculate the True Ceiling
         Object.values(catGroups).sort((a,b) => a.cat.localeCompare(b.cat)).forEach((group, index) => {
             let catTotalActual = group.items.reduce((s, i) => s + i.actual, 0);
             
-            // SMART BUDGET LOGIC: Category ceiling vs Specific Item Sum
+            // MATH.MAX ensures the general budget acts as a safe umbrella without double-counting specifics
             let genBudget = window.getBudget(group.cat, '(General)', monthStr);
             let specBudgetSum = group.items.filter(i => i.name !== '(General)').reduce((s, i) => s + i.budget, 0);
             let catTotalBudget = Math.max(genBudget, specBudgetSum);
             
-            rawTotalBudget += catTotalBudget; // Accumulate for Top Summary Cards
+            rawTotalBudget += catTotalBudget; // One single source of truth for the Top Card
 
-            // NEW: Apply the Capped Savings Rule for the Surplus Calculation
+            // Apply the Capped Savings Rule for the Surplus Calculation
             if (group.type === 'Savings') {
-                // Only deduct savings up to the budgeted ceiling
-                totalDeductions += Math.min(catTotalActual, catTotalBudget);
+                totalDeductions += Math.min(catTotalActual, catTotalBudget); // Only deduct up to budget
             } else {
-                // Pure expenses are always fully deducted
-                totalDeductions += catTotalActual;
+                totalDeductions += catTotalActual; // Fully deduct pure expenses
             }
-            
-            rawTotalBudget += catTotalBudget; // Accumulate for Top Summary Cards
 
-            // Apply Filters at the Category level
+            // Apply visual filters
             if (catFilter !== 'ALL' && catFilter !== group.cat) return;
             if (spentFilter === 'ZERO' && catTotalActual !== 0) return;
             if (spentFilter === 'NON_ZERO' && catTotalActual === 0) return;
@@ -1308,11 +1309,10 @@ window.updateUI = function() {
             let catVariance = catTotalBudget - catTotalActual; 
             let catIsPositive = catVariance >= 0;
             let catVarPct = catTotalBudget ? ((catVariance / catTotalBudget) * 100).toFixed(1) : 0;
-            
             let rowId = `cat-group-${index}`;
 
             if(perfBody) {
-                // Render Parent Category Row (Clickable Accordion)
+                // Parent Category Row
                 perfBody.innerHTML += `
                     <tr style="cursor: pointer; background: rgba(5,150,105,0.05); transition: 0.2s;" onclick="document.querySelectorAll('.${rowId}').forEach(el => el.classList.toggle('hidden'))" onmouseover="this.style.background='rgba(5,150,105,0.1)'" onmouseout="this.style.background='rgba(5,150,105,0.05)'">
                         <td style="font-weight: bold; border-left: 3px solid var(--primary);">${window.getIcon(group.cat)} ${group.cat}</td>
@@ -1325,7 +1325,7 @@ window.updateUI = function() {
                     </tr>
                 `;
 
-                // Render Child Item Breakdowns (Hidden by default)
+                // Child Item Rows
                 group.items.sort((a,b) => a.name.localeCompare(b.name)).forEach(item => {
                     let itemVar = item.budget - item.actual; 
                     let itemPos = itemVar >= 0;
@@ -1346,6 +1346,7 @@ window.updateUI = function() {
             }
         });
 
+        // 2. Table Footers
         let netVar = tableBudget - tableSpent;
         const perfBudg = document.getElementById('perf-bottom-line-budget');
         if(perfBudg) perfBudg.innerText = tableBudget.toLocaleString(undefined, {minimumFractionDigits: 2});
@@ -1353,19 +1354,27 @@ window.updateUI = function() {
         const perfAct = document.getElementById('perf-bottom-line-actual');
         if(perfAct) perfAct.innerText = tableSpent.toLocaleString(undefined, {minimumFractionDigits: 2});
         
-        const varStr = `${netVar >= 0 ? '+':''}${netVar.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-        const varClass = netVar >= 0 ? 'positive' : 'negative';
         const perfVar = document.getElementById('perf-bottom-line-variance');
-        if(perfVar) { perfVar.innerText = varStr; perfVar.className = varClass; }
+        if(perfVar) { 
+            perfVar.innerText = `${netVar >= 0 ? '+':''}${netVar.toLocaleString(undefined, {minimumFractionDigits: 2})}`; 
+            perfVar.className = netVar >= 0 ? 'positive' : 'negative'; 
+        }
 
-        // EXPENSE VS SAVINGS ROUTING
+        // 3. Purge old transaction loops and safely aggregate Actuals
+        let totalIncome = 0;
+        let totalSpent = 0;
+        let totalSaved = 0;
+        let totalSavingsWithdrawn = 0;
+
         currentMonthTxs.forEach(t => {
             const txAmt = Math.abs(parseFloat(t.kes || t.actual) || 0);
             const catLower = String(t.category || '').trim().toLowerCase();
             const isSavingsCat = categories.Savings.some(c => c.toLowerCase() === catLower) || 
                                  (customMem.Savings && customMem.Savings.some(c => c.toLowerCase() === catLower));
             
-            if (t.type === 'Savings-Withdrawal') {
+            if (t.type === 'Income') {
+                totalIncome += txAmt;
+            } else if (t.type === 'Savings-Withdrawal') {
                 totalSavingsWithdrawn += txAmt;
             } else if (t.type === 'Savings-Deposit' || isSavingsCat || String(t.type).includes('Savings')) {
                 if (t.type !== 'Starting-Balance') totalSaved += txAmt;
@@ -1374,20 +1383,19 @@ window.updateUI = function() {
             }
         });
 
+        // 4. Update the Dashboard Summary Cards
         let totalAvailable = totalIncome + rollover + totalSavingsWithdrawn;
         let actualOutgoing = totalSpent + totalSaved;
         
-        // NEW MATH: Surplus is strictly Budgeted Ceiling vs (Pure Expenses + Capped Savings)
         let surplusDeficit = rawTotalBudget - totalDeductions; 
-        
-        let amountUnassigned = totalAvailable - actualOutgoing;
+        let amountUnassigned = totalAvailable - actualOutgoing; 
         
         const topIncEl = document.getElementById('top-income');
         if(topIncEl) topIncEl.innerText = `KES ${(totalIncome + rollover).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+        
         const topRollEl = document.getElementById('top-rollover-text');
         if(topRollEl) topRollEl.innerText = `Includes ${rollover >= 0 ? '+':''}${rollover.toLocaleString(undefined, {minimumFractionDigits: 2})} rollover`;
         
-        // Updates based on the new synchronized Math.max budget variable
         const topBudgEl = document.getElementById('top-budget');
         if(topBudgEl) topBudgEl.innerText = `KES ${rawTotalBudget.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
         
@@ -1744,7 +1752,8 @@ window.drawCharts = function(expenses, catFilter, nameFilter) {
 
         Object.keys(catGroupsChart).forEach(c => {
             if (catFilter === 'ALL' || catFilter === c) {
-                let catCeiling = (nameFilter !== 'ALL') ? catGroupsChart[c].specSum : Math.max(catGroupsChart[c].gen, catGroupsChart[c].specSum);
+                // Synchronized with the strict priority logic
+                let catCeiling = (nameFilter !== 'ALL') ? catGroupsChart[c].specSum : (catGroupsChart[c].gen > 0 ? catGroupsChart[c].gen : catGroupsChart[c].specSum);
                 
                 const catLower = String(c).trim().toLowerCase();
                 const isSavingsCat = categories.Savings.some(catMatch => catMatch.toLowerCase() === catLower) || 
