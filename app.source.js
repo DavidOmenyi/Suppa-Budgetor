@@ -55,6 +55,166 @@ var barChartInstance = null;
 var inflationChartInstance = null;
 
 // ==========================================
+// DYNAMIC UI LAYOUT MANAGER (With Sorting)
+// ==========================================
+const availableTabs = [
+    { id: 'home', icon: '🏠', label: 'Home' },
+    { id: 'budget', icon: '🎯', label: 'Budget' },
+    { id: 'summaries', icon: '📁', label: 'Records' },
+    { id: 'analytics', icon: '📊', label: 'Analytics' },
+    { id: 'savings', icon: '💎', label: 'Portfolio' },
+    { id: 'shopping', icon: '🛒', label: 'Lists' },
+    { id: 'utilities', icon: '🛠️', label: 'Utilities' },
+    { id: 'more', icon: '☰', label: 'More' }
+];
+
+const availableActions = [
+    { id: 'entry', icon: '➕', label: 'Add Entry', color: 'var(--primary)' },
+    { id: 'shopping', icon: '🛒', label: 'Lists', color: '#8b5cf6' },
+    { id: 'utilities', icon: '🛠️', label: 'Utilities', color: 'var(--primary)' },
+    { id: 'analytics', icon: '📊', label: 'Analytics', color: 'var(--accent)' },
+    { id: 'savings', icon: '💎', label: 'Portfolio', color: '#3b82f6' }
+];
+
+// Load from memory, or set defaults
+window.userLayoutPrefs = JSON.parse(localStorage.getItem('suppa_layout_prefs')) || {
+    tabs: ['home', 'budget', 'summaries', 'more'],
+    actions: ['entry', 'shopping', 'utilities']
+};
+
+window.renderCustomLayouts = function() {
+    const nav = document.querySelector('nav');
+    const actionsRibbon = document.getElementById('quick-actions-ribbon');
+
+    if (nav) {
+        nav.innerHTML = '';
+        nav.style.gridTemplateColumns = `repeat(${window.userLayoutPrefs.tabs.length}, 1fr)`;
+        window.userLayoutPrefs.tabs.forEach(tabId => {
+            const tab = availableTabs.find(t => t.id === tabId);
+            if (tab) {
+                nav.innerHTML += `
+                    <button onclick="window.switchTab('${tab.id}')" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 2px; line-height: 1.2;">
+                        <span style="font-size: 20px;">${tab.icon}</span>
+                        <span style="font-size: 11px; margin-top: 3px; font-weight: 700;">${tab.label}</span>
+                    </button>`;
+            }
+        });
+        const activeContent = document.querySelector('.tab-content.active');
+        if (activeContent) window.switchTab(activeContent.id);
+    }
+
+    if (actionsRibbon) {
+        actionsRibbon.innerHTML = '';
+        actionsRibbon.style.gridTemplateColumns = `repeat(${window.userLayoutPrefs.actions.length}, 1fr)`;
+        window.userLayoutPrefs.actions.forEach(actId => {
+            const act = availableActions.find(a => a.id === actId);
+            if (act) {
+                actionsRibbon.innerHTML += `
+                    <button onclick="window.switchTab('${act.id}')" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--surface-color); border: 1px solid var(--border); padding: 10px 5px; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.02); transition: 0.2s;" onmouseover="this.style.borderColor='${act.color}'" onmouseout="this.style.borderColor='var(--border)'">
+                        <span style="font-size: 24px; margin-bottom: 4px;">${act.icon}</span>
+                        <span style="font-size: 12px; font-weight: 800; color: ${act.color};">${act.label}</span>
+                    </button>`;
+            }
+        });
+    }
+};
+
+// --- SETTINGS MODAL LOGIC ---
+
+window.openLayoutModal = function() {
+    window.refreshLayoutModalUI();
+    document.getElementById('layout-modal').classList.remove('hidden');
+};
+
+window.refreshLayoutModalUI = function() {
+    const tDiv = document.getElementById('tab-choices');
+    const aDiv = document.getElementById('action-choices');
+    const tSel = document.getElementById('add-tab-select');
+    const aSel = document.getElementById('add-action-select');
+    
+    tDiv.innerHTML = ''; aDiv.innerHTML = '';
+    
+    // 1. Render Active Tabs with Reorder Controls
+    window.userLayoutPrefs.tabs.forEach((id, index) => {
+        const item = availableTabs.find(t => t.id === id);
+        if (item) {
+            tDiv.innerHTML += `
+                <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-color); border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px;">
+                    <span style="font-weight: bold; font-size: 13px; color: var(--text-main);">${item.icon} ${item.label}</span>
+                    <div style="display: flex; gap: 5px;">
+                        <button onclick="window.moveLayoutItem('tabs', ${index}, -1)" ${index === 0 ? 'disabled style="opacity:0.3"' : 'style="cursor:pointer"'} class="btn-primary" style="margin:0; padding:4px 8px; width:auto; font-size:12px;">⬆️</button>
+                        <button onclick="window.moveLayoutItem('tabs', ${index}, 1)" ${index === window.userLayoutPrefs.tabs.length - 1 ? 'disabled style="opacity:0.3"' : 'style="cursor:pointer"'} class="btn-primary" style="margin:0; padding:4px 8px; width:auto; font-size:12px;">⬇️</button>
+                        <button onclick="window.removeLayoutItem('tabs', '${id}')" style="background: rgba(239,68,68,0.1); color: var(--danger); border: none; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; margin-left: 5px;">✕</button>
+                    </div>
+                </div>`;
+        }
+    });
+
+    // 2. Render Active Actions with Reorder Controls
+    window.userLayoutPrefs.actions.forEach((id, index) => {
+        const item = availableActions.find(a => a.id === id);
+        if (item) {
+            aDiv.innerHTML += `
+                <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-color); border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px;">
+                    <span style="font-weight: bold; font-size: 13px; color: var(--text-main);">${item.icon} ${item.label}</span>
+                    <div style="display: flex; gap: 5px;">
+                        <button onclick="window.moveLayoutItem('actions', ${index}, -1)" ${index === 0 ? 'disabled style="opacity:0.3"' : 'style="cursor:pointer"'} class="btn-primary" style="background:var(--accent); margin:0; padding:4px 8px; width:auto; font-size:12px;">⬆️</button>
+                        <button onclick="window.moveLayoutItem('actions', ${index}, 1)" ${index === window.userLayoutPrefs.actions.length - 1 ? 'disabled style="opacity:0.3"' : 'style="cursor:pointer"'} class="btn-primary" style="background:var(--accent); margin:0; padding:4px 8px; width:auto; font-size:12px;">⬇️</button>
+                        <button onclick="window.removeLayoutItem('actions', '${id}')" style="background: rgba(239,68,68,0.1); color: var(--danger); border: none; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; margin-left: 5px;">✕</button>
+                    </div>
+                </div>`;
+        }
+    });
+
+    // 3. Populate Available Items Dropdowns
+    tSel.innerHTML = '<option value="" disabled selected>➕ Add a Tab to your bar...</option>';
+    availableTabs.filter(t => !window.userLayoutPrefs.tabs.includes(t.id)).forEach(t => {
+        tSel.innerHTML += `<option value="${t.id}">${t.icon} ${t.label}</option>`;
+    });
+
+    aSel.innerHTML = '<option value="" disabled selected>➕ Add a Quick Action shortcut...</option>';
+    availableActions.filter(a => !window.userLayoutPrefs.actions.includes(a.id)).forEach(a => {
+        aSel.innerHTML += `<option value="${a.id}">${a.icon} ${a.label}</option>`;
+    });
+};
+
+window.moveLayoutItem = function(type, index, direction) {
+    const arr = window.userLayoutPrefs[type];
+    if (index + direction < 0 || index + direction >= arr.length) return;
+    
+    // Swap array elements
+    const temp = arr[index];
+    arr[index] = arr[index + direction];
+    arr[index + direction] = temp;
+    
+    window.refreshLayoutModalUI();
+};
+
+window.addLayoutItem = function(type, id) {
+    if (!id) return;
+    const max = type === 'tabs' ? 5 : 4;
+    if (window.userLayoutPrefs[type].length >= max) {
+        return alert(`Maximum capacity reached (${max}). Please remove an item first.`);
+    }
+    window.userLayoutPrefs[type].push(id);
+    window.refreshLayoutModalUI();
+};
+
+window.removeLayoutItem = function(type, id) {
+    if (type === 'tabs' && window.userLayoutPrefs.tabs.length <= 1) {
+        return alert("You must have at least 1 navigation tab!");
+    }
+    window.userLayoutPrefs[type] = window.userLayoutPrefs[type].filter(item => item !== id);
+    window.refreshLayoutModalUI();
+};
+
+window.saveLayoutPrefs = function() {
+    localStorage.setItem('suppa_layout_prefs', JSON.stringify(window.userLayoutPrefs));
+    window.renderCustomLayouts();
+    document.getElementById('layout-modal').classList.add('hidden');
+};
+
+// ==========================================
 // 3. GLOBAL FUNCTIONS (Accessible by HTML)
 // ==========================================
 
@@ -1111,6 +1271,8 @@ window.updateUI = function() {
 
         let tableBudget = 0; let tableSpent = 0;
         let rawTotalBudget = 0;
+        let totalDeductions = 0; // NEW: Tracks strict expenses + capped savings
+        
         
         // 3. Render the Main Category Rows and Hidden Breakdown Rows
         Object.values(catGroups).sort((a,b) => a.cat.localeCompare(b.cat)).forEach((group, index) => {
@@ -1120,6 +1282,17 @@ window.updateUI = function() {
             let genBudget = window.getBudget(group.cat, '(General)', monthStr);
             let specBudgetSum = group.items.filter(i => i.name !== '(General)').reduce((s, i) => s + i.budget, 0);
             let catTotalBudget = Math.max(genBudget, specBudgetSum);
+            
+            rawTotalBudget += catTotalBudget; // Accumulate for Top Summary Cards
+
+            // NEW: Apply the Capped Savings Rule for the Surplus Calculation
+            if (group.type === 'Savings') {
+                // Only deduct savings up to the budgeted ceiling
+                totalDeductions += Math.min(catTotalActual, catTotalBudget);
+            } else {
+                // Pure expenses are always fully deducted
+                totalDeductions += catTotalActual;
+            }
             
             rawTotalBudget += catTotalBudget; // Accumulate for Top Summary Cards
 
@@ -1204,9 +1377,10 @@ window.updateUI = function() {
         let totalAvailable = totalIncome + rollover + totalSavingsWithdrawn;
         let actualOutgoing = totalSpent + totalSaved;
         
-        // NEW MATH: Surplus is strictly Budgeted Ceiling vs Pure Expenses (ignores savings)
-        let surplusDeficit = rawTotalBudget - totalSpent; 
-        let amountUnassigned = totalAvailable - actualOutgoing; 
+        // NEW MATH: Surplus is strictly Budgeted Ceiling vs (Pure Expenses + Capped Savings)
+        let surplusDeficit = rawTotalBudget - totalDeductions; 
+        
+        let amountUnassigned = totalAvailable - actualOutgoing;
         
         const topIncEl = document.getElementById('top-income');
         if(topIncEl) topIncEl.innerText = `KES ${(totalIncome + rollover).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
@@ -1588,7 +1762,8 @@ window.drawCharts = function(expenses, catFilter, nameFilter) {
         monthlyData[m].budgetSav = mBudgetSav;
     });
 
-    const sortedMonths = Object.keys(monthlyData).sort();
+    // Sort chronologically, then grab only the 12 most recent months to keep the UI clean!
+    const sortedMonths = Object.keys(monthlyData).sort().slice(-12);
 
     if(barChartInstance) barChartInstance.destroy();
     barChartInstance = new Chart(ctxBar, {
@@ -2960,6 +3135,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.renderInbox();
 window.renderShoppingTabs();
 window.renderActiveShoppingList();
+    window.renderCustomLayouts();
 
     const setupProfileDropdown = (triggerId, dropdownId) => {
         const trigger = document.getElementById(triggerId);
