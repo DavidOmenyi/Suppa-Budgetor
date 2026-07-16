@@ -1214,9 +1214,13 @@ window.updateUI = function() {
         const currentMonthTxs = transactions.filter(t => t.date && t.date.startsWith(monthStr));
         const rollover = window.calculateRollover(monthStr);
 
-        let totalIncome = 0; let totalSavingsWithdrawn = 0; 
-        let totalSpent = 0; let totalSaved = 0;
+        // 1. Declare all accumulators ONCE at the top
+        let totalIncome = 0; 
+        let totalSavingsWithdrawn = 0; 
+        let totalSpent = 0; 
+        let totalSaved = 0;
 
+        // 2. Process Income
         let incomeTxs = currentMonthTxs.filter(t => t.type === 'Income');
         const groupedIncome = incomeTxs.reduce((acc, tx) => { acc[tx.category] = (acc[tx.category]||0) + tx.kes; return acc; }, {});
         totalIncome = Object.values(groupedIncome).reduce((a,b)=>a+b, 0);
@@ -1234,10 +1238,10 @@ window.updateUI = function() {
         const bliEl = document.getElementById('bottom-line-income');
         if(bliEl) bliEl.innerText = `KES ${totalIncome.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
 
-        const perfBody = document.getElementById('performance-body'); if(perfBody) perfBody.innerHTML = '';
-        
-        let catFilterEl; // Cleanly declare this once so the new dropdown logic can use it below
+        const perfBody = document.getElementById('performance-body'); 
+        if(perfBody) perfBody.innerHTML = '';
 
+        // 3. Map Budgets & Actuals
         let itemsMap = {}; 
         Object.keys(categoryBudgets).forEach(bm => {
             if(bm <= monthStr && categoryBudgets[bm]) Object.keys(categoryBudgets[bm]).forEach(k => {
@@ -1254,7 +1258,7 @@ window.updateUI = function() {
             itemsMap[k].actual += t.kes;
         });
 
-        // 1. Group items by Category
+        // 4. Group items by Category
         let catGroups = {};
         Object.values(itemsMap).forEach(item => {
             if (!catGroups[item.cat]) {
@@ -1267,33 +1271,32 @@ window.updateUI = function() {
             });
         });
 
-        // 2. Populate Category Filter Dropdown safely (KEEP THIS!)
-        catFilterEl = document.getElementById('perf-cat-filter');
+        // 5. Populate Category Filter Dropdown safely
+        const catFilterEl = document.getElementById('perf-cat-filter');
         if (catFilterEl) {
-            // Remember what the user currently has selected before wiping the list
             let currentSelection = catFilterEl.value; 
-            
             catFilterEl.innerHTML = '<option value="ALL">All Categories</option>';
             let distinctCats = Object.keys(catGroups).sort();
             distinctCats.forEach(c => catFilterEl.innerHTML += `<option value="${c}">${window.getIcon(c)} ${c}</option>`);
-            
-            // Re-apply the selection so the dropdown doesn't reset when searching
             catFilterEl.value = distinctCats.includes(currentSelection) ? currentSelection : 'ALL';
         }
 
-        const catFilter = document.getElementById('perf-cat-filter') ? document.getElementById('perf-cat-filter').value : 'ALL';
-        const spentFilter = document.getElementById('perf-spent-filter') ? document.getElementById('perf-spent-filter').value : 'ALL';
-        const typeFilter = document.getElementById('perf-type-filter') ? document.getElementById('perf-type-filter').value : 'ALL';
-        const searchFilter = document.getElementById('perf-search-filter') ? document.getElementById('perf-search-filter').value.toLowerCase().trim() : '';
-        
+        // 6. DECLARE FILTERS (Safely ONCE)
+        const catFilter = catFilterEl ? catFilterEl.value : 'ALL';
+        const spentFilterEl = document.getElementById('perf-spent-filter');
+        const spentFilter = spentFilterEl ? spentFilterEl.value : 'ALL';
+        const typeFilterEl = document.getElementById('perf-type-filter');
+        const typeFilter = typeFilterEl ? typeFilterEl.value : 'ALL';
+        const searchFilterEl = document.getElementById('perf-search-filter');
+        const searchFilter = searchFilterEl ? searchFilterEl.value.toLowerCase().trim() : '';
+
         let tableBudget = 0; 
         let tableSpent = 0;
         let rawTotalBudget = 0;
         let totalDeductions = 0; 
 
-        // 1. Render Category Rows
+        // 7. Render Performance Table Rows
         Object.values(catGroups).sort((a,b) => a.cat.localeCompare(b.cat)).forEach((group, index) => {
-            // MATH FOR TOP CARDS (Unaffected by Search UI)
             let catTotalActual = group.items.reduce((s, i) => s + i.actual, 0);
             let genBudget = window.getBudget(group.cat, '(General)', monthStr);
             let specBudgetSum = group.items.filter(i => i.name !== '(General)').reduce((s, i) => s + i.budget, 0);
@@ -1301,29 +1304,24 @@ window.updateUI = function() {
             
             rawTotalBudget += catTotalBudget; 
 
-            // Capped Savings Logic (Guards against double-deduction)
             if (group.type === 'Savings') {
                 totalDeductions += Math.min(catTotalActual, catTotalBudget); 
             } else {
                 totalDeductions += catTotalActual; 
             }
 
-            // --- UI FILTERING FOR THE VISIBLE TABLE ---
             if (catFilter !== 'ALL' && catFilter !== group.cat) return;
             if (typeFilter !== 'ALL' && group.type !== typeFilter) return;
 
-            // Apply Search Text Filter
             let visibleItems = group.items;
             if (searchFilter) {
-                // Check if the category name matches OR if any item matches
                 const catMatches = group.cat.toLowerCase().includes(searchFilter);
                 if (!catMatches) {
                     visibleItems = group.items.filter(i => i.name.toLowerCase().includes(searchFilter));
                 }
-                if (visibleItems.length === 0) return; // Hide category if nothing matches
+                if (visibleItems.length === 0) return; 
             }
 
-            // Recalculate table footers based on VISIBLE items only
             let visibleActual = visibleItems.reduce((s, i) => s + i.actual, 0);
             let visibleBudget = (searchFilter && visibleItems.length < group.items.length) 
                                 ? visibleItems.reduce((s, i) => s + i.budget, 0) 
@@ -1360,7 +1358,6 @@ window.updateUI = function() {
                     let itemPct = item.budget ? ((itemVar / item.budget) * 100).toFixed(1) : 0;
                     let dispName = item.name === '(General)' ? 'General Allocation' : item.name;
 
-                    // Highlight matched text in yellow if searching
                     if (searchFilter && dispName.toLowerCase().includes(searchFilter)) {
                         const regex = new RegExp(`(${searchFilter})`, "gi");
                         dispName = dispName.replace(regex, "<mark style='background: #fde047; padding: 0 2px; border-radius: 3px;'>$1</mark>");
@@ -1381,7 +1378,7 @@ window.updateUI = function() {
             }
         });
 
-        // 2. Table Footers
+        // 8. Table Footers
         let netVar = tableBudget - tableSpent;
         if(document.getElementById('perf-bottom-line-budget')) document.getElementById('perf-bottom-line-budget').innerText = tableBudget.toLocaleString(undefined, {minimumFractionDigits: 2});
         if(document.getElementById('perf-bottom-line-actual')) document.getElementById('perf-bottom-line-actual').innerText = tableSpent.toLocaleString(undefined, {minimumFractionDigits: 2});
@@ -1392,34 +1389,25 @@ window.updateUI = function() {
             perfVar.className = netVar >= 0 ? 'positive' : 'negative'; 
         }
 
-        // 3. STRICT DOUBLE-DEDUCTION PREVENTION
-        totalIncome = 0;
-        totalSpent = 0;
-        totalSaved = 0;
-        let totalSavingsWithdrawn = 0;
-
+        // 9. EXPENSE VS SAVINGS ROUTING
         currentMonthTxs.forEach(t => {
             const txAmt = Math.abs(parseFloat(t.kes || t.actual) || 0);
             const catLower = String(t.category || '').trim().toLowerCase();
-            // This flag is the ultimate gatekeeper ensuring Savings NEVER enter Expenses
             const isSavingsCat = categories.Savings.some(c => c.toLowerCase() === catLower) || 
                                  (customMem.Savings && customMem.Savings.some(c => c.toLowerCase() === catLower));
             
-            if (t.type === 'Income') {
-                totalIncome += txAmt;
-            } else if (t.type === 'Savings-Withdrawal') {
+            if (t.type === 'Savings-Withdrawal') {
                 totalSavingsWithdrawn += txAmt;
             } else if (isSavingsCat || t.type === 'Savings-Deposit' || String(t.type).includes('Savings')) {
-                if (t.type !== 'Starting-Balance') totalSaved += txAmt; // Starting balance is isolated
+                if (t.type !== 'Starting-Balance') totalSaved += txAmt; 
             } else if (t.type === 'Expense') {
-                totalSpent += txAmt; // PURE expenses only
+                totalSpent += txAmt; 
             }
         });
 
-        // 4. Update the Dashboard Summary Cards
+        // 10. Update the Dashboard Summary Cards
         let totalAvailable = totalIncome + rollover + totalSavingsWithdrawn;
         let actualOutgoing = totalSpent + totalSaved;
-        
         let surplusDeficit = rawTotalBudget - totalDeductions; 
         let amountUnassigned = totalAvailable - actualOutgoing;
         
