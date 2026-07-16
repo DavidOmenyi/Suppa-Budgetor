@@ -1361,10 +1361,10 @@ window.updateUI = function() {
         }
 
         // 3. Purge old transaction loops and safely aggregate Actuals
-        let totalIncome = 0;
-        let totalSpent = 0;
-        let totalSaved = 0;
-        let totalSavingsWithdrawn = 0;
+        totalIncome = 0;
+        totalSpent = 0;
+        totalSaved = 0;
+        totalSavingsWithdrawn = 0;
 
         currentMonthTxs.forEach(t => {
             const txAmt = Math.abs(parseFloat(t.kes || t.actual) || 0);
