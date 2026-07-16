@@ -916,15 +916,11 @@ input, select, textarea, datalist, option {
                     <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Backups & Reset</div>
                 </div>
 
-                <div class="card" style="margin-bottom: 20px; padding: 15px; border-left: 4px solid var(--primary); cursor: pointer; transition: 0.2s;" onclick="window.switchTab('summaries')" onmouseover="this.style.background='rgba(5,150,105,0.05)'" onmouseout="this.style.background='white'">
-                <div style="display: flex; align-items: center; gap: 15px;">
-                    <span style="font-size: 24px;">📁</span>
-                    <div>
-                        <h4 style="margin: 0; color: var(--text-main);">Performance Reports</h4>
-                        <p style="margin: 3px 0 0 0; font-size: 12px; color: var(--text-muted);">View budgets vs actuals and search your records.</p>
-                    </div>
+                <div onclick="window.switchTab('summaries')" class="card" style="text-align: center; cursor: pointer; padding: 20px 10px; transition: 0.2s; border-top: 4px solid var(--primary);" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='none'">
+                    <div style="font-size: 32px; margin-bottom: 8px;">📁</div>
+                    <div style="font-weight: 800; font-size: 14px; color: var(--text-main);">Records</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Detailed Ledgers</div>
                 </div>
-            </div>
 
                 <div onclick="window.switchTab('help')" class="card" style="text-align: center; cursor: pointer; padding: 20px 10px; transition: 0.2s; border-top: 4px solid var(--danger);" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='none'">
                     <div style="font-size: 32px; margin-bottom: 8px;">📞</div>
