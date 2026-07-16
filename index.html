@@ -285,21 +285,12 @@ input, select, textarea, datalist, option {
                 </div>
             </div>
 
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; background: rgba(5, 150, 105, 0.04); padding: 10px; border-radius: var(--radius); border: 1px dashed var(--border);">
-                <button onclick="window.switchTab('entry')" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--surface-color); border: 1px solid var(--border); padding: 10px 5px; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.02); transition: 0.2s;" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
-                    <span style="font-size: 24px; margin-bottom: 4px;">➕</span>
-                    <span style="font-size: 12px; font-weight: 800; color: var(--primary);">Add Entry</span>
-                </button>
-
-                <button onclick="window.switchTab('shopping')" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--surface-color); border: 1px solid var(--border); padding: 10px 5px; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.02); transition: 0.2s;" onmouseover="this.style.borderColor='#8b5cf6'" onmouseout="this.style.borderColor='var(--border)'">
-                    <span style="font-size: 24px; margin-bottom: 4px;">🛒</span>
-                    <span style="font-size: 12px; font-weight: 800; color: #8b5cf6;">Lists</span>
-                </button>
-
-                <button onclick="window.switchTab('utilities')" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--surface-color); border: 1px solid var(--border); padding: 10px 5px; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.02); transition: 0.2s;" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
-                    <span style="font-size: 24px; margin-bottom: 4px;">🛠️</span>
-                    <span style="font-size: 12px; font-weight: 800; color: var(--primary);">Utilities</span>
-                </button>
+            <div class="flex-between" style="margin-bottom: 10px; margin-top: 5px;">
+                <h3 style="color: var(--text-muted); font-size: 11px; margin: 0; text-transform: uppercase;">Quick Actions</h3>
+                <button onclick="window.openLayoutModal()" style="background: none; border: none; color: var(--accent); cursor: pointer; font-size: 11px; font-weight: bold;">⚙️ Customize UI</button>
+            </div>
+            
+            <div id="quick-actions-ribbon" style="display: grid; gap: 10px; margin-bottom: 20px; background: rgba(5, 150, 105, 0.04); padding: 10px; border-radius: var(--radius); border: 1px dashed var(--border);">
             </div>
             <div class="summary-cards">
                 <div class="card">
@@ -1286,6 +1277,30 @@ input, select, textarea, datalist, option {
                 <button type="submit" class="btn-primary" style="margin: 0; flex: 2;">Unlock & Import ➡</button>
             </div>
         </form>
+    </div>
+</div>
+<div id="layout-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 450px;">
+        <button class="modal-close" onclick="document.getElementById('layout-modal').classList.add('hidden')">Close</button>
+        <h2 style="color: var(--primary); margin-bottom: 10px;">⚙️ Customize Dashboard</h2>
+        
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.4;">
+            Add, remove, or reorder your shortcuts. Use the <b>⬆️/⬇️ arrows</b> to change the exact order they appear on your screen.
+        </p>
+
+        <h4 style="margin-bottom: 10px; color: var(--text-main); font-size: 14px;">1. Bottom Navigation Tabs (Max 5)</h4>
+        <div id="tab-choices" style="margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px;"></div>
+        <select id="add-tab-select" onchange="window.addLayoutItem('tabs', this.value)" style="width: 100%; padding: 10px; margin-bottom: 25px; border-radius: 8px; border: 2px dashed var(--primary); background: rgba(5,150,105,0.05); color: var(--primary); font-weight: bold; cursor: pointer;">
+            <option value="" disabled selected>➕ Add a Tab to your bar...</option>
+        </select>
+
+        <h4 style="margin-bottom: 10px; color: var(--text-main); font-size: 14px;">2. Quick Actions Ribbon (Max 4)</h4>
+        <div id="action-choices" style="margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px;"></div>
+        <select id="add-action-select" onchange="window.addLayoutItem('actions', this.value)" style="width: 100%; padding: 10px; margin-bottom: 25px; border-radius: 8px; border: 2px dashed var(--accent); background: rgba(245,158,11,0.05); color: var(--accent); font-weight: bold; cursor: pointer;">
+            <option value="" disabled selected>➕ Add a Quick Action shortcut...</option>
+        </select>
+
+        <button onclick="window.saveLayoutPrefs()" class="btn-primary" style="padding: 14px; font-size: 14px;">Save & Apply Layout</button>
     </div>
 </div>
 
